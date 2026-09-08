@@ -11,3 +11,6 @@ dist/
 .vasta/
 VASTA-BRAINSTORM-PLAN.zip
 *.zip
+
+# 临时补丁脚本
+.patch_*.py
