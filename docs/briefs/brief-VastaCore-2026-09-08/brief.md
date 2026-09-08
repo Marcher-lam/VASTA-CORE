@@ -1,6 +1,6 @@
 ---
 title: VastaCore 产品简报
-status: draft
+status: final
 created: 2026-09-08
 updated: 2026-09-08
 ---
