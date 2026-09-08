@@ -279,6 +279,9 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         self._require_started("ingest_external")
         obs = Observation(kind="external", detail=detail)
         await self._record_observation(obs)
+        # 外部变化来源入 payload（回放定位用，Story 4.1/4.2）
+        if isinstance(detail, dict) and "source" in detail:
+            self._last_external_source = str(detail["source"])
 
     async def record_model_exchange(
         self, request: BaseModel, response: BaseModel
@@ -388,6 +391,10 @@ class RunEngine(ContractedMixin, HumanControlMixin):
     ) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
         payload = self.collector.record(obs)
+        if obs.kind == "external" and isinstance(obs.detail, dict):
+            source = obs.detail.get("source")
+            if source and source != "tool":
+                payload["external_source"] = str(source)
         if action is not None:
             # 动作维度（Story 2.1）：仅 step 产生的观察携带 last_action
             # （参数传递，reset/observe/resume/external 路径天然不携带），
