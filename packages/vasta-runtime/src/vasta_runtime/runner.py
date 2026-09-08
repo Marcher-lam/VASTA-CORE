@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,7 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
-from vasta_protocols.ids import new_event_id, new_run_id, now_utc
+from vasta_protocols.ids import new_run_id
 from vasta_protocols.protocols import (
     Action,
     EnvironmentAdapter,
@@ -30,6 +31,7 @@ from vasta_protocols.protocols import (
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .observation import ObservationCollector, TerminalObservationError
+from .runcontext import RunContext
 from .state import RunState, assert_transition
 
 
@@ -57,11 +59,27 @@ class RunEngine:
         budget: Budget | None = None,
         config: RunConfig | None = None,
         clock: Callable[[], datetime] | None = None,
+        run_context: RunContext | None = None,
     ) -> None:
         self.env = env
         self.store = store
-        self.config = config or RunConfig(run_id=new_run_id())
-        self._clock = clock or now_utc
+        # Story 1.5：时间/随机/事件 ID/身份统一来自 RunContext（AD-5）；
+        # legacy clock/config 参数在此归一为默认 context。
+        if run_context is None:
+            cfg = config or RunConfig(run_id=new_run_id())
+            run_context = RunContext.create(
+                run_id=cfg.run_id,
+                tenant_id=cfg.tenant_id,
+                project_id=cfg.project_id,
+                clock=clock,
+            )
+        self.context = run_context
+        self.config = RunConfig(
+            run_id=run_context.run_id,
+            tenant_id=run_context.tenant_id,
+            project_id=run_context.project_id,
+        )
+        self._clock = run_context.clock
         self.tracker = BudgetTracker(budget or Budget(), clock=self._clock)
         self._state = RunState.CREATED
         self._seq = -1
@@ -80,8 +98,16 @@ class RunEngine:
         budget: Budget | None = None,
         config: RunConfig | None = None,
         clock: Callable[[], datetime] | None = None,
+        run_context: RunContext | None = None,
     ) -> RunEngine:
-        engine = cls(env=env, store=store, budget=budget, config=config, clock=clock)
+        engine = cls(
+            env=env,
+            store=store,
+            budget=budget,
+            config=config,
+            clock=clock,
+            run_context=run_context,
+        )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
         )
@@ -107,7 +133,7 @@ class RunEngine:
                 "ts": self._clock(),
                 "tenant_id": self.config.tenant_id,
                 "project_id": self.config.project_id,
-                "event_id": new_event_id(),
+                "event_id": self.context.new_event_id(),
                 "payload": payload,
             }
         )
@@ -191,12 +217,35 @@ class RunEngine:
         obs = Observation(kind="external", detail=detail)
         await self._record_observation(obs)
 
+    async def record_model_exchange(
+        self, request: BaseModel, response: BaseModel
+    ) -> str:
+        """模型请求/响应整体 Artifact 化（AD-5）：证据先落盘，再登记预算。"""
+        payload = json.dumps(
+            {
+                "request": request.model_dump(mode="json"),
+                "response": response.model_dump(mode="json"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        sha = await self.store.save_artifact(
+            payload,
+            mime="application/json",
+            source="model.exchange",
+            tenant_id=self.config.tenant_id,
+            project_id=self.config.project_id,
+        )
+        await self.record_model_call()
+        return sha
+
     async def step(self, action: Action) -> list[Observation]:
         if self._state is not RunState.STARTED:
             raise VastaError(
                 code="run.not_started",
                 message=f"step requires started run, current={self._state.value}",
             )
+        self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
         try:
             self.collector.ensure_actable()  # 性质：终局后不行动（蓝图 §33.1）
         except TerminalObservationError as exc:

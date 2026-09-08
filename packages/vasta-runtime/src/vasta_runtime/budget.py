@@ -7,12 +7,13 @@ AD-15：墙钟属于安全强制 → 默认真实时钟；时钟可注入（测�
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from vasta_protocols.errors import VastaError
+from vasta_protocols.ids import now_utc
 
 
 class BudgetKind(StrEnum):
@@ -21,8 +22,8 @@ class BudgetKind(StrEnum):
     WALL_SECONDS = "wall_seconds"
 
 
-def _default_clock() -> datetime:
-    return datetime.now(UTC)
+#: 默认时钟经 protocols.ids 供给点（AD-5 静态禁令的唯一许可来源）。
+_default_clock = now_utc
 
 
 class Budget(BaseModel):

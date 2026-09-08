@@ -3,6 +3,7 @@
 from .budget import Budget, BudgetExceededError, BudgetKind, BudgetSnapshot, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .observation import ObservationCollector, TerminalObservationError
+from .runcontext import RunContext
 from .runner import ResumeReport, RunConfig, RunEngine
 from .state import InvalidTransitionError, RunState, assert_transition
 
@@ -20,6 +21,7 @@ __all__ = [
     "ObservationSignature",
     "ResumeReport",
     "RunConfig",
+    "RunContext",
     "RunEngine",
     "RunState",
     "TerminalObservationError",

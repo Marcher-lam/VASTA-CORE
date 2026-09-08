@@ -100,7 +100,7 @@ class FakeStorageAdapter:
     def iter_run_events(self, run_id: str):
         return self.log.iter_run(run_id)
 
-    async def save_artifact(self, payload: bytes) -> str:
+    async def save_artifact(self, payload: bytes, **meta: object) -> str:
         sha = hashlib.sha256(payload).hexdigest()
         self._blobs[sha] = payload
         return sha
