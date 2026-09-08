@@ -139,3 +139,96 @@ def render_text(tl: Timeline, *, width: int = 100) -> str:
 
 
 __all__ = ["Timeline", "TimelineEntry", "render_text", "timeline"]
+
+
+# ---- 首偏差定位（FR-060，Story 4.2）----
+
+#: 偏差信号事件类型（发现即定位）。
+_DEVIATION_TYPES = frozenset(
+    {
+        "verification.deviated",
+        "verification.errored",
+        "action.policy_denied",
+        "action.failed",
+        "action.approval_requested",
+        "incident.opened",
+        "run.failed",
+    }
+)
+
+
+class DeviationHit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seq: int
+    type: str
+    category: str = Field(description="external_change | verification | policy | execution | supervisor")
+    summary: str
+    before_seq: int | None = Field(default=None, description="最近的前置观察 seq")
+    after_seq: int | None = Field(default=None, description="最近的后续观察 seq")
+    contract_ref: str | None = None
+    # 上下文窗口（含首偏差的前后各若干事件 seq）
+    context_seqs: list[int] = Field(default_factory=list)
+
+
+def _category_of(event_type: str, payload: dict[str, Any]) -> str:
+    if "external_source" in payload:
+        return "external_change"
+    if event_type.startswith("verification."):
+        return "verification"
+    if event_type == "action.policy_denied":
+        return "policy"
+    if event_type in ("action.failed", "run.failed"):
+        return "execution"
+    return "supervisor"
+
+
+def first_deviation(events: list[EventEnvelope], *, context_radius: int = 3) -> DeviationHit | None:
+    """定位首个偏差信号（UJ-1 核心：分钟级排障入口）。
+
+    外部变化类（observation.external 且 source≠tool）优先按时间序参与
+    “首个”判定——环境变了先怀疑环境（区分“改 Agent”与“环境变了”）。
+    """
+    for index, event in enumerate(events):
+        is_dev = event.type in _DEVIATION_TYPES
+        is_external = (
+            event.type == "observation.external"
+            and "external_source" in event.payload
+        )
+        if not (is_dev or is_external):
+            continue
+        before = next(
+            (e.seq for e in reversed(events[:index])
+             if e.type.startswith("observation.")),
+            None,
+        )
+        after = next(
+            (e.seq for e in events[index + 1 :]
+             if e.type.startswith("observation.")),
+            None,
+        )
+        ctx = [e.seq for e in events
+               if abs(e.seq - event.seq) <= context_radius]
+        return DeviationHit(
+            seq=event.seq,
+            type=event.type,
+            category=_category_of(event.type, event.payload),
+            summary=_summarize(event.payload),
+            before_seq=before,
+            after_seq=after,
+            contract_ref=event.payload.get("contract_ref")
+            or _nearest_contract_ref(events, index),
+            context_seqs=ctx,
+        )
+    return None
+
+
+def _nearest_contract_ref(events: list[EventEnvelope], index: int) -> str | None:
+    for event in reversed(events[: index + 1]):
+        ref = event.payload.get("contract_ref")
+        if ref:
+            return str(ref)
+    return None
+
+
+__all__.extend(["DeviationHit", "first_deviation"])

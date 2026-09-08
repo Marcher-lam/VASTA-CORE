@@ -36,6 +36,15 @@ class Env:
 
 
 async def seeded_run(store, *, with_deviation=False):
+    from vasta_protocols.protocols import Verification, Verifier, VerifierManifest
+
+    class AlwaysPass:
+        protocol_version = "0.1.0"
+        manifest = VerifierManifest(name="read_back", version="1", kind="read_back")
+
+        async def verify(self, ref, ev):
+            return Verification(outcome="pass")
+
     engine = await RunEngine.create(
         env=Env(), store=store,
         run_context=RunContext.create(run_id="run-tl", seed=1),
@@ -43,7 +52,10 @@ async def seeded_run(store, *, with_deviation=False):
     await engine.start()
     await engine.reset(seed=1)
     await engine.step(Action(tool="go"))
-    verifiers = {"read_back": DeviationVerifier()} if with_deviation else None
+    verifiers = (
+        {"read_back": DeviationVerifier()} if with_deviation
+        else {"read_back": AlwaysPass()}
+    )
     await engine.execute_contracted(
         make_complete_contract(), verifiers=verifiers
     )
@@ -100,3 +112,48 @@ class TestTimelineProjection:
         assert "timeline run=run-tl" in text
         assert "run.created" in text
         assert "[外部变化]" in text
+
+
+class TestFirstDeviation:
+    async def test_deviation_run_locates_first(self, tmp_path) -> None:
+        from vasta_storage import first_deviation
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store, with_deviation=True)
+        events = list(store.iter_run_events("run-tl"))
+        hit = first_deviation(events)
+        assert hit is not None
+        assert hit.type == "verification.deviated"
+        assert hit.category == "verification"
+        assert hit.contract_ref is not None  # 契约可跳转
+        assert hit.before_seq is not None  # 前置观察
+        assert hit.context_seqs  # 上下文窗口
+
+    async def test_clean_run_no_deviation(self, tmp_path) -> None:
+        from vasta_storage import first_deviation
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store)
+        events = list(store.iter_run_events("run-tl"))
+        # 无偏差注入但 ingest_external 是外部变化——也算首偏差信号（环境变了）
+        hit = first_deviation(events)
+        assert hit is not None
+        assert hit.category == "external_change"
+        assert hit.type == "observation.external"
+
+    async def test_external_change_distinguished(self, tmp_path) -> None:
+        """外部变化 vs 核验偏差——分类不同（排障路径分叉）。"""
+        from vasta_storage import first_deviation
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store, with_deviation=True)
+        # 注入顺序：contract(deviation) 在 ingest_external 之前 → 首个是核验
+        events = list(store.iter_run_events("run-tl"))
+        hit = first_deviation(events)
+        assert hit.category == "verification"
+        # 反转：无 deviation → external
+        store2 = SqliteStorage(tmp_path / "s2")
+        await seeded_run(store2)
+        hit2 = first_deviation(list(store2.iter_run_events("run-tl")))
+        assert hit2.category == "external_change"
+        store2.close()

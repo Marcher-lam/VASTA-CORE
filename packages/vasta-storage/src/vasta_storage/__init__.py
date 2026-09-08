@@ -2,7 +2,7 @@
 
 from .images import Box, DiffResult, EvidenceImages, ImageInfo, InspectResult, PixelReading
 from .lineage import DerivationRecord, LineageVerification, RecordVerification
-from .replay import Timeline, TimelineEntry, render_text, timeline
+from .replay import DeviationHit, Timeline, TimelineEntry, first_deviation, render_text, timeline
 from .sqlite_store import (
     DEFAULT_PROJECT,
     DEFAULT_TENANT,
@@ -14,9 +14,11 @@ from .sqlite_store import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "DeviationHit",
     "Timeline",
     "TimelineEntry",
     "render_text",
+    "first_deviation",
     "timeline",
     "DEFAULT_PROJECT",
     "DEFAULT_TENANT",
