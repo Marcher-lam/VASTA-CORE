@@ -3,7 +3,7 @@ name = "vasta-cognition"
 version = "0.1.0"
 description = "Claim graph, memory, conflicts, promotion (Epic 5)"
 requires-python = ">=3.12"
-dependencies = ["vasta-protocols"]
+dependencies = ["vasta-protocols", "pydantic>=2.13,<3"]
 
 [build-system]
 requires = ["hatchling"]
