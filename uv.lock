@@ -574,11 +574,21 @@ name = "vastacore-sdk"
 version = "0.1.0"
 source = { editable = "packages/vastacore-sdk" }
 dependencies = [
+    { name = "pydantic" },
+    { name = "vasta-adapters" },
     { name = "vasta-protocols" },
+    { name = "vasta-runtime" },
+    { name = "vasta-storage" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vasta-protocols", editable = "packages/vasta-protocols" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.13,<3" },
+    { name = "vasta-adapters", editable = "packages/vasta-adapters" },
+    { name = "vasta-protocols", editable = "packages/vasta-protocols" },
+    { name = "vasta-runtime", editable = "packages/vasta-runtime" },
+    { name = "vasta-storage", editable = "packages/vasta-storage" },
+]
 
 [[package]]
 name = "vastacore-workspace"

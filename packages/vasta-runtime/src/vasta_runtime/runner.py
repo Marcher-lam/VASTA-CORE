@@ -66,10 +66,12 @@ class RunEngine:
         clock: Callable[[], datetime] | None = None,
         run_context: RunContext | None = None,
         supervisor: Supervisor | None = None,
+        capture_observations: bool = False,
     ) -> None:
         self.env = env
         self.store = store
         self.supervisor = supervisor or Supervisor()
+        self.capture_observations = capture_observations
         # Story 1.5：时间/随机/事件 ID/身份统一来自 RunContext（AD-5）；
         # legacy clock/config 参数在此归一为默认 context。
         if run_context is None:
@@ -107,6 +109,7 @@ class RunEngine:
         clock: Callable[[], datetime] | None = None,
         run_context: RunContext | None = None,
         supervisor: Supervisor | None = None,
+        capture_observations: bool = False,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -116,6 +119,7 @@ class RunEngine:
             clock=clock,
             run_context=run_context,
             supervisor=supervisor,
+            capture_observations=capture_observations,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
@@ -313,6 +317,21 @@ class RunEngine:
     async def _record_observation(self, obs: Observation) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
         payload = self.collector.record(obs)
+        if self.capture_observations:
+            # AD-3：证据先落盘（哈希校验），事件才引用（artifact_refs）。
+            captured = json.dumps(
+                {**payload, "detail": obs.detail},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            sha = await self.store.save_artifact(
+                captured,
+                mime="application/json",
+                source="observation.capture",
+                tenant_id=self.config.tenant_id,
+                project_id=self.config.project_id,
+            )
+            payload["artifact_refs"] = [sha]
         await self._emit(f"observation.{obs.kind}", payload)
 
     async def _safe_stop(self, *, reason: str, safe_stop: bool) -> None:

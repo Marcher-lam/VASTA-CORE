@@ -6,7 +6,10 @@ from ..protocols import Action, EnvironmentAdapter
 
 
 class EnvironmentAdapterContract:
-    """实现方实现 make_adapter() 返回被测适配器。"""
+    """实现方实现 make_adapter() 返回被测适配器；若环境不接受默认的
+    "noop" 动作，覆写 valid_action_tool 为该环境合法的任一动作名。"""
+
+    valid_action_tool: str = "noop"
 
     def make_adapter(self) -> EnvironmentAdapter:
         raise NotImplementedError("adapter package must provide make_adapter()")
@@ -30,7 +33,7 @@ class EnvironmentAdapterContract:
     async def test_execute_returns_observation_sequence(self) -> None:
         adapter = self.make_adapter()
         await adapter.reset(seed=0)
-        obs_list = await adapter.execute(Action(tool="noop", args={}))
+        obs_list = await adapter.execute(Action(tool=self.valid_action_tool, args={}))
         assert isinstance(obs_list, list) and len(obs_list) >= 1
         for obs in obs_list:
             assert obs.kind in {"decision", "transition", "terminal", "reset", "external"}
