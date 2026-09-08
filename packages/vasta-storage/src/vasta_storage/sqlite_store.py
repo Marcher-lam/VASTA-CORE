@@ -1,0 +1,308 @@
+"""SqliteStorage：事件库 + 内容寻址证据库（FR-010/011，AD-2/3/7/14，Story 1.4）。
+
+- 事件：events 表 PRIMARY KEY (run_id, seq)，冲突抛 DuplicateEventError（AD-2）。
+- 证据：sha256 分桶 CAS（objects/<sha[:2]>/<sha>，临时文件 + 原子替换，
+  写后重读校验——AD-3"先落盘后引用"）；字节全局单份，元数据经事务写入。
+- 作用域（AD-7）与可达性（AD-14）：artifacts 表全局去重，artifact_refs
+  租户引用映射分离——带租户取回要求引用存在，字节共享不构成跨租户可达。
+- AD-10：sqlite3 同步驱动经 asyncio.to_thread 隔离（adapter 边缘），
+  单连接 + 线程锁。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import sqlite3
+import threading
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+
+from vasta_protocols.envelope import EventEnvelope
+from vasta_protocols.errors import DuplicateEventError, VastaError
+from vasta_protocols.protocols import STORAGE_PROTOCOL_VERSION
+
+DEFAULT_TENANT = "t-default"
+DEFAULT_PROJECT = "p-default"
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS events (
+    run_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    parent_event_id TEXT,
+    ts TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    event_id TEXT NOT NULL UNIQUE,
+    schema_version TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+    sha256 TEXT PRIMARY KEY,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    source TEXT,
+    classification TEXT,
+    retention TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifact_refs (
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    referenced_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, project_id, sha256)
+);
+"""
+
+
+class ArtifactNotFoundError(VastaError):
+    def __init__(self, sha256: str, reason: str = "not found") -> None:
+        super().__init__(
+            code="artifact.not_found",
+            message=f"artifact {sha256} {reason}",
+        )
+        self.sha256 = sha256
+
+
+class ArtifactCorruptedError(VastaError):
+    def __init__(self, sha256: str) -> None:
+        super().__init__(
+            code="artifact.corrupted",
+            message=f"artifact {sha256} content hash mismatch on read-back",
+        )
+        self.sha256 = sha256
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+class SqliteStorage:
+    """Evidence Store 本地档实现（StorageAdapter 端口 + 元数据/作用域扩展）。"""
+
+    protocol_version = STORAGE_PROTOCOL_VERSION
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.objects_dir = self.root / "objects"
+        self.objects_dir.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(self.root / "store.db", check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._lock = threading.Lock()
+        with self._lock, self._conn:
+            self._conn.executescript(_SCHEMA)
+            self._conn.execute("PRAGMA user_version=1")
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    # ---- 事件（StorageAdapter 端口）----
+    async def append_event(self, envelope: EventEnvelope) -> EventEnvelope:
+        return await asyncio.to_thread(self._append_event_sync, envelope)
+
+    def _append_event_sync(self, envelope: EventEnvelope) -> EventEnvelope:
+        with self._lock, self._conn:
+            try:
+                self._conn.execute(
+                    "INSERT INTO events (run_id, seq, type, parent_event_id, ts,"
+                    " tenant_id, project_id, event_id, schema_version, data)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        envelope.run_id,
+                        envelope.seq,
+                        envelope.type,
+                        envelope.parent_event_id,
+                        envelope.ts.isoformat(),
+                        envelope.tenant_id,
+                        envelope.project_id,
+                        envelope.event_id,
+                        envelope.schema_version,
+                        envelope.model_dump_json(),
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise DuplicateEventError(envelope.run_id, envelope.seq) from exc
+        return envelope
+
+    async def get_event(self, run_id: str, seq: int) -> EventEnvelope:
+        return await asyncio.to_thread(self._get_event_sync, run_id, seq)
+
+    def _get_event_sync(self, run_id: str, seq: int) -> EventEnvelope:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT data FROM events WHERE run_id=? AND seq=?", (run_id, seq)
+            ).fetchone()
+        if row is None:
+            raise VastaError(
+                code="event.not_found", message=f"run {run_id} has no event at seq {seq}"
+            )
+        return EventEnvelope.model_validate_json(row[0])
+
+    def iter_run_events(self, run_id: str) -> Iterator[EventEnvelope]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT data FROM events WHERE run_id=? ORDER BY seq", (run_id,)
+            ).fetchall()
+        for row in rows:
+            yield EventEnvelope.model_validate_json(row[0])
+
+    # ---- Artifact（StorageAdapter 端口 + 元数据/作用域扩展）----
+    async def save_artifact(
+        self,
+        payload: bytes,
+        *,
+        mime: str | None = None,
+        source: str | None = None,
+        classification: str | None = None,
+        retention: str | None = None,
+        tenant_id: str = DEFAULT_TENANT,
+        project_id: str = DEFAULT_PROJECT,
+    ) -> str:
+        return await asyncio.to_thread(
+            self._save_artifact_sync,
+            payload,
+            mime,
+            source,
+            classification,
+            retention,
+            tenant_id,
+            project_id,
+        )
+
+    def _save_artifact_sync(
+        self,
+        payload: bytes,
+        mime: str | None,
+        source: str | None,
+        classification: str | None,
+        retention: str | None,
+        tenant_id: str,
+        project_id: str,
+    ) -> str:
+        sha = hashlib.sha256(payload).hexdigest()
+        blob_path = self.objects_dir / sha[:2] / sha
+        # AD-3：先落盘、写后重读校验，成功后才允许元数据/引用（无部分状态）。
+        if not blob_path.exists():
+            blob_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = blob_path.with_suffix(".tmp")
+            tmp.write_bytes(payload)
+            if hashlib.sha256(tmp.read_bytes()).hexdigest() != sha:
+                tmp.unlink(missing_ok=True)
+                raise ArtifactCorruptedError(sha)
+            tmp.replace(blob_path)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO artifacts"
+                " (sha256, mime, size, source, classification, retention, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha, mime, len(payload), source, classification, retention, _utcnow_iso()),
+            )
+            self._conn.execute(
+                "INSERT OR IGNORE INTO artifact_refs"
+                " (tenant_id, project_id, sha256, referenced_at) VALUES (?, ?, ?, ?)",
+                (tenant_id, project_id, sha, _utcnow_iso()),
+            )
+        return sha
+
+    async def get_artifact(
+        self,
+        sha256: str,
+        *,
+        tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> bytes:
+        return await asyncio.to_thread(
+            self._get_artifact_sync, sha256, tenant_id, project_id
+        )
+
+    def _get_artifact_sync(
+        self, sha256: str, tenant_id: str | None, project_id: str | None
+    ) -> bytes:
+        if tenant_id is not None and project_id is not None:
+            with self._lock:
+                ref = self._conn.execute(
+                    "SELECT 1 FROM artifact_refs WHERE tenant_id=? AND project_id=?"
+                    " AND sha256=?",
+                    (tenant_id, project_id, sha256),
+                ).fetchone()
+            if ref is None:
+                raise ArtifactNotFoundError(sha256, reason="not reachable in scope")
+        blob_path = self.objects_dir / sha256[:2] / sha256
+        if not blob_path.exists():
+            raise ArtifactNotFoundError(sha256)
+        content = blob_path.read_bytes()
+        if hashlib.sha256(content).hexdigest() != sha256:
+            raise ArtifactCorruptedError(sha256)
+        return content
+
+    # ---- 元数据查询（作用域过滤，AD-7/14）----
+    async def artifact_info(self, sha256: str) -> dict[str, object] | None:
+        return await asyncio.to_thread(self._artifact_info_sync, sha256)
+
+    def _artifact_info_sync(self, sha256: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT sha256, mime, size, source, classification, retention,"
+                " created_at FROM artifacts WHERE sha256=?",
+                (sha256,),
+            ).fetchone()
+        if row is None:
+            return None
+        keys = (
+            "sha256",
+            "mime",
+            "size",
+            "source",
+            "classification",
+            "retention",
+            "created_at",
+        )
+        return dict(zip(keys, row, strict=True))
+
+    async def list_artifacts(
+        self, tenant_id: str, project_id: str, *, classification: str | None = None
+    ) -> list[dict[str, object]]:
+        return await asyncio.to_thread(
+            self._list_artifacts_sync, tenant_id, project_id, classification
+        )
+
+    def _list_artifacts_sync(
+        self, tenant_id: str, project_id: str, classification: str | None
+    ) -> list[dict[str, object]]:
+        query = (
+            "SELECT a.sha256, a.mime, a.size, a.source, a.classification, a.retention,"
+            " a.created_at, r.referenced_at FROM artifact_refs r"
+            " JOIN artifacts a ON a.sha256 = r.sha256"
+            " WHERE r.tenant_id=? AND r.project_id=?"
+        )
+        params: list[object] = [tenant_id, project_id]
+        if classification is not None:
+            query += " AND a.classification=?"
+            params.append(classification)
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        keys = (
+            "sha256",
+            "mime",
+            "size",
+            "source",
+            "classification",
+            "retention",
+            "created_at",
+            "referenced_at",
+        )
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+
+__all__ = [
+    "DEFAULT_PROJECT",
+    "DEFAULT_TENANT",
+    "ArtifactCorruptedError",
+    "ArtifactNotFoundError",
+    "SqliteStorage",
+]
