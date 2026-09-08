@@ -1,0 +1,105 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-08-2026 17:35
+last_updated: 09-08-2026 17:35
+project: VastaCore
+project_key: NOKEY
+tracking_system: file-system
+story_location: docs/stories
+development_status:
+  epic-1: backlog
+  1-1-monorepo-骨架与协议基座: review
+  1-2-run-生命周期与预算: review
+  1-3-五类-observation-采集: review
+  1-4-原始证据内容寻址入库: review
+  1-5-runcontext-确定性注入: review
+  1-6-supervisor-循环与预算监控: review
+  1-7-示例环境与端到端首跑: review
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-多维检索索引: review
+  2-2-图像回看工具集: review
+  2-3-派生血缘与回链校验: review
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-actioncontract-模型与缺段拒执行: review
+  3-2-工具清单与-tool-gateway: review
+  3-3-策略引擎四态与-fail-closed: backlog
+  3-4-执行后组合核验: backlog
+  3-5-偏差失效与有界恢复: backlog
+  3-6-人工暂停-接管-批准-撤销: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-因果时间线投影: backlog
+  4-2-首个偏差定位: backlog
+  4-3-自包含-html-replay-生成器: backlog
+  4-4-最小复现包与回归任务: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-四类记忆与-claim-全生命周期: backlog
+  5-2-显式冲突: backlog
+  5-3-失效传播: backlog
+  5-4-context-builder-预算内装配: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-模型接口-清单与双形态加载: backlog
+  6-2-沙箱执行器-受限子进程: backlog
+  6-3-验证流水线-静态-回放-性质: backlog
+  6-4-meta-controller-规则版: backlog
+  6-5-受约束规划与逐步现实核验: backlog
+  6-6-worldmodel-失效桥接-ad-13: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-评测框架与配置固化: backlog
+  7-2-vastalab-任务集初版: backlog
+  7-3-六组消融-runner: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  epic-12-retrospective: optional
