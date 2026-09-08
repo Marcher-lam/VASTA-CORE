@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-08-2026 19:55
+last_updated: 09-08-2026 20:25
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   3-3-策略引擎四态与-fail-closed: review
   3-4-执行后组合核验: review
   3-5-偏差失效与有界恢复: review
-  3-6-人工暂停-接管-批准-撤销: backlog
+  3-6-人工暂停-接管-批准-撤销: review
   epic-3-retrospective: optional
 
   epic-4: backlog

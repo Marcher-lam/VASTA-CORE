@@ -32,6 +32,7 @@ from vasta_protocols.protocols import (
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .contracted import ContractedMixin
+from .control import HumanControlMixin
 from .gateway import ToolGateway
 from .observation import ObservationCollector, TerminalObservationError
 from .recovery import RecoveryPolicy, RecoveryTracker
@@ -59,7 +60,7 @@ class ResumeReport:
     observed: Observation = field(repr=False)
 
 
-class RunEngine(ContractedMixin):
+class RunEngine(ContractedMixin, HumanControlMixin):
     def __init__(
         self,
         *,
@@ -115,6 +116,7 @@ class RunEngine(ContractedMixin):
         self._last_signature: ObservationSignature | None = None
         self._checkpoint: Checkpoint | None = None
         self.collector = ObservationCollector()
+        self._takeover_mode = False
 
     @classmethod
     async def create(
@@ -300,8 +302,9 @@ class RunEngine(ContractedMixin):
         await self.record_model_call()
         return sha
 
-    async def step(self, action: Action) -> list[Observation]:
+    async def step(self, action: Action, *, confirm: bool = False) -> list[Observation]:
         self._require_started("step")
+        await self._takeover_gate("step", confirm)
         self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
         try:
             self.collector.ensure_actable()  # 性质：终局后不行动（蓝图 §33.1）

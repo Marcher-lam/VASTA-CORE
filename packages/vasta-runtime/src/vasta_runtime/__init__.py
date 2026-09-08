@@ -3,6 +3,11 @@
 from .budget import Budget, BudgetExceededError, BudgetKind, BudgetSnapshot, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .contracted import PolicyDeniedError, PolicyOutcome
+from .control import (
+    HumanControlMixin,
+    RevocationError,
+    TakeoverRequiredError,
+)
 from .gateway import (
     DuplicateToolError,
     ToolGateway,
@@ -33,6 +38,9 @@ from .supervisor import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "HumanControlMixin",
+    "RevocationError",
+    "TakeoverRequiredError",
     "Budget",
     "BudgetExceededError",
     "BudgetKind",

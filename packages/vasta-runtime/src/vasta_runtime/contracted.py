@@ -88,9 +88,13 @@ class ContractedMixin:
         plan_step_id: str = "default",
         approved: bool = False,
         plan: Plan | None = None,
+        confirm: bool = False,
     ) -> list[Observation]:
-        """契约化执行写动作：六段链全部落事件（NFR-001）。"""
+        """契约化执行写动作：六段链全部落事件（NFR-001）。
+
+        confirm：接管模式（takeover）下需 True 才放行（FR-052）。"""
         self._require_started("execute_contracted")  # noqa: SLF001
+        await self._takeover_gate("execute_contracted", confirm)  # noqa: SLF001
         self.context.require_replay_adapter(self.env)  # noqa: SLF001
         action = Action(tool=contract.tool, args=contract.args)
 
