@@ -6,3 +6,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
+
+# 演示产物与外部归档
+.vasta/
+VASTA-BRAINSTORM-PLAN.zip
+*.zip

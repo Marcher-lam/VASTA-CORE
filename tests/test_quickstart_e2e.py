@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import vastacore
 from vasta_adapters import GridWorldAdapter
 from vasta_protocols.contract_suites import EnvironmentAdapterContract
@@ -29,6 +31,9 @@ class TestQuickstartE2E:
         assert summary.goal_reached is True
         assert summary.steps == 6  # right×3 + down×3
         assert summary.vastacore_version == vastacore.__version__
+        # 文档预期输出的数字守卫（与 docs/quickstart.md 同步）
+        assert summary.events == 17
+        assert summary.artifacts == 14
 
         # 重开存储：完整事件链 + 因果父链
         store = SqliteStorage(Path(summary.store_root))
@@ -92,3 +97,25 @@ class TestVersionSyncGuard:
         docs = (repo_root / "docs" / "quickstart.md").read_text(encoding="utf-8")
         assert "uv run python examples/quickstart.py" in docs
         assert "uv sync --all-packages" in docs
+
+
+class TestRerunSemantics:
+    async def test_same_root_same_run_id_rejected_with_clear_error(self, tmp_path) -> None:
+        """同根目录复用 run_id → 唯一约束拒绝 + 清晰提示（评审修复）。"""
+        from vasta_protocols.errors import VastaError
+
+        await vastacore.quickstart(tmp_path / "r", seed=1, run_id="run-again")
+        with pytest.raises(VastaError) as excinfo:
+            await vastacore.quickstart(tmp_path / "r", seed=1, run_id="run-again")
+        assert excinfo.value.code == "quickstart.rerun_conflict"
+        assert "different root" in excinfo.value.message
+
+    async def test_pyproject_version_matches_package(self) -> None:
+        """sdk 版本单源守卫：pyproject 与 _version.py 不得漂移。"""
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        pyproject = (repo_root / "packages" / "vastacore-sdk" / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        assert f'version = "{vastacore.__version__}"' in pyproject

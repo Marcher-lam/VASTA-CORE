@@ -8,15 +8,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Sync workspace
         run: uv sync --all-packages
       - name: Lint (ruff)
-        run: uv run ruff check packages tests
+        run: uv run ruff check packages tests examples
       - name: Architecture contracts (import-linter, AD-1)
         run: uv run lint-imports
       - name: Tests (pytest)

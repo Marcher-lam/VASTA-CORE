@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .errors import DuplicateEventError
+from .errors import DuplicateEventError, VastaError
 
 #: 事件族封闭集（13 族，架构脊柱 Consistency Conventions）。
 EVENT_FAMILIES: frozenset[str] = frozenset(
@@ -39,6 +39,8 @@ EVENT_FAMILIES: frozenset[str] = frozenset(
 #: 信封 schema 版本（FR-001：协议与 schema 均携带版本字段）。
 ENVELOPE_SCHEMA_VERSION = "0.1.0"
 
+#: 事件类型校验为"小写点分 + 13 族封闭集"语法形态；
+#: past-tense 动词是**命名约定**（评审保证），不做形态学硬校验。
 _EVENT_TYPE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
@@ -110,7 +112,13 @@ class InMemoryEventLog:
         return envelope
 
     def get(self, run_id: str, seq: int) -> EventEnvelope:
-        return self._by_key[(run_id, seq)]
+        try:
+            return self._by_key[(run_id, seq)]
+        except KeyError as exc:
+            raise VastaError(
+                code="event.not_found",
+                message=f"run {run_id} has no event at seq {seq}",
+            ) from exc
 
     def iter_run(self, run_id: str) -> Iterator[EventEnvelope]:
         yield from self._by_run.get(run_id, [])

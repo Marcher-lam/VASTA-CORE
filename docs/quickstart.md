@@ -56,4 +56,6 @@ print(summary.final_state, summary.events, summary.artifacts)
 
 - `docs/epics.md` —— Epic 1–7 的完整故事与验收标准
 - `docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md` —— 15 条架构决策（AD）
-- 同 seed + run_id 重跑 → 事件流逐字节一致（NFR-002 确定性重放）
+- 确定性重放（NFR-002）：在**两个不同根目录**用相同 seed + run_id 各跑一次
+  （如 `.vasta-a` / `.vasta-b`），事件流逐字节一致；同一根目录复用同一
+  run_id 会因 `(run_id, seq)` 唯一约束被拒绝（事件不可变，AD-2）

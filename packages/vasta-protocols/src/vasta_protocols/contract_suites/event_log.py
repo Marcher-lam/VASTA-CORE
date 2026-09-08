@@ -59,3 +59,13 @@ class EventLogContract:
         log.append(root)
         log.append(child)
         assert log.get(child.run_id, 1).parent_event_id == root.event_id
+
+    def test_missing_event_raises_error_envelope(self) -> None:
+        """缺失键必须以错误信封（VastaError/event.not_found）失败，
+        不得裸抛 KeyError（约定：错误形状统一）。"""
+        from ..errors import VastaError
+
+        log = self.make_log()
+        with pytest.raises(VastaError) as excinfo:
+            log.get("run-missing", 0)
+        assert excinfo.value.code == "event.not_found"

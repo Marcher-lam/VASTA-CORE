@@ -68,13 +68,21 @@ class RunContext:
         real_tools_authorized: bool = False,
         config: Mapping[str, Any] | None = None,
     ) -> RunContext:
+        if replay_mode and seed is None:
+            raise ValueError(
+                "replay mode requires a seed — without it the replay is not reproducible"
+            )
+        id_rng: random.Random | None = None
         if seed is not None:
             effective_clock: Callable[[], datetime] = clock or _SeededClock()
+            # 双流（评审修复）：事件 ID 与应用随机分离，插入一个事件
+            # 不再平移后续所有随机数。
             rng = random.Random(seed)
+            id_rng = random.Random(f"{seed}:event-id")
         else:
             effective_clock = clock or now_utc
             rng = random.Random()
-        return cls(
+        instance = cls(
             run_id=run_id,
             tenant_id=tenant_id,
             project_id=project_id,
@@ -85,11 +93,15 @@ class RunContext:
             real_tools_authorized=real_tools_authorized,
             config=MappingProxyType(dict(config or {})),
         )
+        object.__setattr__(instance, "_id_rng", id_rng)
+        return instance
 
     def new_event_id(self) -> str:
-        """事件 ID：seeded 模式种子派生（可再生），否则 UUIDv7。"""
-        if self.seed is not None:
-            return str(uuid.UUID(int=self.rng.getrandbits(128)))
+        """事件 ID：seeded 模式由独立 ID 流派生（可再生且与应用随机解耦），
+        否则 UUIDv7。"""
+        id_rng = self.__dict__.get("_id_rng")
+        if id_rng is not None:
+            return str(uuid.UUID(int=id_rng.getrandbits(128)))
         return new_event_id()
 
     def require_replay_adapter(self, adapter: Any) -> None:

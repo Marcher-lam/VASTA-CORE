@@ -30,8 +30,19 @@ class StorageAdapter(Protocol):
 
     def iter_run_events(self, run_id: str) -> Iterator[EventEnvelope]: ...
 
-    async def save_artifact(self, payload: bytes) -> str:
-        """持久写入载荷并返回 sha256（AD-3：哈希校验完成后才可被事件引用）。"""
+    async def save_artifact(
+        self,
+        payload: bytes,
+        *,
+        mime: str | None = None,
+        source: str | None = None,
+        tenant_id: str = "t-default",
+        project_id: str = "p-default",
+    ) -> str:
+        """持久写入载荷并返回 sha256（AD-3：哈希校验完成后才可被事件引用）。
+
+        元数据/作用域参数为可选扩展（AD-9 minor）：实现方至少必须支持
+        纯 payload 调用；支持元数据的实现按参数落库。"""
         ...
 
     async def get_artifact(self, sha256: str) -> bytes:

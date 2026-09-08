@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
-from vasta_protocols.ids import new_run_id
+from vasta_protocols.ids import new_run_id, now_utc
 from vasta_protocols.protocols import (
     Action,
     EnvironmentAdapter,
@@ -67,11 +67,16 @@ class RunEngine:
         run_context: RunContext | None = None,
         supervisor: Supervisor | None = None,
         capture_observations: bool = False,
+        safety_clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.env = env
         self.store = store
         self.supervisor = supervisor or Supervisor()
         self.capture_observations = capture_observations
+        if run_context is not None and (config is not None or clock is not None):
+            raise ValueError(
+                "ambiguous run identity: pass run_context OR legacy config/clock, not both"
+            )
         # Story 1.5：时间/随机/事件 ID/身份统一来自 RunContext（AD-5）；
         # legacy clock/config 参数在此归一为默认 context。
         if run_context is None:
@@ -89,7 +94,9 @@ class RunEngine:
             project_id=run_context.project_id,
         )
         self._clock = run_context.clock
-        self.tracker = BudgetTracker(budget or Budget(), clock=self._clock)
+        # AD-15：预算墙钟是安全强制 → 用真实时钟（可注入仅供测试），
+        # 不得挂在（seeded/replay 模式下不走的）注入时钟上。
+        self.tracker = BudgetTracker(budget or Budget(), clock=safety_clock or now_utc)
         self._state = RunState.CREATED
         self._seq = -1
         self._last_event_id: str | None = None
@@ -110,6 +117,7 @@ class RunEngine:
         run_context: RunContext | None = None,
         supervisor: Supervisor | None = None,
         capture_observations: bool = False,
+        safety_clock: Callable[[], datetime] | None = None,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -120,6 +128,7 @@ class RunEngine:
             run_context=run_context,
             supervisor=supervisor,
             capture_observations=capture_observations,
+            safety_clock=safety_clock,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
@@ -132,15 +141,20 @@ class RunEngine:
         return self._state
 
     @property
+    def episode_ended(self) -> bool:
+        """公共访问（sdk/下游只读引擎状态，不触内部 collector）。"""
+        return self.collector.episode_ended
+
+    @property
     def checkpoint(self) -> Checkpoint | None:
         return self._checkpoint
 
     async def _emit(self, type_: str, payload: dict[str, object]) -> EventEnvelope:
-        self._seq += 1
+        # seq 只在写入成功后推进：写失败不留序号空洞（评审修复）。
         envelope = EventEnvelope.model_validate(
             {
                 "run_id": self.config.run_id,
-                "seq": self._seq,
+                "seq": self._seq + 1,
                 "type": type_,
                 "parent_event_id": self._last_event_id,
                 "ts": self._clock(),
@@ -151,6 +165,7 @@ class RunEngine:
             }
         )
         await self.store.append_event(envelope)
+        self._seq = envelope.seq
         self._last_event_id = envelope.event_id
         return envelope
 
@@ -159,7 +174,19 @@ class RunEngine:
         await self._transition(RunState.STARTED, "run.started")
 
     async def pause(self) -> Checkpoint:
-        cp = Checkpoint(
+        assert_transition(self._state, RunState.PAUSED)  # 先验：非法暂停不落 checkpoint
+        cp = self._build_checkpoint()
+        self._checkpoint = cp
+        self.tracker.pause()  # 暂停期间墙钟不计费（评审修复）
+        await self._transition(
+            RunState.PAUSED,
+            "run.paused",
+            {"checkpoint": cp.model_dump(mode="json")},
+        )
+        return cp
+
+    def _build_checkpoint(self) -> Checkpoint:
+        return Checkpoint(
             run_id=self.config.run_id,
             state=RunState.PAUSED,
             last_event_seq=self._seq,
@@ -168,25 +195,26 @@ class RunEngine:
             budget=self.tracker.snapshot(),
             last_observation=self._last_signature,
         )
-        self._checkpoint = cp
-        await self._transition(
-            RunState.PAUSED,
-            "run.paused",
-            {"checkpoint": cp.model_dump(mode="json")},
-        )
-        return cp
 
     async def resume(self) -> ResumeReport:
-        # 恢复语义（FR-004）：先重新观察真实环境，再与检查点比对。
+        # 恢复语义（FR-004）：先重新观察真实环境，再与检查点比对；
+        # 观察本身也是证据——照常记录（评审修复：不再绕过采集器）。
+        if self._state is not RunState.PAUSED:
+            raise VastaError(
+                code="run.not_paused",
+                message=f"resume requires paused run, current={self._state.value}",
+            )
+        self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
         observed = await self.env.observe()
+        await self._record_observation(observed)
         signature = ObservationSignature.from_observation(observed)
         env_changed = (
             self._checkpoint is not None
             and self._checkpoint.last_observation is not None
             and signature != self._checkpoint.last_observation
         )
-        self._last_signature = signature
         self.supervisor.reset_all()  # 人工已审阅恢复：计数清零
+        self.tracker.resume()  # 恢复墙钟计费
         resumed = await self._transition(
             RunState.STARTED,
             "run.resumed",
@@ -209,26 +237,27 @@ class RunEngine:
 
     # ---- 执行 ----
     async def observe(self) -> Observation:
+        self._require_started("observe")
+        self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
         obs = await self.env.observe()
         await self._record_observation(obs)
         return obs
 
     async def reset(self, seed: int | None = None) -> Observation:
-        """重置环境：发 observation.reset（清除终局态）后记录首个决策帧。"""
-        if self._state is not RunState.STARTED:
-            raise VastaError(
-                code="run.not_started",
-                message=f"reset requires started run, current={self._state.value}",
-            )
+        """重置环境：先真实重置成功，再记录 reset 标记与首个决策帧
+        （评审修复：环境重置失败不留"已重置"的假状态）。"""
+        self._require_started("reset")
+        self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
+        first = await self.env.reset(seed=seed)
         marker = Observation(kind="reset", detail={"seed": seed})
         await self._record_observation(marker)  # collector 同时清除终局态
         self.supervisor.reset_all()  # 新 episode：循环与偏差计数清零
-        first = await self.env.reset(seed=seed)
         await self._record_observation(first)
         return first
 
     async def ingest_external(self, detail: dict[str, object]) -> None:
         """采集外部事件（环境侧推送/外部变化）：observation.external。"""
+        self._require_started("ingest_external")
         obs = Observation(kind="external", detail=detail)
         await self._record_observation(obs)
 
@@ -255,11 +284,7 @@ class RunEngine:
         return sha
 
     async def step(self, action: Action) -> list[Observation]:
-        if self._state is not RunState.STARTED:
-            raise VastaError(
-                code="run.not_started",
-                message=f"step requires started run, current={self._state.value}",
-            )
+        self._require_started("step")
         self.context.require_replay_adapter(self.env)  # AD-5：重放守卫
         try:
             self.collector.ensure_actable()  # 性质：终局后不行动（蓝图 §33.1）
@@ -273,7 +298,12 @@ class RunEngine:
         except BudgetExceededError as exc:
             await self._safe_stop(reason=exc.kind.value, safe_stop=True)
             raise
-        observations = await self.env.execute(action)
+        try:
+            observations = await self.env.execute(action)
+        except Exception as exc:
+            # 环境执行异常：Run 必须落终态事件，不得卡在 STARTED（评审修复）
+            await self.fail(f"env_error:{type(exc).__name__}")
+            raise
         self.tracker.record_action()
         self._last_action = action
         for obs in observations:
@@ -293,6 +323,7 @@ class RunEngine:
 
     async def record_model_call(self) -> None:
         """登记一次模型调用：先检余量，无余量即安全停止并抛出。"""
+        self._require_started("record_model_call")
         try:
             self.tracker.check()
         except BudgetExceededError as exc:
@@ -301,16 +332,33 @@ class RunEngine:
         self.tracker.record_model_call()
 
     # ---- 内部 ----
+    def _require_started(self, op: str) -> None:
+        if self._state is not RunState.STARTED:
+            raise VastaError(
+                code="run.not_started",
+                message=f"{op} requires started run, current={self._state.value}",
+            )
+
     async def _escalate(self, escalation: Escalation) -> None:
-        """Supervisor 升级：incident.opened → 暂停 → 抛出。"""
+        """Supervisor 升级：incident.opened → 暂停（含 checkpoint）→ 抛出。
+
+        评审修复：升级暂停同样构建 checkpoint（resume 后的环境变化检测
+        依赖它），run.paused payload 统一为 {checkpoint, escalation} 双键。
+        """
         await self._emit(
             "incident.opened",
             {"reason": escalation.reason.value, **escalation.detail},
         )
+        cp = self._build_checkpoint()
+        self._checkpoint = cp
+        self.tracker.pause()
         await self._transition(
             RunState.PAUSED,
             "run.paused",
-            {"escalation": {"reason": escalation.reason.value, **escalation.detail}},
+            {
+                "checkpoint": cp.model_dump(mode="json"),
+                "escalation": {"reason": escalation.reason.value, **escalation.detail},
+            },
         )
         raise SupervisorEscalationError(escalation)
 
@@ -323,6 +371,7 @@ class RunEngine:
                 {**payload, "detail": obs.detail},
                 sort_keys=True,
                 separators=(",", ":"),
+                default=repr,  # 非 JSON 原生 detail 不至于令采集崩溃
             ).encode("utf-8")
             sha = await self.store.save_artifact(
                 captured,
@@ -331,7 +380,8 @@ class RunEngine:
                 tenant_id=self.config.tenant_id,
                 project_id=self.config.project_id,
             )
-            payload["artifact_refs"] = [sha]
+            # 合并（不覆盖）适配器自带的证据引用（评审修复）
+            payload["artifact_refs"] = [*payload["artifact_refs"], sha]
         await self._emit(f"observation.{obs.kind}", payload)
 
     async def _safe_stop(self, *, reason: str, safe_stop: bool) -> None:

@@ -68,10 +68,22 @@ class BudgetTracker:
         self._actions = 0
         self._model_calls = 0
         self._started_at: datetime | None = None
+        self._paused_since: datetime | None = None
+        self._paused_seconds = 0.0
 
     def start(self) -> None:
         if self._started_at is None:
             self._started_at = self._clock()
+
+    def pause(self) -> None:
+        """暂停墙钟计费（评审修复：人工审阅等待不计入 max_wall_seconds）。"""
+        if self._started_at is not None and self._paused_since is None:
+            self._paused_since = self._clock()
+
+    def resume(self) -> None:
+        if self._paused_since is not None:
+            self._paused_seconds += (self._clock() - self._paused_since).total_seconds()
+            self._paused_since = None
 
     def record_action(self) -> None:
         self._actions += 1
@@ -83,7 +95,10 @@ class BudgetTracker:
     def wall_seconds_used(self) -> float:
         if self._started_at is None:
             return 0.0
-        return (self._clock() - self._started_at).total_seconds()
+        elapsed = (self._clock() - self._started_at).total_seconds()
+        if self._paused_since is not None:
+            elapsed -= (self._clock() - self._paused_since).total_seconds()
+        return max(elapsed - self._paused_seconds, 0.0)
 
     def exceeded_kind(self) -> BudgetKind | None:
         """无余量即视为超限（预检语义）：计数档 used >= max 拒绝下一次，

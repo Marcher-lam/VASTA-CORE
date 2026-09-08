@@ -1,0 +1,1 @@
+{"actionable":true,"artifact_refs":[],"available_actions":["up","down","left","right"],"detail":{"agent":[2,3],"goal":[3,3],"size":4,"step":5},"kind":"decision"}

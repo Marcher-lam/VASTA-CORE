@@ -30,3 +30,14 @@ class ToolAdapterContract:
         adapter = self.make_adapter()
         result = await adapter.dry_run(Action(tool=adapter.manifest.name, args={}))
         assert isinstance(result.allowed, bool)
+
+    async def test_read_back_returns_observation(self) -> None:
+        adapter = self.make_adapter()
+        obs = await adapter.read_back(Action(tool=adapter.manifest.name, args={}))
+        assert obs.kind in {"decision", "transition", "terminal", "reset", "external"}
+
+    async def test_compensate_returns_compensation_result(self) -> None:
+        from ..protocols import CompensationResult
+
+        result = await self.make_adapter().compensate({})
+        assert isinstance(result, CompensationResult)

@@ -81,6 +81,15 @@ def _utcnow_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _validate_scope_pair(tenant_id: str | None, project_id: str | None) -> None:
+    """作用域参数必须成对出现：半作用域调用一律拒绝（fail-closed，AD-14）。"""
+    if (tenant_id is None) != (project_id is None):
+        raise VastaError(
+            code="scope.half_pair",
+            message="tenant_id and project_id must be given together or both omitted",
+        )
+
+
 class SqliteStorage:
     """Evidence Store 本地档实现（StorageAdapter 端口 + 元数据/作用域扩展）。"""
 
@@ -94,6 +103,12 @@ class SqliteStorage:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._lock = threading.Lock()
         with self._lock, self._conn:
+            version = self._conn.execute("PRAGMA user_version").fetchone()[0]
+            if version > 1:  # AD-9：过新 schema 拒读，不得静默误读
+                raise VastaError(
+                    code="store.schema_too_new",
+                    message=f"store schema user_version={version} > 1; migrate first",
+                )
             self._conn.executescript(_SCHEMA)
             self._conn.execute("PRAGMA user_version=1")
 
@@ -126,30 +141,68 @@ class SqliteStorage:
                     ),
                 )
             except sqlite3.IntegrityError as exc:
+                if "event_id" in str(exc):
+                    raise VastaError(
+                        code="event.duplicate_id",
+                        message=f"event_id {envelope.event_id} already stored",
+                    ) from exc
                 raise DuplicateEventError(envelope.run_id, envelope.seq) from exc
         return envelope
 
-    async def get_event(self, run_id: str, seq: int) -> EventEnvelope:
-        return await asyncio.to_thread(self._get_event_sync, run_id, seq)
+    async def get_event(
+        self, run_id: str, seq: int, *, tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> EventEnvelope:
+        return await asyncio.to_thread(
+            self._get_event_sync, run_id, seq, tenant_id, project_id
+        )
 
-    def _get_event_sync(self, run_id: str, seq: int) -> EventEnvelope:
+    def _get_event_sync(
+        self, run_id: str, seq: int, tenant_id: str | None, project_id: str | None
+    ) -> EventEnvelope:
+        _validate_scope_pair(tenant_id, project_id)
+        query = "SELECT data FROM events WHERE run_id=? AND seq=?"
+        params: list[object] = [run_id, seq]
+        if tenant_id is not None:
+            query += " AND tenant_id=? AND project_id=?"
+            params += [tenant_id, project_id]
         with self._lock:
-            row = self._conn.execute(
-                "SELECT data FROM events WHERE run_id=? AND seq=?", (run_id, seq)
-            ).fetchone()
+            row = self._conn.execute(query, params).fetchone()
         if row is None:
             raise VastaError(
                 code="event.not_found", message=f"run {run_id} has no event at seq {seq}"
             )
         return EventEnvelope.model_validate_json(row[0])
 
-    def iter_run_events(self, run_id: str) -> Iterator[EventEnvelope]:
+    def iter_run_events(
+        self, run_id: str, *, tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> Iterator[EventEnvelope]:
+        """同步迭代（CLI/测试用）；异步路径请用 aiter_run_events（AD-10）。
+
+        给定作用域时按 (tenant_id, project_id) 过滤（AD-7）。
+        """
+        _validate_scope_pair(tenant_id, project_id)
+        query = "SELECT data FROM events WHERE run_id=?"
+        params: list[object] = [run_id]
+        if tenant_id is not None:
+            query += " AND tenant_id=? AND project_id=?"
+            params += [tenant_id, project_id]
+        query += " ORDER BY seq"
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT data FROM events WHERE run_id=? ORDER BY seq", (run_id,)
-            ).fetchall()
+            rows = self._conn.execute(query, params).fetchall()
         for row in rows:
             yield EventEnvelope.model_validate_json(row[0])
+
+    async def aiter_run_events(
+        self, run_id: str, *, tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> list[EventEnvelope]:
+        """异步版事件迭代（fetchall 经 to_thread，不在事件循环做阻塞 IO）。"""
+        return await asyncio.to_thread(
+            lambda: list(self.iter_run_events(run_id, tenant_id=tenant_id,
+                                              project_id=project_id))
+        )
 
     # ---- Artifact（StorageAdapter 端口 + 元数据/作用域扩展）----
     async def save_artifact(
@@ -189,12 +242,16 @@ class SqliteStorage:
         # AD-3：先落盘、写后重读校验，成功后才允许元数据/引用（无部分状态）。
         if not blob_path.exists():
             blob_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = blob_path.with_suffix(".tmp")
+            # 唯一临时名：并发写同内容时不共享 .tmp 路径（评审修复）
+            tmp = blob_path.with_name(f"{sha}.{threading.get_ident()}.tmp")
             tmp.write_bytes(payload)
             if hashlib.sha256(tmp.read_bytes()).hexdigest() != sha:
                 tmp.unlink(missing_ok=True)
                 raise ArtifactCorruptedError(sha)
             tmp.replace(blob_path)
+        elif hashlib.sha256(blob_path.read_bytes()).hexdigest() != sha:
+            # 已存在的字节被篡改：不得静默复用（评审修复）
+            raise ArtifactCorruptedError(sha)
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT OR IGNORE INTO artifacts"
@@ -223,6 +280,7 @@ class SqliteStorage:
     def _get_artifact_sync(
         self, sha256: str, tenant_id: str | None, project_id: str | None
     ) -> bytes:
+        _validate_scope_pair(tenant_id, project_id)
         if tenant_id is not None and project_id is not None:
             with self._lock:
                 ref = self._conn.execute(
@@ -241,10 +299,29 @@ class SqliteStorage:
         return content
 
     # ---- 元数据查询（作用域过滤，AD-7/14）----
-    async def artifact_info(self, sha256: str) -> dict[str, object] | None:
-        return await asyncio.to_thread(self._artifact_info_sync, sha256)
+    async def artifact_info(
+        self, sha256: str, *, tenant_id: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, object] | None:
+        """元数据读取：给定作用域时必须持有该租户引用（AD-14 可达性）；
+        无作用域调用仅供存储内部/审计用途。"""
+        return await asyncio.to_thread(
+            self._artifact_info_sync, sha256, tenant_id, project_id
+        )
 
-    def _artifact_info_sync(self, sha256: str) -> dict[str, object] | None:
+    def _artifact_info_sync(
+        self, sha256: str, tenant_id: str | None, project_id: str | None
+    ) -> dict[str, object] | None:
+        _validate_scope_pair(tenant_id, project_id)
+        if tenant_id is not None and project_id is not None:
+            with self._lock:
+                ref = self._conn.execute(
+                    "SELECT 1 FROM artifact_refs WHERE tenant_id=? AND project_id=?"
+                    " AND sha256=?",
+                    (tenant_id, project_id, sha256),
+                ).fetchone()
+            if ref is None:
+                raise ArtifactNotFoundError(sha256, reason="not reachable in scope")
         with self._lock:
             row = self._conn.execute(
                 "SELECT sha256, mime, size, source, classification, retention,"

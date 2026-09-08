@@ -13,6 +13,7 @@ from vasta_protocols.protocols import (
     TOOL_PROTOCOL_VERSION,
     VERIFIER_PROTOCOL_VERSION,
     Action,
+    CompensationResult,
     DryRunResult,
     EnvironmentStatus,
     ModelCapabilities,
@@ -80,8 +81,8 @@ class FakeToolAdapter:
     async def read_back(self, action: Action) -> Observation:
         return Observation(kind="external")
 
-    async def compensate(self, execution_detail: dict) -> ToolResult:  # type: ignore[override]
-        return ToolResult(ok=True)
+    async def compensate(self, execution_detail: dict) -> CompensationResult:
+        return CompensationResult(ok=True)
 
 
 class FakeStorageAdapter:

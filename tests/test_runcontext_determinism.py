@@ -36,7 +36,7 @@ class ScriptedEnv:
         class _S:
             running = True
 
-        return _S
+        return _S()
 
 
 class RealishEnv(ScriptedEnv):

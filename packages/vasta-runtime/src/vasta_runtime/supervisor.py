@@ -56,7 +56,9 @@ class SupervisorEscalationError(VastaError):
 def _pattern_key(
     signature: ObservationSignature, action: Action
 ) -> tuple[str, tuple[str, ...], str, str]:
-    args_key = json.dumps(action.args, sort_keys=True, separators=(",", ":"))
+    args_key = json.dumps(
+        action.args, sort_keys=True, separators=(",", ":"), default=repr
+    )
     return (signature.kind, signature.available_actions, action.tool, args_key)
 
 

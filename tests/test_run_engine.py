@@ -68,6 +68,7 @@ async def make_engine(
         budget=budget,
         config=RunConfig(run_id="run-test"),
         clock=clock,
+        safety_clock=clock,  # AD-15：测试注入安全时钟驱动墙钟预算
     )
     return engine, store, env, clock
 
@@ -91,6 +92,7 @@ class TestStateMachine:
             "run.created",
             "run.started",
             "run.paused",
+            "observation.decision",  # resume 先重观察并记录（评审修复）
             "run.resumed",
             "run.completed",
         ]

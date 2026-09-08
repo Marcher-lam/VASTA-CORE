@@ -4,6 +4,8 @@
 - vasta_protocols/ids.py —— 时间/ID 供给点；
 - vasta_storage/sqlite_store.py —— 存储簿记时间戳（Story 1.4 已文档化的
   非重放路径例外）。
+模式为启发式（常见直接调用形态）；绕过形态（如 from-import 别名）不在此
+保证范围，由评审与 lint 补充。
 """
 
 from __future__ import annotations
@@ -18,17 +20,27 @@ import vasta_model_lab
 import vasta_policy
 import vasta_protocols
 import vasta_runtime
+import vasta_storage
 
 FORBIDDEN = [
     r"datetime\.now\s*\(",
+    r"datetime\.utcnow\s*\(",
     r"date\.today\s*\(",
     r"\btime\.time\s*\(",
     r"\btime\.monotonic\s*\(",
+    r"\btime\.perf_counter\s*\(",
+    r"\btime\.sleep\s*\(",
     r"\brandom\.random\s*\(",
     r"\brandom\.randint\s*\(",
     r"\brandom\.choice\s*\(",
     r"\brandom\.shuffle\s*\(",
+    r"\brandom\.uniform\s*\(",
+    r"\brandom\.sample\s*\(",
+    r"\brandom\.randrange\s*\(",
+    r"\brandom\.getrandbits\s*\(",
     r"os\.environ",
+    r"os\.getenv\s*\(",
+    r"\bsecrets\.\w+\s*\(",
     r"uuid\.uuid4\s*\(",
 ]
 
@@ -44,6 +56,7 @@ PACKAGES = [
     vasta_contracts,
     vasta_policy,
     vasta_model_lab,
+    vasta_storage,
     vasta_eval,
 ]
 
