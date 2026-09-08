@@ -58,3 +58,49 @@ tests/test_human_control.py 与 tests/test_epic3_review_guards.py。"""
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def inspect(root: str = typer.Option(".vasta", help="存储根目录"),
+            run_id: str = typer.Argument(..., help="Run ID")) -> None:
+    """回放检查：时间线 + 首偏差定位（UJ-1）。"""
+    from vasta_storage import SqliteStorage, first_deviation, render_text, timeline
+
+    store = SqliteStorage(f"{root}/store")
+    events = list(store.iter_run_events(run_id))
+    if not events:
+        typer.echo(f"未找到 Run {run_id!r}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(render_text(timeline(events)))
+    hit = first_deviation(events)
+    if hit:
+        typer.echo(f"\n首个偏差: seq={hit.seq} {hit.type} [{hit.category}]")
+        typer.echo(f"  契约: {hit.contract_ref or '无'}")
+        typer.echo(f"  前后观察: before={hit.before_seq} after={hit.after_seq}")
+    else:
+        typer.echo("\n无偏差信号")
+    store.close()
+
+
+@app.command()
+def replay(root: str = typer.Option(".vasta", help="存储根目录"),
+           run_id: str = typer.Argument(..., help="Run ID"),
+           out: str = typer.Option(None, help="输出 HTML 路径（默认 {root}/{run_id}.html)")) -> None:
+    """生成自包含 HTML Replay（单文件无外部依赖）。"""
+    from vasta_storage import SqliteStorage, first_deviation, render_html, timeline
+
+    from ._version import __version__
+
+    store = SqliteStorage(f"{root}/store")
+    events = list(store.iter_run_events(run_id))
+    if not events:
+        typer.echo(f"未找到 Run {run_id!r}", err=True)
+        raise typer.Exit(code=1)
+    tl = timeline(events)
+    hit = first_deviation(events)
+    html = render_html(tl, hit, version=__version__)
+    store.close()
+    path = out or f"{root}/{run_id}.html"
+    with open(path, "wb") as f:
+        f.write(html)
+    typer.echo(f"HTML Replay 已生成: {path} ({len(html)} bytes)")

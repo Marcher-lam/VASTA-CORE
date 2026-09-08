@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
-from vasta_protocols.protocols import Action, Observation
-
-from .fakes import FakeStorageAdapter
-
-from vasta_storage import SqliteStorage
-from vasta_storage.replay import render_text, timeline
-
-from vasta_runtime import RunEngine, RunContext
 from tests.test_deviation_recovery import DeviationVerifier
 from vasta_contracts import make_complete_contract
+from vasta_protocols.protocols import Action, Observation
+from vasta_runtime import RunContext, RunEngine
+from vasta_storage import SqliteStorage
+from vasta_storage.replay import render_text, timeline
 
 
 class Env:
@@ -36,7 +30,7 @@ class Env:
 
 
 async def seeded_run(store, *, with_deviation=False):
-    from vasta_protocols.protocols import Verification, Verifier, VerifierManifest
+    from vasta_protocols.protocols import Verification, VerifierManifest
 
     class AlwaysPass:
         protocol_version = "0.1.0"
@@ -157,3 +151,34 @@ class TestFirstDeviation:
         hit2 = first_deviation(list(store2.iter_run_events("run-tl")))
         assert hit2.category == "external_change"
         store2.close()
+
+
+class TestHtmlReplay:
+    async def test_self_contained_html(self, tmp_path) -> None:
+        from vasta_storage import first_deviation, render_html, timeline
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store, with_deviation=True)
+        events = list(store.iter_run_events("run-tl"))
+        html = render_html(timeline(events), first_deviation(events))
+        text = html.decode("utf-8")
+        assert text.startswith("<!DOCTYPE html>")
+        assert "run-tl" in text
+        assert "verification.deviated" in text  # 偏差行在表内
+        assert "首个偏差" in text  # 高亮块
+        # 自包含：无外部资源引用（无 http:// 无 <script src）
+        assert "<script src" not in text
+        assert "http://" not in text and "https://" not in text
+        assert "外部变化" in text  # webhook 注入提示
+        store.close()
+
+    async def test_clean_run_html_no_deviation_block(self, tmp_path) -> None:
+        from vasta_storage import first_deviation, render_html, timeline
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store)
+        events = list(store.iter_run_events("run-tl"))
+        html = render_html(timeline(events), first_deviation(events))
+        text = html.decode("utf-8")
+        assert "外部变化" in text  # external 块仍在（即使无核验偏差）
+        store.close()
