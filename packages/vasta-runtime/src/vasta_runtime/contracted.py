@@ -15,7 +15,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from vasta_contracts import ActionContract, ContractIncompleteError, missing_segments
+from vasta_contracts import (
+    ActionContract,
+    ContractIncompleteError,
+    VerificationPipeline,
+    missing_segments,
+)
 from vasta_protocols.errors import VastaError
 from vasta_protocols.protocols import Action, Observation, Verifier
 
@@ -209,23 +214,33 @@ class ContractedMixin:
         for obs in observations:
             await self._record_observation(obs, action=action)  # noqa: SLF001
 
-        # ── 核验段：注册表聚合（3.4 组合核验器接线）──
-        registry = verifiers or {}
-        outcomes: list[str] = []
-        unregistered: list[str] = []
-        evidence = {"contract_ref": contract_sha, "tool": contract.tool}
-        for name in contract.verify_with or []:
-            verifier = registry.get(name)
-            if verifier is None:
-                unregistered.append(name)
-                continue
-            result = await verifier.verify(f"sha256:{contract_sha}", evidence)
-            outcomes.append(result.outcome)
-        aggregate, detail = _aggregate_outcomes(outcomes, unregistered)
+        # ── 核验段（3.4：VerificationPipeline 替代内联注册表循环）──
+        pipeline = VerificationPipeline(dict(verifiers) if verifiers else None)
+        evidence: dict[str, Any] = {
+            "contract_ref": contract_sha,
+            "tool": contract.tool,
+            "after_observation": observations[-1] if observations else None,
+            "expected_changes": (contract.prediction.changes if contract.prediction else []),
+        }
+        # 网关路径：ToolResult 原始响应已落 CAS——回读入 evidence（INV-06：
+        # 核验器读独立证据，不依赖执行模型自评）
+        executed_events = [
+            e for e in self.store.iter_run_events(self.config.run_id)  # noqa: SLF001
+            if e.type == "action.executed"
+        ]
+        if executed_events and "result_ref" in executed_events[-1].payload:
+            import json as _json
+
+            result_raw = await self.store.get_artifact(  # noqa: SLF001
+                executed_events[-1].payload["result_ref"]
+            )
+            evidence["result"] = _json.loads(result_raw)
+        aggregate, detail = await pipeline.run(
+            contract.verify_with or [], f"sha256:{contract_sha}", evidence
+        )
         await self._emit(  # noqa: SLF001
             f"verification.{aggregate}",
-            {"tool": contract.tool, "verify_with": contract.verify_with,
-             "outcomes": outcomes, **detail},
+            {"tool": contract.tool, "verify_with": contract.verify_with, **detail},
         )
         return observations
 

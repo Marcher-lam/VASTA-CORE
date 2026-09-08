@@ -219,21 +219,24 @@ class TestSixSegmentChain:
 
 class TestVerificationAggregation:
     async def test_unregistered_verifier_inconclusive(self) -> None:
+        """3.4 语义：默认流水线注册 schema/read_back/invariant——用注册表外
+        的名字测未注册路径。"""
         engine, store = await make_engine()
-        contract = make_complete_contract(verify_with=["schema", "read_back"])
-        await engine.execute_contracted(contract, verifiers={"schema": PassVerifier()})
-        # read_back 未注册 → inconclusive（不冒充 pass）
+        contract = make_complete_contract(verify_with=["schema", "visual_diff"])
+        await engine.execute_contracted(contract)
         v = [e for e in store.iter_run_events("run-c3")
              if e.type.startswith("verification.")][-1]
         assert v.type == "verification.inconclusive"
-        assert v.payload["unregistered"] == ["read_back"]
+        assert v.payload["unregistered"] == ["visual_diff"]
 
-    async def test_no_registry_inconclusive(self) -> None:
+    async def test_default_read_back_deviation_on_env_path(self) -> None:
+        """env 直连路径：默认 ReadBack 核验器对空观察细节判 deviation
+        （预期变化未在 after 观察中体现——不冒充 pass）。"""
         engine, store = await make_engine()
         await engine.execute_contracted(make_complete_contract())
         v = [e for e in store.iter_run_events("run-c3")
              if e.type.startswith("verification.")][-1]
-        assert v.type == "verification.inconclusive"
+        assert v.type == "verification.deviated"
 
     async def test_deviation_dominates(self) -> None:
         engine, store = await make_engine()
