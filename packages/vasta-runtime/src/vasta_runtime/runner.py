@@ -30,6 +30,7 @@ from vasta_protocols.protocols import (
 
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
+from .contracted import ContractedMixin
 from .observation import ObservationCollector, TerminalObservationError
 from .runcontext import RunContext
 from .state import RunState, assert_transition
@@ -55,7 +56,7 @@ class ResumeReport:
     observed: Observation = field(repr=False)
 
 
-class RunEngine:
+class RunEngine(ContractedMixin):
     def __init__(
         self,
         *,

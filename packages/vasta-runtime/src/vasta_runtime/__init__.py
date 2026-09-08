@@ -2,6 +2,7 @@
 
 from .budget import Budget, BudgetExceededError, BudgetKind, BudgetSnapshot, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
+from .contracted import PolicyDeniedError, PolicyOutcome
 from .observation import ObservationCollector, TerminalObservationError
 from .runcontext import RunContext
 from .runner import ResumeReport, RunConfig, RunEngine
@@ -17,6 +18,8 @@ from .supervisor import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "PolicyDeniedError",
+    "PolicyOutcome",
     "Budget",
     "BudgetExceededError",
     "BudgetKind",
