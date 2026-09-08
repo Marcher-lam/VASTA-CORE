@@ -11,6 +11,14 @@ from .gateway import (
     idempotency_key,
 )
 from .observation import ObservationCollector, TerminalObservationError
+from .recovery import (
+    FaultClass,
+    RecoveryDecision,
+    RecoveryInput,
+    RecoveryLimitExceededError,
+    RecoveryPolicy,
+    RecoveryTracker,
+)
 from .runcontext import RunContext
 from .runner import ResumeReport, RunConfig, RunEngine
 from .state import InvalidTransitionError, RunState, assert_transition
@@ -37,7 +45,13 @@ __all__ = [
     "InvalidTransitionError",
     "ObservationCollector",
     "ObservationSignature",
+    "FaultClass",
     "PolicyDeniedError",
+    "RecoveryDecision",
+    "RecoveryInput",
+    "RecoveryLimitExceededError",
+    "RecoveryPolicy",
+    "RecoveryTracker",
     "PolicyOutcome",
     "ResumeReport",
     "RunConfig",

@@ -34,6 +34,7 @@ from .checkpoint import Checkpoint, ObservationSignature
 from .contracted import ContractedMixin
 from .gateway import ToolGateway
 from .observation import ObservationCollector, TerminalObservationError
+from .recovery import RecoveryPolicy, RecoveryTracker
 from .runcontext import RunContext
 from .state import RunState, assert_transition
 from .supervisor import (
@@ -73,6 +74,7 @@ class RunEngine(ContractedMixin):
         safety_clock: Callable[[], datetime] | None = None,
         tool_gateway: ToolGateway | None = None,
         policy_engine: PolicyEngine | None = None,
+        recovery_policy: RecoveryPolicy | None = None,
     ) -> None:
         self.env = env
         self.store = store
@@ -80,6 +82,7 @@ class RunEngine(ContractedMixin):
         # AD-4：业务工具凭证只存在于网关；引擎不持有任何 ToolAdapter。
         self.tool_gateway = tool_gateway
         self.policy_engine = policy_engine  # 四态策略（3.3；None=默认放行）
+        self.recovery = RecoveryTracker(recovery_policy)  # 有界恢复（3.5）
         self.capture_observations = capture_observations
         if run_context is not None and (config is not None or clock is not None):
             raise ValueError(
@@ -128,6 +131,7 @@ class RunEngine(ContractedMixin):
         safety_clock: Callable[[], datetime] | None = None,
         tool_gateway: ToolGateway | None = None,
         policy_engine: PolicyEngine | None = None,
+        recovery_policy: RecoveryPolicy | None = None,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -141,6 +145,7 @@ class RunEngine(ContractedMixin):
             safety_clock=safety_clock,
             tool_gateway=tool_gateway,
             policy_engine=policy_engine,
+            recovery_policy=recovery_policy,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
@@ -244,8 +249,8 @@ class RunEngine(ContractedMixin):
     async def complete(self) -> None:
         await self._transition(RunState.COMPLETED, "run.completed")
 
-    async def fail(self, reason: str) -> None:
-        await self._safe_stop(reason=reason, safe_stop=False)
+    async def fail(self, reason: str, *, safe_stop: bool = False) -> None:
+        await self._safe_stop(reason=reason, safe_stop=safe_stop)
 
     # ---- 执行 ----
     async def observe(self) -> Observation:

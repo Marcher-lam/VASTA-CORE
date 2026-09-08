@@ -11,6 +11,7 @@ from .contract import (
     make_complete_contract,
     missing_segments,
 )
+from .plan import Plan, PlanStep
 from .verifiers import (
     INVARIANT_OPS,
     InvariantRule,
@@ -27,6 +28,8 @@ __all__ = [
     "INVARIANT_OPS",
     "InvariantRule",
     "InvariantVerifier",
+    "Plan",
+    "PlanStep",
     "ReadBackVerifier",
     "SchemaVerifier",
     "VerificationPipeline",

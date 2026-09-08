@@ -18,6 +18,7 @@ from typing import Any
 from vasta_contracts import (
     ActionContract,
     ContractIncompleteError,
+    Plan,
     VerificationPipeline,
     missing_segments,
 )
@@ -27,6 +28,10 @@ from vasta_protocols.protocols import Action, Observation, Verifier
 from .budget import BudgetExceededError
 from .gateway import ToolNotRegisteredError
 from .observation import TerminalObservationError
+from .recovery import (
+    RecoveryInput,
+    RecoveryLimitExceededError,
+)
 from .state import RunState
 
 
@@ -82,6 +87,7 @@ class ContractedMixin:
         verifiers: Mapping[str, Verifier] | None = None,
         plan_step_id: str = "default",
         approved: bool = False,
+        plan: Plan | None = None,
     ) -> list[Observation]:
         """契约化执行写动作：六段链全部落事件（NFR-001）。"""
         self._require_started("execute_contracted")  # noqa: SLF001
@@ -238,11 +244,79 @@ class ContractedMixin:
         aggregate, detail = await pipeline.run(
             contract.verify_with or [], f"sha256:{contract_sha}", evidence
         )
-        await self._emit(  # noqa: SLF001
+        verification_event = await self._emit(  # noqa: SLF001
             f"verification.{aggregate}",
             {"tool": contract.tool, "verify_with": contract.verify_with, **detail},
         )
+        if aggregate == "deviated":
+            # FR-037：偏差 → 依赖计划失效 + 有界恢复分派（不盲目重试放大）
+            recovery_payload = await self._on_deviation(
+                contract, plan=plan,
+                verification_seq=verification_event.seq,
+                contract_ref=contract_sha,
+            )
+            if recovery_payload:
+                # 已达恢复上限 → fail(safe_stop)，payload 带偏差上下文
+                await self.fail("recovery_limit", safe_stop=True)  # noqa: SLF001
+                raise RecoveryLimitExceededError(
+                    recovery_payload["attempts"], "max_side_effects"
+                )
         return observations
+
+    async def _on_deviation(  # noqa: SLF001（同包 mixin 访问引擎设施）
+        self,
+        contract: ActionContract,
+        *,
+        plan: Plan | None,
+        verification_seq: int,
+        contract_ref: str,
+    ) -> dict[str, Any] | None:
+        """偏差联动（Story 3.5）：计划失效 + 故障分类 + 恢复分派。
+
+        返回 None = 已分派可继续；返回 payload dict = 恢复预算耗尽
+        （调用方转安全停止）。事件：plan.invalidated / action.recovered。"""
+        invalidated: list[str] = []
+        if plan is not None and plan.status == "active":
+            affected = plan.invalidate(
+                reason=f"verification deviation at seq {verification_seq}"
+            )
+            invalidated = [s.step_id for s in affected]
+            await self._emit(
+                "plan.invalidated",
+                {
+                    "plan_id": plan.plan_id,
+                    "reason": f"偏差（契约 {contract_ref[:12]}…，核验 seq {verification_seq}）",
+                    "invalidated_steps": invalidated,
+                },
+            )
+        # 偏差喂 Supervisor（FR-053 联动：连续 M 次触发升级）
+        escalation = self.supervisor.note_deviation(True)  # noqa: SLF001
+        if escalation is not None:
+            await self._escalate(escalation)  # noqa: SLF001
+        # 故障分类 + 恢复分派（最小规则版：以核验偏差 + 工具结果为证据）
+        incident = RecoveryInput(
+            tool_ok=True,
+            read_back_ok=False,
+            verification_deviated=True,
+        )
+        try:
+            decision = self.recovery.decide(incident)
+        except RecoveryLimitExceededError:
+            return {"attempts": self.recovery.side_effects_used}  # type: ignore[return-value]
+        await self._emit(
+            "action.recovered",
+            {
+                "tool": contract.tool,
+                "attempt": decision.attempt,
+                "fault_class": decision.fault_class,
+                "action": decision.action,
+                "reason": decision.reason,
+                "invalidated_steps": invalidated,
+                "verification_seq": verification_seq,
+                "recovery": self.recovery.payload(),
+            },
+        )
+        return None
 
 
     async def _apply_policy_decision(  # noqa: SLF001（同包 mixin 访问引擎设施）
