@@ -14,3 +14,6 @@ VASTA-BRAINSTORM-PLAN.zip
 
 # 临时补丁脚本
 .patch_*.py
+
+# 评审临时文件
+.review-tmp/
