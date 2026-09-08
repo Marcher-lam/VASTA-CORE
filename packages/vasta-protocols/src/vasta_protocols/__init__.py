@@ -12,6 +12,7 @@ from .envelope import (
     VerificationOutcome,
 )
 from .errors import DuplicateEventError, VastaError
+from .idempotency import canonical_args, canonical_args_hash, idempotency_key
 from .ids import new_event_id, new_run_id, now_utc
 from .protocols import (
     ENVIRONMENT_PROTOCOL_VERSION,
@@ -40,6 +41,9 @@ __all__ = [
     "EventEnvelope",
     "VastaError",
     "VerificationOutcome",
+    "canonical_args",
+    "canonical_args_hash",
+    "idempotency_key",
     "new_event_id",
     "new_run_id",
     "now_utc",

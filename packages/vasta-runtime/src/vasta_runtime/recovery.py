@@ -135,10 +135,10 @@ class RecoveryTracker:
             reason=f"{fault.value} → {action}",
         )
         self.history.append(decision)
+        # 评审修复：retry 是真实重执行——同样计入副作用总闸
         if action == "retry":
             self._retries += 1
-        else:
-            self._side_effects += 1
+        self._side_effects += 1
         return decision
 
     def payload(self) -> dict[str, Any]:

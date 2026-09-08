@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vasta_contracts import audit_six_segment, make_complete_contract
+from vasta_policy import ApprovalRequestedError, PolicyEngine
 from vasta_protocols.errors import VastaError
 from vasta_protocols.protocols import (
     Action,
@@ -84,7 +85,7 @@ class ContractEnv:
         return S()
 
 
-async def make_engine(gateway=None, budget=None):
+async def make_engine(gateway=None, budget=None, policy_engine=None):
     store = FakeStorageAdapter()
     engine = await RunEngine.create(
         env=ContractEnv(),
@@ -92,6 +93,7 @@ async def make_engine(gateway=None, budget=None):
         budget=budget,
         run_context=RunContext.create(run_id="run-gw", seed=1),
         tool_gateway=gateway,
+        policy_engine=policy_engine,
     )
     await engine.start()
     await engine.reset(seed=1)
@@ -198,12 +200,15 @@ class TestEngineGatewayPath:
         gw = ToolGateway()
         tool = WriteTool(risk="R3")
         gw.register(tool)
-        engine, store = await make_engine(gateway=gw)
+        engine, store = await make_engine(
+            gateway=gw, policy_engine=PolicyEngine()
+        )
         contract = make_complete_contract(tool="set_status", risk="R0")  # 自报 R0
 
-        observations = await engine.execute_contracted(
-            contract, plan_step_id="step-1"
-        )
+        with pytest.raises(ApprovalRequestedError):
+            await engine.execute_contracted(contract, plan_step_id="step-1")
+        # 清单 R3 → 请求批准（清单强制，自报 R0 无效）——走批准闭环
+        observations = await engine.approve_pending(contract, plan_step_id="step-1")
         assert observations[0].kind == "external"
         executed = [e for e in store.iter_run_events("run-gw")
                     if e.type == "action.executed"][-1]
@@ -218,9 +223,12 @@ class TestEngineGatewayPath:
             await store.get_artifact(executed.payload["result_ref"])
         )
         assert result_payload["ok"] is True
-        # 六段链审计 complete
+        # 六段链审计：批准重入后 complete（首链 pending→被批准续行覆盖）
         audit = audit_six_segment(list(store.iter_run_events("run-gw")))
-        assert audit.total == 1 and audit.complete == 1
+        assert audit.complete >= 1
+        executed = [e for e in store.iter_run_events("run-gw")
+                    if e.type == "action.executed"]
+        assert len(executed) == 1  # 一次逻辑执行
 
     async def test_replay_no_budget_no_reexecution(self) -> None:
         gw = ToolGateway()

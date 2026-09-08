@@ -84,11 +84,17 @@ class TestReadBackVerifier:
         v = await ReadBackVerifier().verify("r", evidence)
         assert v.outcome == "deviation"
 
-    async def test_inconclusive_without_after_observation(self) -> None:
+    async def test_result_only_source(self) -> None:
+        """双源语义：after 缺但 result 在——值不在 result → deviation（读回
+        可用但未体现预期变化，比 inconclusive 更强且诚实）。"""
         evidence = dict(EVIDENCE_OK)
         evidence.pop("after_observation")
         v = await ReadBackVerifier().verify("r", evidence)
-        assert v.outcome == "inconclusive"
+        assert v.outcome == "deviation"  # result 有但不含 approved
+
+        evidence.pop("result")
+        v = await ReadBackVerifier().verify("r", evidence)
+        assert v.outcome == "inconclusive"  # 双源全缺 → 观察不足
 
 
 class TestInvariantVerifier:
@@ -113,12 +119,13 @@ class TestInvariantVerifier:
         v = await verifier.verify("r", dict(EVIDENCE_OK))
         assert v.outcome == "pass"
 
-    async def test_unchanged_field_present(self) -> None:
+    async def test_unchanged_without_before_state_inconclusive(self) -> None:
+        """评审修复：unchanged 无前后对照不可判——inconclusive 而非 pass。"""
         verifier = InvariantVerifier([
             InvariantRule(field="result.ok", op="unchanged"),
         ])
         v = await verifier.verify("r", dict(EVIDENCE_OK))
-        assert v.outcome == "pass"
+        assert v.outcome == "inconclusive"
 
     async def test_missing_path_inconclusive(self) -> None:
         verifier = InvariantVerifier([

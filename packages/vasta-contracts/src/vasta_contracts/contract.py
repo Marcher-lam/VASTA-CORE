@@ -121,7 +121,7 @@ class ChainReport(BaseModel):
 
     contracted_seq: int
     tool: str
-    status: Literal["complete", "rejected", "pending", "incomplete"]
+    status: Literal["complete", "rejected", "pending", "failed", "incomplete"]
     missing: list[str] = Field(default_factory=list)
 
 
@@ -144,8 +144,13 @@ class SixSegmentAudit(BaseModel):
 
     @property
     def all_success_paths_complete(self) -> bool:
-        """NFR-001：所有非拒链均六段完整。"""
-        return all(c.status in {"complete", "rejected"} for c in self.chains)
+        """NFR-001：所有链处于合法终态/挂起态（complete/rejected/pending/failed）。
+
+        failed = 执行异常/超时/预算——已妥善失败的链不算缺段（评审修复）。"""
+        return all(
+            c.status in {"complete", "rejected", "pending", "failed"}
+            for c in self.chains
+        )
 
 
 def audit_six_segment(events: list[EventEnvelope]) -> SixSegmentAudit:
@@ -164,9 +169,15 @@ def audit_six_segment(events: list[EventEnvelope]) -> SixSegmentAudit:
         # before：契约事件之前存在观察
         if not any(e.type.startswith("observation.") for e in events[:index]):
             missing.append("before")
-        # contract：即本事件
+        # 链作用域：到下一条 action.contracted 或流尾（评审修复：消魔法窗口
+        # 与跨链污染）
         after_events = events[index + 1 :]
-        denied = any(e.type == "action.policy_denied" for e in after_events[:3])
+        scope_end = next(
+            (i for i, e in enumerate(after_events) if e.type == "action.contracted"),
+            len(after_events),
+        )
+        scope = after_events[:scope_end]
+        denied = any(e.type == "action.policy_denied" for e in scope)
         if denied:
             reports.append(
                 ChainReport(
@@ -176,10 +187,12 @@ def audit_six_segment(events: list[EventEnvelope]) -> SixSegmentAudit:
                 )
             )
             continue
-        # 等待人工批准（未执行也未拒）——合法挂起态，不算 NFR-001 缺段
-        awaiting = any(e.type == "action.approval_requested" for e in after_events[:3])
+        # 失败终态：action.failed / run.failed（超时/异常/预算）——合法
+        failed = any(e.type in ("action.failed", "run.failed") for e in scope)
+        # 等待人工批准（未执行也未拒）——合法挂起态
+        awaiting = any(e.type == "action.approval_requested" for e in scope)
         has_resolution = any(
-            e.type in ("action.approved", "action.executed") for e in after_events
+            e.type in ("action.approved", "action.executed") for e in scope
         )
         if awaiting and not has_resolution:
             reports.append(
@@ -191,20 +204,29 @@ def audit_six_segment(events: list[EventEnvelope]) -> SixSegmentAudit:
             )
             continue
         if not any(
-            e.type in ("action.policy_cleared", "action.approved")
-            for e in after_events
+            e.type in ("action.policy_cleared", "action.approved") for e in scope
         ):
             missing.append("policy")
-        executed = [e for e in after_events if e.type == "action.executed"]
+        executed = [e for e in scope if e.type == "action.executed"]
         if not executed:
+            if failed:
+                reports.append(
+                    ChainReport(
+                        contracted_seq=event.seq,
+                        tool=str(event.payload.get("tool", "")),
+                        status="failed",
+                    )
+                )
+                continue
             missing.append("execution")
-        exec_index = events.index(executed[0]) if executed else len(events)
+        exec_index = after_events.index(executed[0]) if executed else len(after_events)
+        tail = after_events[exec_index:] if executed else []
         if executed and not any(
-            e.type.startswith("observation.") for e in events[exec_index + 1 :]
+            e.type.startswith("observation.") for e in tail[1:]
         ):
             missing.append("after")
         if executed and not any(
-            e.type.startswith("verification.") for e in events[exec_index + 1 :]
+            e.type.startswith("verification.") for e in tail[1:]
         ):
             missing.append("verification")
         reports.append(

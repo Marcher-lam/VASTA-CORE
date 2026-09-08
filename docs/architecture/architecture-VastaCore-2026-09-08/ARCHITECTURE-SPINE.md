@@ -55,6 +55,7 @@ graph TD
   ST --> PROTO
   COG --> PROTO
   CT --> PROTO
+  PO --> CT
   PO --> PROTO
   RT --> PROTO
   LAB --> PROTO

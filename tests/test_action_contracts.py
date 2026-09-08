@@ -287,7 +287,6 @@ class TestGuardsOnContractedPath:
         assert engine.state.value == "failed"
         audit = audit_six_segment(list(store.iter_run_events("run-c3")))
         assert audit.total == 1
-        # 失败链：执行异常属合法失败路径，不应记 incomplete
-        assert audit.chains[0].status in {"complete", "incomplete"}
-        # 注：执行失败的链审计为 incomplete（无 executed/after/verification），
-        # 这是已知边界——失败链审计语义在 Story 3.4 组合核验器落地时细化。
+        # 评审修复：执行异常链 = failed（合法终态，NFR-001 不误报）
+        assert audit.chains[0].status == "failed"
+        assert audit.all_success_paths_complete is True

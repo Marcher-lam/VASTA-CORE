@@ -9,27 +9,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-from typing import Any
+import asyncio
 
 from vasta_protocols.errors import VastaError
+from vasta_protocols.idempotency import canonical_args_hash, idempotency_key
 from vasta_protocols.protocols import Action, ToolAdapter, ToolResult
 
-
-def canonical_args_hash(args: dict[str, Any]) -> str:
-    """键序无关的参数规范化哈希（AD-11 幂等键组成）。"""
-    canonical = json.dumps(
-        args or {}, sort_keys=True, separators=(",", ":"), default=repr
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def idempotency_key(
-    run_id: str, plan_step_id: str, tool: str, args: dict[str, Any]
-) -> str:
-    """AD-11 唯一确定函数：幂等键派生（禁止各单元自定）。"""
-    return f"{run_id}:{plan_step_id}:{tool}:{canonical_args_hash(args)}"
+__all__ = [
+    "DuplicateToolError",
+    "ToolGateway",
+    "ToolNotRegisteredError",
+    "canonical_args_hash",
+    "idempotency_key",
+]
 
 
 class ToolNotRegisteredError(VastaError):
@@ -61,6 +53,8 @@ class ToolGateway:
     def __init__(self) -> None:
         self._tools: dict[str, ToolAdapter] = {}
         self._results: dict[str, ToolResult] = {}
+        self._inflight: dict[str, asyncio.Task[ToolResult]] = {}
+        self._lock = asyncio.Lock()
 
     # ---- 注册 ----
     def register(self, adapter: ToolAdapter) -> None:
@@ -100,17 +94,39 @@ class ToolGateway:
         if adapter is None:
             raise ToolNotRegisteredError(action.tool)
         key = idempotency_key(run_id, plan_step_id, action.tool, action.args)
-        cached = self._results.get(key)
-        if cached is not None:
-            return cached.model_copy(update={"replayed": True})  # 绝不静默重执行
+        async with self._lock:
+            cached = self._results.get(key)
+            if cached is not None:
+                return cached.model_copy(update={"replayed": True})  # 绝不静默重执行
+            inflight = self._inflight.get(key)
+            if inflight is not None:
+                return await asyncio.shield(asyncio.shield(inflight))  # 并发去重
         if adapter.manifest.supports_dry_run:
             dry = await adapter.dry_run(action)
             if not dry.allowed:
                 result = ToolResult(
                     ok=False, detail={"phase": "dry_run", "reason": dry.reason}
                 )
-                self._results[key] = result
+                self._results[key] = result  # 拒绝裁决缓存（同键不再试）
                 return result
-        result = await adapter.execute(action, idempotency_key=key)
-        self._results[key] = result
+
+        async def _run() -> ToolResult:
+            try:
+                return await adapter.execute(action, idempotency_key=key)
+            except Exception as exc:
+                # 适配器异常：副作用状态未知——缓存失败结果防同键重执行放大
+                return ToolResult(
+                    ok=False, detail={"phase": "adapter_error",
+                                      "error": f"{type(exc).__name__}: {exc}"}
+                )
+
+        task = asyncio.create_task(_run())
+        async with self._lock:
+            self._inflight[key] = task
+        try:
+            result = await task
+        finally:
+            async with self._lock:
+                self._inflight.pop(key, None)
+                self._results[key] = result
         return result

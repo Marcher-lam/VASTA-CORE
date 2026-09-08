@@ -26,6 +26,7 @@ class Plan(BaseModel):
     goal: str = ""
     steps: list[PlanStep] = Field(default_factory=list)
     status: PlanStatus = "active"
+    invalidated_reason: str | None = Field(default=None, description="失效原因")
 
     @property
     def executable_steps(self) -> list[PlanStep]:
@@ -46,12 +47,8 @@ class Plan(BaseModel):
                 step.status = "invalidated"
                 affected.append(step)
         self.status = "invalidated"
-        self._invalidated_reason = reason  # type: ignore[attr-defined]
+        self.invalidated_reason = reason
         return affected
-
-    @property
-    def invalidated_reason(self) -> str | None:
-        return getattr(self, "_invalidated_reason", None)
 
 
 __all__ = ["Plan", "PlanStep", "PlanStatus", "StepStatus"]

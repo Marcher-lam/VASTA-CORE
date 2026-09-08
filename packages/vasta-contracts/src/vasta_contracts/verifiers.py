@@ -81,14 +81,31 @@ class ReadBackVerifier(_BaseVerifier):
 
     def _check(self, contract_ref: str, evidence: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         after = evidence.get("after_observation")
-        if after is None:
-            return "inconclusive", {"reason": "after_observation 缺失（读回未采集）"}
-        if not isinstance(after, Observation) and not isinstance(after, dict):
+        result = evidence.get("result")
+        if after is None and result is None:
+            return "inconclusive", {"reason": "读回证据缺失（after 与 result 均无）"}
+        # 双源匹配（评审修复）：after 观察细节 + ToolResult 详情都在比对范围
+        blobs: list[str] = []
+        if isinstance(after, Observation):
+            blobs.append(str(after.detail))
+        elif isinstance(after, dict):
+            blobs.append(str(after.get("detail", {})))
+        elif after is not None:
             return "inconclusive", {"reason": "after_observation 类型不识别"}
-        detail = after.detail if isinstance(after, Observation) else after.get("detail", {})
-        blob = str(detail)
+        if isinstance(result, ToolResult):
+            blobs.append(str(result.detail))
+        elif isinstance(result, dict):
+            blobs.append(str(result.get("detail", {})))
         expected = evidence.get("expected_changes") or []
-        unmatched = [c for c in expected if c.split("=", 1)[-1] not in blob]
+        if not expected:
+            return "pass", {"matched": 0, "read_back_available": True}
+        if not any(blobs):
+            # 观察不足（读回超时/未采集）→ inconclusive 而非 deviation
+            return "inconclusive", {"reason": "读回数据为空（观察不足）"}
+        unmatched = [
+            c for c in expected
+            if c.split("=", 1)[-1] not in "".join(blobs)
+        ]
         if unmatched:
             return "deviation", {"unmatched_changes": unmatched}
         return "pass", {"matched": len(expected), "read_back_available": True}
@@ -102,9 +119,14 @@ def _dig(evidence: dict[str, Any], path: str) -> tuple[bool, Any]:
     """点分路径取值（dict 键 + 对象属性双通道）；任一层缺失返回 (False, None)。"""
     current: Any = evidence
     for part in path.split("."):
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        elif hasattr(current, part):
+        if isinstance(current, dict):
+            if part in current:
+                current = current[part]
+            else:
+                return False, None
+        elif not isinstance(current, (str, int, float, bool, list)) and hasattr(
+            current, part
+        ):
             current = getattr(current, part)
         else:
             return False, None
@@ -158,11 +180,17 @@ class InvariantVerifier(_BaseVerifier):
                 ok = actual != rule.value
                 entry["status"] = "pass" if ok else "deviation"
             elif rule.op == "contains":
-                ok = rule.value in actual if hasattr(actual, "__contains__") else False
-                entry["status"] = "pass" if ok else "deviation"
-            else:  # unchanged
-                entry["status"] = "pass"
-                entry["note"] = "字段在场（持久态比对 Stage 3 完备）"
+                if not hasattr(actual, "__contains__"):
+                    entry["status"] = "inconclusive"
+                    entry["reason"] = "目标值非容器（contains 不可判）"
+                    any_inconclusive = True
+                else:
+                    ok = rule.value in actual
+                    entry["status"] = "pass" if ok else "deviation"
+            else:  # unchanged：无 before/after 对照 → inconclusive（评审修复）
+                entry["status"] = "inconclusive"
+                entry["reason"] = "unchanged 需前后对照（Stage 3 事件对照完备前不可判）"
+                any_inconclusive = True
             results.append(entry)
         statuses = [r["status"] for r in results]
         if "deviation" in statuses:
@@ -179,6 +207,7 @@ class VerificationPipeline:
         self.registry: dict[str, Verifier] = {
             "schema": SchemaVerifier(),
             "read_back": ReadBackVerifier(),
+            "invariant": InvariantVerifier(),
             **(verifiers or {}),
         }
 
@@ -227,18 +256,11 @@ def _aggregate(
     return "inconclusive", detail
 
 
-DEFAULT_PIPELINE = VerificationPipeline
-
-
 __all__ = [
-    "DEFAULT_PIPELINE",
-    "EVIDENCE_KEYS",
     "INVARIANT_OPS",
     "InvariantRule",
     "InvariantVerifier",
     "ReadBackVerifier",
     "SchemaVerifier",
     "VerificationPipeline",
-    "_aggregate",
-    "_dig",
 ]

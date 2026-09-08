@@ -200,7 +200,7 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         await self._transition(
             RunState.PAUSED,
             "run.paused",
-            {"checkpoint": cp.model_dump(mode="json")},
+            {"checkpoint": cp.model_dump(mode="json"), "manual": True},
         )
         return cp
 

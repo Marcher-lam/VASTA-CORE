@@ -177,22 +177,33 @@ class TestFailClosed:
         env: ToolEnv = engine.env  # type: ignore[assignment]
         assert env.execute_count == 0
 
-    async def test_broken_engine_low_risk_degraded_allow(self) -> None:
+    async def test_broken_engine_low_risk_write_denied_read_only_allowed(self) -> None:
+        """AD-12 字面：策略不可用——低风险**写动作**拒，只读放行降级。"""
+        from tests.test_tool_gateway import WriteTool
+        from vasta_runtime import ToolGateway
+
         class Broken:
             def decide(self, contract, risk):
                 raise RuntimeError("down")
 
-        engine, store = await make_engine(policy_engine=Broken())  # type: ignore[arg-type]
-        await engine.execute_contracted(make_complete_contract(risk="R0"))
-        cleared = [e for e in events(store) if e.type == "action.policy_cleared"][-1]
-        assert cleared.payload["degraded"] is True  # 降级路径入事件
-        assert "fail-closed" not in cleared.payload["basis"] or True
-        assert cleared.payload["basis"] == "策略引擎不可用，低风险放行（降级路径）"
+        gw = ToolGateway()
+        gw.register(WriteTool(name="set_status", risk="R0"))  # read_only=False
+        engine, store = await make_engine(
+            policy_engine=Broken(), tool_gateway=gw  # type: ignore[arg-type]
+        )
+        # R0 写工具（清单 read_only=False）→ 拒（AD-12：仅只读可放行）
+        with pytest.raises(Exception, match="不放行"):  # noqa: B017
+            await engine.execute_contracted(
+                make_complete_contract(tool="set_status", risk="R0")
+            )
+        denied = [e for e in events(store) if e.type == "action.policy_denied"][-1]
+        assert denied.payload.get("fail_closed") is not False
 
     def test_fallback_pure_function(self) -> None:
         assert fail_closed_fallback("R3").decision == "deny"
-        assert fail_closed_fallback("R1").decision == "allow"
-        assert fail_closed_fallback("R1").degraded is True
+        assert fail_closed_fallback("R1").decision == "deny"  # 写不放行
+        assert fail_closed_fallback("R1", read_only=True).decision == "allow"
+        assert fail_closed_fallback("R1", read_only=True).degraded is True
 
 
 class TestEffectiveRiskDrivesPolicy:
@@ -216,12 +227,19 @@ class TestBackwardCompat:
             )
         assert "action.policy_denied" in [e.type for e in events(store)]
 
-    async def test_no_engine_default_allow(self) -> None:
+    async def test_no_engine_uses_default_risk_mapping(self) -> None:
+        """评审修复：未装配引擎 = 默认风险映射（非 fail-open）——
+        R0 放行、R3 请求批准、R4 拒。"""
         engine, store = await make_engine()
-        await engine.execute_contracted(make_complete_contract(risk="R3"))
+        await engine.execute_contracted(make_complete_contract(risk="R0"))
         cleared = [e for e in events(store) if e.type == "action.policy_cleared"][-1]
-        assert cleared.payload["basis"] == "default_allow_3.1"
-        assert cleared.payload["risk_effective"] == "R3"
+        assert cleared.payload["basis"] == "默认风险映射 R0"
+        with pytest.raises(ApprovalRequestedError):
+            await engine.execute_contracted(make_complete_contract(risk="R3"))
+        await engine.resume()
+        with pytest.raises(Exception, match="拒绝"):  # noqa: B017
+            await engine.execute_contracted(make_complete_contract(risk="R4"))
+        assert engine.state.value in {"started", "paused", "failed"}
 
     async def test_gateway_denied_policy_leaves_no_executed(self) -> None:
         gw = gateway_with(risk="R4")

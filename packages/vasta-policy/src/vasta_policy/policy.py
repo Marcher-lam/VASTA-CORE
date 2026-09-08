@@ -72,16 +72,21 @@ class PolicyEngine:
         return PolicyDecision(decision=default, basis=f"默认风险映射 {effective_risk}")
 
 
-def fail_closed_fallback(effective_risk: str) -> PolicyDecision:
-    """AD-12：策略引擎不可用时的回退——R2+ 一律拒，低风险放行并记降级。"""
+def fail_closed_fallback(effective_risk: str, *, read_only: bool = False) -> PolicyDecision:
+    """AD-12：策略引擎不可用时的回退——R2+ 一律拒，低风险**只读**放行并记降级。"""
     if effective_risk in {"R2", "R3", "R4"} or effective_risk not in DEFAULT_RISK_POLICY:
         return PolicyDecision(
             decision="deny",
             basis="策略引擎不可用（fail-closed，AD-12）",
         )
+    if not read_only:
+        return PolicyDecision(
+            decision="deny",
+            basis="策略引擎不可用，低风险写动作不放行（AD-12：仅只读可放行）",
+        )
     return PolicyDecision(
         decision="allow",
-        basis="策略引擎不可用，低风险放行（降级路径）",
+        basis="策略引擎不可用，低风险只读放行（降级路径）",
         degraded=True,
     )
 

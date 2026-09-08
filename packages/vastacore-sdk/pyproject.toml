@@ -9,7 +9,11 @@ dependencies = [
     "vasta-storage",
     "vasta-adapters",
     "pydantic>=2.13,<3",
+    "typer>=0.12",
 ]
+
+[project.scripts]
+vasta = "vastacore.cli:app"
 
 [build-system]
 requires = ["hatchling"]

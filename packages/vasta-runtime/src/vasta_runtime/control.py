@@ -49,7 +49,11 @@ class HumanControlMixin:
         )
 
     async def release_control(self) -> None:
-        """解除接管模式。"""
+        """解除接管模式（未接管时拒绝——防事件污染）。"""
+        if not self.takeover_mode:
+            raise VastaError(
+                code="control.not_in_takeover", message="未处于接管模式"
+            )
         self._takeover_mode = False  # noqa: SLF001
         await self._emit(  # noqa: SLF001
             "run.control_released", {"mode": "auto"}
@@ -59,11 +63,6 @@ class HumanControlMixin:
     def takeover_mode(self) -> bool:
         return getattr(self, "_takeover_mode", False)
 
-    def _check_takeover(self, op: str, confirmed: bool) -> None:
-        """接管模式下未确认的操作：落事件并抛出（调用方 async 上下文）。"""
-        if self.takeover_mode and not confirmed:
-            raise TakeoverRequiredError(op)
-
     async def _takeover_gate(self, op: str, confirmed: bool) -> None:
         if self.takeover_mode and not confirmed:
             await self._emit(  # noqa: SLF001
@@ -71,12 +70,17 @@ class HumanControlMixin:
             )
             raise TakeoverRequiredError(op)
 
-    async def approve_pending(self, contract, **kwargs) -> list:  # noqa: ANN001, ANN202
-        """正式批准入口：从 R3 暂停态批准并续行该动作。
+    async def approve_pending(
+        self, contract, *, execute: bool = True, **kwargs  # noqa: ANN001
+    ) -> list:  # noqa: ANN202
+        """正式批准入口：从 approval 暂停态批准（可选续行）。
 
-        要求当前为 paused（approval 暂停）；批准后自动 resume 再以
-        approved=True 续行——六段链完整（3.3 语义正式化）。"""
-        from vasta_contracts import ActionContract  # 延迟导入避免环
+        - 仅接受因 approval_requested 暂停的 Run（评审修复：升级/手动暂停不可
+          借此放行）；
+        - execute=True（默认）：resume + approved 续行（六段链完整）；
+        - execute=False：仅落 action.approved（批准未执行——撤销的目标态，
+          评审修复：使 revoke 场景经公共 API 可达）。"""
+        from vasta_contracts import ActionContract
 
         if not isinstance(contract, ActionContract):
             raise VastaError(code="control.bad_contract", message="需 ActionContract")
@@ -85,12 +89,32 @@ class HumanControlMixin:
                 code="run.not_paused",
                 message=f"approve_pending requires paused run, current={self._state.value}",  # noqa: SLF001
             )
+        # 暂停原因必须是本工具的批准请求
+        paused_events = [
+            e for e in self.store.iter_run_events(self.config.run_id)  # noqa: SLF001
+            if e.type == "run.paused" and "approval" in e.payload
+        ]
+        if not paused_events or paused_events[-1].payload["approval"].get(
+            "tool"
+        ) != contract.tool:
+            raise VastaError(
+                code="run.not_awaiting_approval",
+                message=f"暂停原因不是 {contract.tool!r} 的批准请求",
+            )
+        if not execute:
+            await self._emit(  # noqa: SLF001
+                "action.approved",
+                {"tool": contract.tool, "via": "human-local",
+                 "note": "批准未执行（等待续行或撤销）"},
+            )
+            return []
         await self.resume()  # noqa: SLF001
         return await self.execute_contracted(  # noqa: SLF001
             contract, approved=True, **kwargs
         )
 
     async def revoke(self, contract) -> None:  # noqa: ANN001
+        """撤销已批准未执行的动作批准（评审加固：防重复撤销 + 解除挂起）。"""
         """撤销已批准未执行的动作批准。
 
         - 已批准且未执行（计划步仍 pending/invalidated）→ 撤销 + 事件；
@@ -121,11 +145,27 @@ class HumanControlMixin:
             raise RevocationError(
                 f"{contract.tool!r} 已执行——撤销已执行动作属补偿（FR-038，Stage 3）"
             )
+        # 评审修复：防重复撤销
+        already = [
+            e for e in events
+            if e.type == "action.approval_revoked"
+            and e.payload.get("original_approval_seq") == last_approved_seq
+        ]
+        if already:
+            raise RevocationError("该批准已被撤销")
         await self._emit(  # noqa: SLF001
             "action.approval_revoked",
             {"tool": contract.tool, "revoked_by": "human-local",
              "original_approval_seq": last_approved_seq},
         )
+        # 评审修复：若 Run 因该批准挂起 → 解除（落 policy_denied 终结链）
+        if self._state is RunState.PAUSED:  # noqa: SLF001
+            await self._emit(  # noqa: SLF001
+                "action.policy_denied",
+                {"phase": "approval_revoked", "tool": contract.tool,
+                 "basis": "批准被人工撤销"},
+            )
+            await self.cancel()  # noqa: SLF001
 
 
 __all__ = ["HumanControlMixin", "RevocationError", "TakeoverRequiredError"]
