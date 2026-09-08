@@ -37,19 +37,23 @@ class RecordVerification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     record: DerivationRecord
-    status: str  # verified | source_missing | source_corrupted | derived_missing
+    status: str  # verified | source_missing | source_corrupted | derived_missing | derived_corrupted
 
 
 class LineageVerification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     derived_sha256: str
-    derived_retrievable: bool
+    derived_status: str  # ok | derived_missing | derived_corrupted
     records: list[RecordVerification]
 
     @property
+    def derived_retrievable(self) -> bool:
+        return self.derived_status == "ok"
+
+    @property
     def all_verified(self) -> bool:
-        return self.derived_retrievable and bool(self.records) and all(
+        return self.derived_status == "ok" and bool(self.records) and all(
             r.status == "verified" for r in self.records
         )
 
@@ -69,7 +73,32 @@ class LineageMixin:
         tenant_id: str = "t-default",
         project_id: str = "p-default",
     ) -> str:
-        """登记派生物：载荷入 CAS（哈希校验），血缘行 OR IGNORE 幂等。"""
+        """登记派生物：载荷入 CAS（哈希校验），血缘行幂等登记。
+
+        - 源必须在本作用域可达（fail-fast，不登记悬空血缘）；
+        - 同 (derived, source, transform) 重复登记幂等，但 params/version
+          不同则拒绝（lineage.conflict）——不静默吞差异；
+        - params 必须可 JSON 序列化（不静默 repr 化，保证参数可原样回读）。
+        """
+        try:
+            json.dumps(params or {}, sort_keys=True)
+        except TypeError as exc:
+            raise VastaError(
+                code="lineage.bad_params",
+                message=f"params 含不可 JSON 序列化的值: {exc}",
+            ) from exc
+        try:
+            await self.get_artifact(
+                source_sha256, tenant_id=tenant_id, project_id=project_id
+            )
+        except VastaError as exc:
+            raise VastaError(
+                code="lineage.source_unreachable",
+                message=(
+                    f"source {source_sha256[:16]}... not reachable in scope"
+                    f" ({exc.code}); refusing to register dangling lineage"
+                ),
+            ) from exc
         derived_sha = await self.save_artifact(
             payload,
             mime=mime,
@@ -101,7 +130,25 @@ class LineageMixin:
     ) -> None:
         from ._bookkeeping import utcnow_iso
 
+        params_json = json.dumps(params, sort_keys=True, separators=(",", ":"))
         with self._lock, self._conn:
+            existing = self._conn.execute(
+                "SELECT transform_params_json, transformer_version FROM"
+                " derived_assets WHERE tenant_id=? AND project_id=?"
+                " AND derived_sha256=? AND source_sha256=? AND transform=?",
+                (tenant_id, project_id, derived_sha, source_sha, transform),
+            ).fetchone()
+            if existing is not None and (
+                existing[0] != params_json or existing[1] != transformer_version
+            ):
+                raise VastaError(
+                    code="lineage.conflict",
+                    message=(
+                        f"derivation ({derived_sha[:12]}..., {source_sha[:12]}...,"
+                        f" {transform}) already registered with different"
+                        " params/version; refusing silent overwrite"
+                    ),
+                )
             self._conn.execute(
                 "INSERT OR IGNORE INTO derived_assets"
                 " (derived_sha256, source_sha256, transform, transform_params_json,"
@@ -111,7 +158,7 @@ class LineageMixin:
                     derived_sha,
                     source_sha,
                     transform,
-                    json.dumps(params, sort_keys=True, separators=(",", ":"), default=repr),
+                    params_json,
                     transformer_version,
                     utcnow_iso(),
                     tenant_id,
@@ -175,29 +222,42 @@ class LineageMixin:
                 code="lineage.not_found",
                 message=f"no derivation records for {derived_sha256[:16]}… in scope",
             )
-        derived_retrievable = True
+        derived_status = "ok"
         try:
             await self.get_artifact(
                 derived_sha256, tenant_id=tenant_id, project_id=project_id
             )
-        except VastaError:
-            derived_retrievable = False
+        except VastaError as exc:
+            if exc.code == "artifact.corrupted":
+                derived_status = "derived_corrupted"
+            elif exc.code == "artifact.not_found":
+                derived_status = "derived_missing"
+            else:
+                raise  # 未知存储错误不得压平成"来源不可再验证"
 
         verifications: list[RecordVerification] = []
         for record in records:
-            status = "verified"
-            try:
-                await self.get_artifact(
-                    record.source_sha256, tenant_id=tenant_id, project_id=project_id
-                )
-            except VastaError as exc:
-                status = (
-                    "source_corrupted" if exc.code == "artifact.corrupted" else "source_missing"
-                )
+            if derived_status != "ok":
+                # Task 4：verified = 派生与源均可取回且哈希通过——
+                # 派生侧坏则逐记录状态并入派生状态（不虚标 verified）
+                status = derived_status
+            else:
+                status = "verified"
+                try:
+                    await self.get_artifact(
+                        record.source_sha256, tenant_id=tenant_id, project_id=project_id
+                    )
+                except VastaError as exc:
+                    if exc.code == "artifact.corrupted":
+                        status = "source_corrupted"
+                    elif exc.code == "artifact.not_found":
+                        status = "source_missing"
+                    else:
+                        raise
             verifications.append(RecordVerification(record=record, status=status))
         return LineageVerification(
             derived_sha256=derived_sha256,
-            derived_retrievable=derived_retrievable,
+            derived_status=derived_status,
             records=verifications,
         )
 

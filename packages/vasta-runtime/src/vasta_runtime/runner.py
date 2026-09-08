@@ -101,7 +101,6 @@ class RunEngine:
         self._seq = -1
         self._last_event_id: str | None = None
         self._last_action: Action | None = None
-        self._current_action: Action | None = None
         self._last_signature: ObservationSignature | None = None
         self._checkpoint: Checkpoint | None = None
         self.collector = ObservationCollector()
@@ -307,12 +306,9 @@ class RunEngine:
             raise
         self.tracker.record_action()
         self._last_action = action
-        self._current_action = action  # 观察载荷携带动作维度（Story 2.1）
-        try:
-            for obs in observations:
-                await self._record_observation(obs)
-        finally:
-            self._current_action = None
+        for obs in observations:
+            # 动作维度经参数传递（Story 2.1；评审修复：消共享状态，并发交错不错标）
+            await self._record_observation(obs, action=action)
         return observations
 
     async def note_deviation(self, deviation: bool) -> None:
@@ -367,14 +363,17 @@ class RunEngine:
         )
         raise SupervisorEscalationError(escalation)
 
-    async def _record_observation(self, obs: Observation) -> None:
+    async def _record_observation(
+        self, obs: Observation, *, action: Action | None = None
+    ) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
         payload = self.collector.record(obs)
-        if self._current_action is not None:
-            # 动作维度（Story 2.1）：step 期间的观察携带产生它的动作，
+        if action is not None:
+            # 动作维度（Story 2.1）：仅 step 产生的观察携带 last_action
+            # （参数传递，reset/observe/resume/external 路径天然不携带），
             # 供 payload_equals={"last_action": ...} 检索；非事件族，不与
             # Epic 3 的 action.* 管道冲突。
-            payload["last_action"] = self._current_action.tool
+            payload["last_action"] = action.tool
         if self.capture_observations:
             # AD-3：证据先落盘（哈希校验），事件才引用（artifact_refs）。
             captured = json.dumps(

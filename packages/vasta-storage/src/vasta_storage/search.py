@@ -1,38 +1,65 @@
-"""证据多维检索（FR-013，Story 2.1）。
+"""证据多维检索（FR-013，Story 2.1；Epic 2 评审修复版）。
 
 - 事件检索：作用域强制 + run/类型（精确或族前缀）/时间窗/载荷等值维度；
 - Artifact 检索：经 artifact_refs JOIN（AD-14 可达性）+ source/classification/
   标签/入库时间窗；
-- 无死链：事件结果返回前校验 artifact_refs 在作用域内可达且 blob 存在，
-  违反抛 search.dead_links（证据完整性问题要响亮，不静默过滤）。
+- 无死链：两类检索返回前校验 artifact_refs 可达且 blob 存在，死链抛
+  `search.dead_links`；`verify_hashes=True` 时进一步重算内容哈希
+  （AC"哈希校验通过"的显式开关——全量重算每次检索都做不可接受）。
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
 
-from ._scope import validate_scope_pair as _validate_scope_pair
+from ._scope import validate_scope_pair
 
 _KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
-
-#: json_extract 路径键白名单：仅字母数字下划线，防路径注入。
-_KEY_OK = "键仅允许字母/数字/下划线（json_extract 路径安全）"
+#: SQLite 主机参数上限远高于此，900 为安全分块粒度。
+_CHUNK = 900
 
 
 def _safe_key(key: str) -> str:
+    """json_extract 路径键白名单：仅字母数字下划线，防路径注入。"""
     if not _KEY_RE.fullmatch(key):
-        raise VastaError(code="search.bad_key", message=f"{key!r}: {_KEY_OK}")
+        raise VastaError(
+            code="search.bad_key",
+            message=f"{key!r}: tag/payload 键仅允许字母/数字/下划线",
+        )
     return key
 
 
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
+def _iso(value: datetime | None, *, field: str) -> str | None:
+    """时间窗参数规范化：必须 tz-aware，统一转 UTC 再序列化。"""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        raise VastaError(
+            code="search.bad_ts", message=f"{field} 需要 tz-aware datetime（ISO8601 UTC）"
+        )
+    return value.astimezone(UTC).isoformat()
+
+
+def _check_limit(limit: int | None) -> None:
+    if limit is not None and limit <= 0:
+        raise VastaError(code="search.bad_limit", message="limit 必须为正整数")
+
+
+def _check_payload_values(payload_equals: dict[str, Any]) -> None:
+    for key, value in payload_equals.items():
+        _safe_key(key)
+        if value is None or isinstance(value, (dict, list)):
+            raise VastaError(
+                code="search.bad_value",
+                message=f"{key!r}: payload_equals 仅支持 JSON 标量（str/int/float/bool）",
+            )
 
 
 class EvidenceSearchMixin:
@@ -49,23 +76,37 @@ class EvidenceSearchMixin:
         ts_to: datetime | None = None,
         payload_equals: dict[str, Any] | None = None,
         limit: int | None = None,
+        verify_hashes: bool = False,
     ) -> list[EventEnvelope]:
-        """多维事件检索；作用域成对必填（AD-7），事件仅返回本作用域行。
+        """多维事件检索；作用域成对必填（AD-14），事件仅返回本作用域行。
 
-        event_type 支持族前缀（如 "observation." 匹配该族全部）。
-        payload_equals 以 json_extract 对 payload 顶层键做等值匹配。
+        event_type 支持族前缀（如 "observation." 匹配该族全部；前缀含
+        SQL 通配符 %/_ 将被拒绝）。payload_equals 以 json_extract 对
+        payload 顶层键做等值匹配（仅 JSON 标量）。verify_hashes=True 时
+        对引用证据重算 sha256（默认只做存在性+可达性死链校验）。
         """
-        _validate_scope_pair(tenant_id, project_id)
+        validate_scope_pair(tenant_id, project_id)
+        _check_limit(limit)
+        if event_type is not None and event_type.endswith("."):
+            body = event_type[:-1]
+            if "%" in body or "_" in body:
+                raise VastaError(
+                    code="search.bad_type",
+                    message="族前缀不允许 SQL 通配符 % 或 _",
+                )
+        if payload_equals:
+            _check_payload_values(payload_equals)
         return await asyncio.to_thread(
             self._search_events_sync,
             tenant_id,
             project_id,
             run_id,
             event_type,
-            _iso(ts_from),
-            _iso(ts_to),
+            _iso(ts_from, field="ts_from"),
+            _iso(ts_to, field="ts_to"),
             payload_equals,
             limit,
+            verify_hashes,
         )
 
     def _search_events_sync(
@@ -78,6 +119,7 @@ class EvidenceSearchMixin:
         ts_to: str | None,
         payload_equals: dict[str, Any] | None,
         limit: int | None,
+        verify_hashes: bool,
     ) -> list[EventEnvelope]:
         query = "SELECT data FROM events WHERE tenant_id=? AND project_id=?"
         params: list[Any] = [tenant_id, project_id]
@@ -109,7 +151,7 @@ class EvidenceSearchMixin:
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
         events = [EventEnvelope.model_validate_json(row[0]) for row in rows]
-        self._assert_no_dead_links(events, tenant_id, project_id)
+        self._assert_no_dead_links(events, tenant_id, project_id, verify_hashes)
         return events
 
     async def search_artifacts(
@@ -123,9 +165,18 @@ class EvidenceSearchMixin:
         created_from: datetime | None = None,
         created_to: datetime | None = None,
         limit: int | None = None,
+        verify_hashes: bool = False,
     ) -> list[dict[str, object]]:
-        """Artifact 检索：经租户引用映射 JOIN，无引用即不可见（AD-14）。"""
-        _validate_scope_pair(tenant_id, project_id)
+        """Artifact 检索：经租户引用映射 JOIN，无引用即不可见（AD-14）。
+
+        返回前做与事件检索同款的死链校验（默认存在性+可达；
+        verify_hashes=True 追加重算哈希）。
+        """
+        validate_scope_pair(tenant_id, project_id)
+        _check_limit(limit)
+        if tags:
+            for key in tags:
+                _safe_key(key)
         return await asyncio.to_thread(
             self._search_artifacts_sync,
             tenant_id,
@@ -133,9 +184,10 @@ class EvidenceSearchMixin:
             source,
             classification,
             tags,
-            _iso(created_from),
-            _iso(created_to),
+            _iso(created_from, field="created_from"),
+            _iso(created_to, field="created_to"),
             limit,
+            verify_hashes,
         )
 
     def _search_artifacts_sync(
@@ -148,6 +200,7 @@ class EvidenceSearchMixin:
         created_from: str | None,
         created_to: str | None,
         limit: int | None,
+        verify_hashes: bool,
     ) -> list[dict[str, object]]:
         query = (
             "SELECT a.sha256, a.mime, a.size, a.source, a.classification,"
@@ -190,11 +243,40 @@ class EvidenceSearchMixin:
             "tags_json",
             "referenced_at",
         )
-        return [dict(zip(keys, row, strict=True)) for row in rows]
+        results = [dict(zip(keys, row, strict=True)) for row in rows]
+        # FR-013：Artifact 检索同样无死链（评审修复）
+        dead: list[str] = []
+        for row in results:
+            sha = str(row["sha256"])
+            if not self._blob_ok(sha, tenant_id, project_id, verify_hashes):
+                dead.append(sha)
+        if dead:
+            raise VastaError(
+                code="search.dead_links",
+                message=(
+                    "artifact results reference unreachable/missing/corrupted blobs: "
+                    f"{dead[:5]}{'...' if len(dead) > 5 else ''}"
+                ),
+            )
+        return results
 
     # ---- 无死链校验 ----
+    def _blob_ok(
+        self, sha: str, tenant_id: str, project_id: str, verify_hash: bool
+    ) -> bool:
+        blob = self.objects_dir / sha[:2] / sha
+        if not blob.exists():
+            return False
+        if verify_hash and hashlib.sha256(blob.read_bytes()).hexdigest() != sha:
+            return False
+        return True
+
     def _assert_no_dead_links(
-        self, events: list[EventEnvelope], tenant_id: str, project_id: str
+        self,
+        events: list[EventEnvelope],
+        tenant_id: str,
+        project_id: str,
+        verify_hashes: bool = False,
     ) -> None:
         refs: set[str] = set()
         for event in events:
@@ -203,25 +285,30 @@ class EvidenceSearchMixin:
                 refs.update(str(sha) for sha in payload_refs)
         if not refs:
             return
-        placeholders = ",".join("?" for _ in refs)
+        reachable: set[str] = set()
+        ordered = sorted(refs)
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT sha256 FROM artifact_refs WHERE tenant_id=? AND project_id=?"
-                f" AND sha256 IN ({placeholders})",
-                [tenant_id, project_id, *refs],
-            ).fetchall()
-        reachable = {row[0] for row in rows}
+            for start in range(0, len(ordered), _CHUNK):  # SQLite 参数上限分块
+                chunk = ordered[start : start + _CHUNK]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = self._conn.execute(
+                    "SELECT sha256 FROM artifact_refs WHERE tenant_id=? AND project_id=?"
+                    f" AND sha256 IN ({placeholders})",
+                    [tenant_id, project_id, *chunk],
+                ).fetchall()
+                reachable.update(row[0] for row in rows)
         dead = sorted(
             sha
             for sha in refs
-            if sha not in reachable
-            or not (self.objects_dir / sha[:2] / sha).exists()
+            if sha not in reachable or not self._blob_ok(
+                sha, tenant_id, project_id, verify_hashes
+            )
         )
         if dead:
             raise VastaError(
                 code="search.dead_links",
                 message=(
-                    "event results reference unreachable/missing artifacts: "
+                    "event results reference unreachable/missing/corrupted artifacts: "
                     f"{dead[:5]}{'...' if len(dead) > 5 else ''}"
                 ),
             )

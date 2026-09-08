@@ -107,8 +107,7 @@ class TestEventSearchDimensions:
         )
         assert go_events, "last_action 维度未命中"
         assert all(e.payload.get("last_action") == "go" for e in go_events)
-        assert len(go_events) == 2  # transition + decision
-        # reset/terminal 观察不带 last_action（非 step 产生/终局后）
+        assert len(go_events) == 2  # transition + decision（step 内的观察才携带）
 
     async def test_payload_key_injection_rejected(self, tmp_path) -> None:
         store = SqliteStorage(tmp_path / "s")
@@ -126,7 +125,6 @@ class TestEventSearchDimensions:
             payload_equals={"last_action": "stop"},
         )
         assert [e.type for e in results] == ["observation.transition", "observation.terminal"]
-        assert results[1].kind if hasattr(results[1], "kind") else True
 
 
 class TestArtifactSearch:

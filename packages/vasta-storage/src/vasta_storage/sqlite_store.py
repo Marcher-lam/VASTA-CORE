@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS artifact_refs (
     referenced_at TEXT NOT NULL,
     PRIMARY KEY (tenant_id, project_id, sha256)
 );
+CREATE INDEX IF NOT EXISTS idx_events_scope_ts
+    ON events (tenant_id, project_id, ts);
 CREATE TABLE IF NOT EXISTS derived_assets (
     tenant_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
@@ -275,6 +277,12 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
         elif hashlib.sha256(blob_path.read_bytes()).hexdigest() != sha:
             # 已存在的字节被篡改：不得静默复用（评审修复）
             raise ArtifactCorruptedError(sha)
+        # tags 属内容级全局元数据（同内容同标签，跨作用域共享键值）——
+        # 租户私有标签随 Stage 3 数据治理（FR-017/018）迁移到作用域表。
+        from ._scope import validate_tag_key
+
+        for key in tags or {}:
+            validate_tag_key(key)
         new_tags = json.dumps(tags or {}, sort_keys=True, separators=(",", ":"))
         with self._lock, self._conn:
             self._conn.execute(
@@ -285,13 +293,15 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                  _utcnow_iso(), new_tags),
             )
             if tags:
-                # 去重命中：标签并集合并（Story 2.1）
+                # 去重命中：新键并入、同键冲突保留先到值（first-wins，
+                # 不跨作用域覆盖既有标签——评审修复）
                 row = self._conn.execute(
                     "SELECT tags_json FROM artifacts WHERE sha256=?", (sha,)
                 ).fetchone()
                 existing = json.loads(row[0]) if row and row[0] else {}
-                merged = {**existing, **tags}
-                if merged != existing:
+                additions = {k: v for k, v in tags.items() if k not in existing}
+                if additions:
+                    merged = {**existing, **additions}
                     self._conn.execute(
                         "UPDATE artifacts SET tags_json=? WHERE sha256=?",
                         (json.dumps(merged, sort_keys=True, separators=(",", ":")), sha),

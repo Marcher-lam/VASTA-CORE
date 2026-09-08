@@ -2,8 +2,8 @@
 
 白名单（唯一许可）：
 - vasta_protocols/ids.py —— 时间/ID 供给点；
-- vasta_storage/sqlite_store.py —— 存储簿记时间戳（Story 1.4 已文档化的
-  非重放路径例外）。
+- vasta_storage/_bookkeeping.py —— 存储簿记时间戳（Story 2.3 收敛的
+  非重放路径例外单点）。
 模式为启发式（常见直接调用形态）；绕过形态（如 from-import 别名）不在此
 保证范围，由评审与 lint 补充。
 """
@@ -84,6 +84,8 @@ def test_allowlist_files_still_exist() -> None:
     """白名单失效（文件改名/移动）时提醒更新，而不是静默放过。"""
     import vasta_storage
 
-    root = Path(vasta_storage.__file__).parent
-    assert (root / "sqlite_store.py").exists()
+    storage_root = Path(vasta_storage.__file__).parent
+    for allowed in sorted(ALLOWLIST):
+        assert Path(allowed).exists(), f"allowlist 条目失效: {allowed}"
     assert (Path(vasta_protocols.__file__).parent / "ids.py").exists()
+    assert (storage_root / "_bookkeeping.py").exists()
