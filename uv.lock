@@ -623,11 +623,15 @@ name = "vasta-model-lab"
 version = "0.1.0"
 source = { editable = "packages/vasta-model-lab" }
 dependencies = [
+    { name = "pydantic" },
     { name = "vasta-protocols" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vasta-protocols", editable = "packages/vasta-protocols" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.13,<3" },
+    { name = "vasta-protocols", editable = "packages/vasta-protocols" },
+]
 
 [[package]]
 name = "vasta-policy"

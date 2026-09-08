@@ -47,6 +47,7 @@ FORBIDDEN = [
 ALLOWLIST = {
     "packages/vasta-protocols/src/vasta_protocols/ids.py",
     "packages/vasta-storage/src/vasta_storage/_bookkeeping.py",
+    "packages/vasta-model-lab/src/vasta_model_lab/_bookkeeping_stub.py",
 }
 
 PACKAGES = [
@@ -58,6 +59,7 @@ PACKAGES = [
     vasta_model_lab,
     vasta_storage,
     vasta_eval,
+    vasta_model_lab,
 ]
 
 
