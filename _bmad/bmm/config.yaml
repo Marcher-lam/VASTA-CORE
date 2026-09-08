@@ -1,0 +1,7 @@
+# BMAD BMM（规划链）项目配置
+# 由 bmad-product-brief 运行初始化于 2026-09-08
+# 供 product-brief / prd / architecture / epics & stories 等规划技能共享
+project_name: VastaCore
+communication_language: 中文
+document_output_language: 中文
+planning_artifacts: "{project-root}/docs"
