@@ -29,6 +29,7 @@ from vasta_protocols.protocols import (
 
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
+from .observation import ObservationCollector, TerminalObservationError
 from .state import RunState, assert_transition
 
 
@@ -68,6 +69,7 @@ class RunEngine:
         self._last_action: Action | None = None
         self._last_signature: ObservationSignature | None = None
         self._checkpoint: Checkpoint | None = None
+        self.collector = ObservationCollector()
 
     @classmethod
     async def create(
@@ -171,12 +173,34 @@ class RunEngine:
         await self._record_observation(obs)
         return obs
 
+    async def reset(self, seed: int | None = None) -> Observation:
+        """重置环境：发 observation.reset（清除终局态）后记录首个决策帧。"""
+        if self._state is not RunState.STARTED:
+            raise VastaError(
+                code="run.not_started",
+                message=f"reset requires started run, current={self._state.value}",
+            )
+        marker = Observation(kind="reset", detail={"seed": seed})
+        await self._record_observation(marker)  # collector 同时清除终局态
+        first = await self.env.reset(seed=seed)
+        await self._record_observation(first)
+        return first
+
+    async def ingest_external(self, detail: dict[str, object]) -> None:
+        """采集外部事件（环境侧推送/外部变化）：observation.external。"""
+        obs = Observation(kind="external", detail=detail)
+        await self._record_observation(obs)
+
     async def step(self, action: Action) -> list[Observation]:
         if self._state is not RunState.STARTED:
             raise VastaError(
                 code="run.not_started",
                 message=f"step requires started run, current={self._state.value}",
             )
+        try:
+            self.collector.ensure_actable()  # 性质：终局后不行动（蓝图 §33.1）
+        except TerminalObservationError as exc:
+            raise VastaError(code="run.terminal", message=str(exc)) from exc
         try:
             self.tracker.check()  # 预算先检（无余量即拒，超限动作不执行）
         except BudgetExceededError as exc:
@@ -201,13 +225,8 @@ class RunEngine:
     # ---- 内部 ----
     async def _record_observation(self, obs: Observation) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
-        await self._emit(
-            f"observation.{obs.kind}",
-            {
-                "available_actions": list(obs.available_actions),
-                "artifact_refs": list(obs.artifact_refs),
-            },
-        )
+        payload = self.collector.record(obs)
+        await self._emit(f"observation.{obs.kind}", payload)
 
     async def _safe_stop(self, *, reason: str, safe_stop: bool) -> None:
         payload: dict[str, object] = {
