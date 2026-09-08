@@ -46,7 +46,7 @@ FORBIDDEN = [
 
 ALLOWLIST = {
     "packages/vasta-protocols/src/vasta_protocols/ids.py",
-    "packages/vasta-storage/src/vasta_storage/sqlite_store.py",
+    "packages/vasta-storage/src/vasta_storage/_bookkeeping.py",
 }
 
 PACKAGES = [

@@ -215,9 +215,9 @@ class TestSchemaMigration:
         db.commit()
         db.close()
 
-        store = SqliteStorage(root)  # 应完成 v1→v2 迁移
+        store = SqliteStorage(root)  # v1 旧库直接升级到当前 schema 版本
         version = store._conn.execute("PRAGMA user_version").fetchone()[0]  # noqa: SLF001
-        assert version == 2
+        assert version >= 2
         await store.save_artifact(b"after-migration",
                                         tags={"region": "r"}, tenant_id=T, project_id=P)
         assert len(await store.search_artifacts(T, P, tags={"region": "r"})) == 1

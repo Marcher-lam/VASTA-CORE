@@ -17,20 +17,21 @@ import json
 import sqlite3
 import threading
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import DuplicateEventError, VastaError
 from vasta_protocols.protocols import STORAGE_PROTOCOL_VERSION
 
+from ._bookkeeping import utcnow_iso as _utcnow_iso
 from ._scope import validate_scope_pair as _validate_scope_pair
+from .lineage import LineageMixin
 from .search import EvidenceSearchMixin
 
 DEFAULT_TENANT = "t-default"
 DEFAULT_PROJECT = "p-default"
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -63,6 +64,17 @@ CREATE TABLE IF NOT EXISTS artifact_refs (
     referenced_at TEXT NOT NULL,
     PRIMARY KEY (tenant_id, project_id, sha256)
 );
+CREATE TABLE IF NOT EXISTS derived_assets (
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    derived_sha256 TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    transform TEXT NOT NULL,
+    transform_params_json TEXT NOT NULL,
+    transformer_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, project_id, derived_sha256, source_sha256, transform)
+);
 """
 
 
@@ -84,11 +96,9 @@ class ArtifactCorruptedError(VastaError):
         self.sha256 = sha256
 
 
-def _utcnow_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
-class SqliteStorage(EvidenceSearchMixin):
+class SqliteStorage(EvidenceSearchMixin, LineageMixin):
     """Evidence Store 本地档实现（StorageAdapter 端口 + 元数据/作用域扩展）。"""
 
     protocol_version = STORAGE_PROTOCOL_VERSION
