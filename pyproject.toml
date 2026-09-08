@@ -1,0 +1,91 @@
+[project]
+name = "vastacore-workspace"
+version = "0.1.0"
+description = "VastaCore monorepo workspace root"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+vasta-protocols = { workspace = true }
+vasta-storage = { workspace = true }
+vasta-cognition = { workspace = true }
+vasta-contracts = { workspace = true }
+vasta-policy = { workspace = true }
+vasta-runtime = { workspace = true }
+vasta-model-lab = { workspace = true }
+vasta-eval = { workspace = true }
+vastacore-sdk = { workspace = true }
+vasta-adapters = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "pytest-asyncio>=1.0",
+    "hypothesis>=6.167",
+    "ruff>=0.14",
+    "import-linter>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["packages/*/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.importlinter]
+root_packages = [
+    "vasta_protocols",
+    "vasta_storage",
+    "vasta_cognition",
+    "vasta_contracts",
+    "vasta_policy",
+    "vasta_runtime",
+    "vasta_model_lab",
+    "vasta_eval",
+    "vastacore",
+    "vasta_adapters",
+]
+
+[[tool.importlinter.contracts]]
+name = "AD-1: vasta-protocols is the dependency root (no intra-repo imports)"
+type = "forbidden"
+source_modules = ["vasta_protocols"]
+forbidden_modules = [
+    "vasta_storage",
+    "vasta_cognition",
+    "vasta_contracts",
+    "vasta_policy",
+    "vasta_runtime",
+    "vasta_model_lab",
+    "vasta_eval",
+    "vastacore",
+    "vasta_adapters",
+]
+
+[[tool.importlinter.contracts]]
+name = "AD-1: core packages may not import adapters or sdk"
+type = "forbidden"
+source_modules = [
+    "vasta_storage",
+    "vasta_cognition",
+    "vasta_contracts",
+    "vasta_policy",
+    "vasta_runtime",
+    "vasta_model_lab",
+    "vasta_eval",
+    "vasta_protocols",
+]
+forbidden_modules = ["vasta_adapters", "vastacore"]

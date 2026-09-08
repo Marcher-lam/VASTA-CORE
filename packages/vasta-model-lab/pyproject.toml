@@ -1,0 +1,13 @@
+[project]
+name = "vasta-model-lab"
+version = "0.1.0"
+description = "Sandbox, replay, property tests, planning (Epic 6)"
+requires-python = ">=3.12"
+dependencies = ["vasta-protocols"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vasta_model_lab"]

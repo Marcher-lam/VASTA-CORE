@@ -1,2 +1,8 @@
 # BMAD 个人设置不入库
 _bmad/config.user.yaml
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
