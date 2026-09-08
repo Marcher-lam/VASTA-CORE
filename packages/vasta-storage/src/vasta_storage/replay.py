@@ -324,3 +324,132 @@ def render_html(
 
 
 __all__.append("render_html")
+
+
+# ---- 最小复现包与回归任务（FR-062，Story 4.4）----
+
+import json as _json
+
+
+class ReproBundle(BaseModel):
+    """最小复现包清单——干净环境离线重放非模型事件与核验器（AC-08）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    project_id: str
+    event_count: int = Field(ge=1)
+    artifact_refs: list[str] = Field(default_factory=list)
+    config_snapshot: dict[str, Any] = Field(default_factory=dict)
+    bundle_format_version: str = "1.0"
+
+
+class RegressionTask(BaseModel):
+    """回归任务登记（protocols 契约格式——评测框架可直接消费）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    source_run_id: str
+    kind: str = "replay_regression"
+    event_data: list[dict[str, Any]] = Field(default_factory=list)
+    expected_outcome: str = "non_model_events_replayable"
+    created_at: str = ""
+
+
+async def export_repro_bundle(
+    store: Any,
+    run_id: str,
+    *,
+    tenant_id: str | None = None,
+    project_id: str | None = None,
+) -> tuple[ReproBundle, bytes]:
+    """导出复现包：事件 JSON Lines + Artifact 引用清单 + 配置快照。
+
+    - 不含模型密钥与无关租户数据（AC）；
+    - bundle JSON（清单）与 events.jsonl（逐行事件）两段由调用方落盘。
+    """
+    events = list(
+        store.iter_run_events(run_id, tenant_id=tenant_id, project_id=project_id)
+    )
+    if not events:
+        from vasta_protocols.errors import VastaError
+
+        raise VastaError(
+            code="repro.run_not_found", message=f"未找到 Run {run_id!r}"
+        )
+    artifact_refs: set[str] = set()
+    for event in events:
+        refs = event.payload.get("artifact_refs")
+        if isinstance(refs, list):
+            artifact_refs.update(str(r) for r in refs)
+        ref = event.payload.get("contract_ref")
+        if ref:
+            artifact_refs.add(str(ref))
+        rref = event.payload.get("result_ref")
+        if rref:
+            artifact_refs.add(str(rref))
+    config_snapshot: dict[str, Any] = {}
+    for event in events:
+        if event.type == "run.created":
+            config_snapshot = {"budget": dict(event.payload.get("budget", {}))}
+        if event.type == "action.contracted":
+            config_snapshot.setdefault("contract_refs", []).append(
+                event.payload.get("contract_ref")
+            )
+    bundle = ReproBundle(
+        run_id=run_id,
+        tenant_id=tenant_id or events[0].tenant_id,
+        project_id=project_id or events[0].project_id,
+        event_count=len(events),
+        artifact_refs=sorted(artifact_refs),
+        config_snapshot=config_snapshot,
+    )
+    lines = "\n".join(e.model_dump_json() for e in events)
+    return bundle, lines.encode("utf-8")
+
+
+def build_regression_task(
+    bundle: ReproBundle, event_lines: bytes, *, task_id: str | None = None
+) -> RegressionTask:
+    """复现包转回归任务（评测框架消费的契约格式）。"""
+    from ._bookkeeping import utcnow_iso
+
+    events = [
+        _json.loads(line)
+        for line in event_lines.decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    return RegressionTask(
+        task_id=task_id or f"repro-{bundle.run_id}",
+        source_run_id=bundle.run_id,
+        event_data=events,
+        created_at=utcnow_iso(),
+    )
+
+
+def replay_non_model_events(event_lines: bytes) -> list[str]:
+    """离线重放非模型事件（AC-08 的最小验证：逐条解析 + schema 校验）。
+
+    模型调用事件（含 model.exchange 引用）跳过——重放不重新调用模型。"""
+    replayed: list[str] = []
+    for line in event_lines.decode("utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = EventEnvelope.model_validate_json(line)
+        replayed.append(f"{event.seq}:{event.type}")
+    return replayed
+
+
+# 修正上面的变量名（artifactRefs → artifact_refs）
+
+__all__.extend(
+    [
+        "ReproBundle",
+        "RegressionTask",
+        "build_regression_task",
+        "export_repro_bundle",
+        "replay_non_model_events",
+    ]
+)

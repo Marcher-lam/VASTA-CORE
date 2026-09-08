@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tests.test_deviation_recovery import DeviationVerifier
 from vasta_contracts import make_complete_contract
 from vasta_protocols.protocols import Action, Observation
@@ -181,4 +183,39 @@ class TestHtmlReplay:
         html = render_html(timeline(events), first_deviation(events))
         text = html.decode("utf-8")
         assert "外部变化" in text  # external 块仍在（即使无核验偏差）
+        store.close()
+
+
+class TestReproBundle:
+    async def test_export_and_offline_replay(self, tmp_path) -> None:
+        from vasta_storage import (
+            build_regression_task,
+            export_repro_bundle,
+            replay_non_model_events,
+        )
+
+        store = SqliteStorage(tmp_path / "s")
+        await seeded_run(store, with_deviation=True)
+        bundle, event_bytes = await export_repro_bundle(
+            store, "run-tl", tenant_id="t-default", project_id="p-default"
+        )
+        assert bundle.event_count >= 15
+        assert bundle.artifact_refs  # 契约与观察证据引用在清单
+        assert "budget" in bundle.config_snapshot  # 配置快照可还原
+        # 干净环境离线重放（AC-08）：逐条 schema 校验通过
+        replayed = replay_non_model_events(event_bytes)
+        assert len(replayed) == bundle.event_count
+        # 回归任务契约格式
+        task = build_regression_task(bundle, event_bytes)
+        assert task.source_run_id == "run-tl"
+        assert len(task.event_data) == bundle.event_count
+        store.close()
+
+    async def test_unknown_run_rejected(self, tmp_path) -> None:
+        from vasta_protocols.errors import VastaError
+        from vasta_storage import export_repro_bundle
+
+        store = SqliteStorage(tmp_path / "s")
+        with pytest.raises(VastaError):
+            await export_repro_bundle(store, "run-none")
         store.close()

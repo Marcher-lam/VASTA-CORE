@@ -4,11 +4,16 @@ from .images import Box, DiffResult, EvidenceImages, ImageInfo, InspectResult, P
 from .lineage import DerivationRecord, LineageVerification, RecordVerification
 from .replay import (
     DeviationHit,
+    RegressionTask,
+    ReproBundle,
     Timeline,
     TimelineEntry,
+    build_regression_task,
+    export_repro_bundle,
     first_deviation,
     render_html,
     render_text,
+    replay_non_model_events,
     timeline,
 )
 from .sqlite_store import (
@@ -23,6 +28,11 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DeviationHit",
+    "RegressionTask",
+    "ReproBundle",
+    "build_regression_task",
+    "export_repro_bundle",
+    "replay_non_model_events",
     "Timeline",
     "TimelineEntry",
     "render_html",
