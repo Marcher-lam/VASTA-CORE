@@ -597,11 +597,17 @@ name = "vasta-policy"
 version = "0.1.0"
 source = { editable = "packages/vasta-policy" }
 dependencies = [
+    { name = "pydantic" },
+    { name = "vasta-contracts" },
     { name = "vasta-protocols" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vasta-protocols", editable = "packages/vasta-protocols" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.13,<3" },
+    { name = "vasta-contracts", editable = "packages/vasta-contracts" },
+    { name = "vasta-protocols", editable = "packages/vasta-protocols" },
+]
 
 [[package]]
 name = "vasta-protocols"
@@ -625,6 +631,7 @@ source = { editable = "packages/vasta-runtime" }
 dependencies = [
     { name = "pydantic" },
     { name = "vasta-contracts" },
+    { name = "vasta-policy" },
     { name = "vasta-protocols" },
 ]
 
@@ -632,6 +639,7 @@ dependencies = [
 requires-dist = [
     { name = "pydantic", specifier = ">=2.13,<3" },
     { name = "vasta-contracts", editable = "packages/vasta-contracts" },
+    { name = "vasta-policy", editable = "packages/vasta-policy" },
     { name = "vasta-protocols", editable = "packages/vasta-protocols" },
 ]
 

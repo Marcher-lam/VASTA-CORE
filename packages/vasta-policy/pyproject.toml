@@ -3,7 +3,7 @@ name = "vasta-policy"
 version = "0.1.0"
 description = "Policy engine, risk tiers, autonomy levels (Epic 3)"
 requires-python = ">=3.12"
-dependencies = ["vasta-protocols"]
+dependencies = ["vasta-protocols", "vasta-contracts", "pydantic>=2.13,<3"]
 
 [build-system]
 requires = ["hatchling"]

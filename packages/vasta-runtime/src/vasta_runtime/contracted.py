@@ -22,6 +22,7 @@ from vasta_protocols.protocols import Action, Observation, Verifier
 from .budget import BudgetExceededError
 from .gateway import ToolNotRegisteredError
 from .observation import TerminalObservationError
+from .state import RunState
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ class ContractedMixin:
         policy_check: PolicyCheck | None = None,
         verifiers: Mapping[str, Verifier] | None = None,
         plan_step_id: str = "default",
+        approved: bool = False,
     ) -> list[Observation]:
         """契约化执行写动作：六段链全部落事件（NFR-001）。"""
         self._require_started("execute_contracted")  # noqa: SLF001
@@ -115,21 +117,7 @@ class ContractedMixin:
             },
         )
 
-        # ── 策略段（3.1 最小：默认放行；3.3 四态引擎）──
-        check = policy_check or (lambda _c: PolicyOutcome(decision="allow"))
-        outcome = check(contract)
-        if outcome.decision != "allow":
-            await self._emit(  # noqa: SLF001
-                "action.policy_denied",
-                {"phase": "policy", "tool": contract.tool, "basis": outcome.reason},
-            )
-            raise PolicyDeniedError(outcome.reason)
-        await self._emit(  # noqa: SLF001
-            "action.policy_cleared",
-            {"tool": contract.tool, "decision": "allow", "basis": outcome.reason},
-        )
-
-        # ── 工具注册检查（FR-032：未声明清单的工具不得被写动作调用）──
+        # ── 工具注册与分类（前置：策略判定需要 effective 风险，AD-4×FR-033）──
         risk_effective: str | None = None
         read_only: bool | None = None
         if self.tool_gateway is not None:  # noqa: SLF001
@@ -145,6 +133,31 @@ class ContractedMixin:
                     code="tool.not_registered",
                     message=f"工具 {contract.tool!r} 未注册，写动作不执行",
                 ) from exc
+        effective_risk = risk_effective or contract.risk  # 无网关时以自报为准
+
+        # ── 策略段（优先级：显式 callable（3.1 兼容）> policy_engine > 默认放行）──
+        if policy_check is not None:
+            outcome = policy_check(contract)
+            if outcome.decision != "allow":
+                await self._emit(  # noqa: SLF001
+                    "action.policy_denied",
+                    {"phase": "policy", "tool": contract.tool, "basis": outcome.reason},
+                )
+                raise PolicyDeniedError(outcome.reason)
+            await self._emit(  # noqa: SLF001
+                "action.policy_cleared",
+                {"tool": contract.tool, "decision": "allow", "basis": outcome.reason},
+            )
+        elif self.policy_engine is not None:  # noqa: SLF001
+            await self._apply_policy_decision(
+                contract, effective_risk, approved=approved
+            )
+        else:
+            await self._emit(  # noqa: SLF001
+                "action.policy_cleared",
+                {"tool": contract.tool, "decision": "allow",
+                 "basis": "default_allow_3.1", "risk_effective": effective_risk},
+            )
 
         # ── 守卫与预算（与 step 同语义）──
         try:
@@ -216,6 +229,60 @@ class ContractedMixin:
         )
         return observations
 
+
+    async def _apply_policy_decision(  # noqa: SLF001（同包 mixin 访问引擎设施）
+        self,
+        contract: ActionContract,
+        effective_risk: str,
+        *,
+        approved: bool,
+    ) -> None:
+        """四态策略（FR-033/AD-12，Story 3.3）：含 fail-closed 回退与批准闭环。"""
+        from vasta_policy import ApprovalRequestedError, fail_closed_fallback
+
+        try:
+            decision = self.policy_engine.decide(contract, effective_risk)
+        except Exception:
+            decision = fail_closed_fallback(effective_risk)  # AD-12
+
+        basis = decision.basis
+        if decision.decision == "deny":
+            await self._emit(
+                "action.policy_denied",
+                {"phase": "policy", "tool": contract.tool, "basis": basis,
+                 "risk_effective": effective_risk,
+                 "fail_closed": "fail-closed" in basis},
+            )
+            raise PolicyDeniedError(basis)
+        if decision.decision == "request_approval":
+            if approved:
+                await self._emit(
+                    "action.approved",
+                    {"tool": contract.tool, "risk": effective_risk,
+                     "via": "human-local", "basis": basis},
+                )
+                return
+            await self._emit(
+                "action.approval_requested",
+                {"tool": contract.tool, "risk": effective_risk, "basis": basis},
+            )
+            cp = self._build_checkpoint()
+            self._checkpoint = cp
+            self.tracker.pause()  # 等待人工批准期间墙钟不计费
+            await self._transition(
+                RunState.PAUSED,
+                "run.paused",
+                {"checkpoint": cp.model_dump(mode="json"),
+                 "approval": {"tool": contract.tool, "risk": effective_risk,
+                              "basis": basis}},
+            )
+            raise ApprovalRequestedError(contract.tool, effective_risk, basis)
+        # allow / degrade：降级路径必录事件（degraded 标志）
+        await self._emit(
+            "action.policy_cleared",
+            {"tool": contract.tool, "decision": decision.decision, "basis": basis,
+             "risk_effective": effective_risk, "degraded": decision.degraded},
+        )
 
     async def _execute_via_gateway(  # noqa: SLF001（同包 mixin 访问引擎设施）
         self,

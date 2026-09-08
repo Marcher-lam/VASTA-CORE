@@ -121,7 +121,7 @@ class ChainReport(BaseModel):
 
     contracted_seq: int
     tool: str
-    status: Literal["complete", "rejected", "incomplete"]
+    status: Literal["complete", "rejected", "pending", "incomplete"]
     missing: list[str] = Field(default_factory=list)
 
 
@@ -176,7 +176,24 @@ def audit_six_segment(events: list[EventEnvelope]) -> SixSegmentAudit:
                 )
             )
             continue
-        if not any(e.type == "action.policy_cleared" for e in after_events):
+        # 等待人工批准（未执行也未拒）——合法挂起态，不算 NFR-001 缺段
+        awaiting = any(e.type == "action.approval_requested" for e in after_events[:3])
+        has_resolution = any(
+            e.type in ("action.approved", "action.executed") for e in after_events
+        )
+        if awaiting and not has_resolution:
+            reports.append(
+                ChainReport(
+                    contracted_seq=event.seq,
+                    tool=str(event.payload.get("tool", "")),
+                    status="pending",
+                )
+            )
+            continue
+        if not any(
+            e.type in ("action.policy_cleared", "action.approved")
+            for e in after_events
+        ):
             missing.append("policy")
         executed = [e for e in after_events if e.type == "action.executed"]
         if not executed:

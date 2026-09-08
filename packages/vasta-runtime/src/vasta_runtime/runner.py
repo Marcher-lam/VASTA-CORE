@@ -18,6 +18,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from vasta_policy import PolicyEngine
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
 from vasta_protocols.ids import new_run_id, now_utc
@@ -71,12 +72,14 @@ class RunEngine(ContractedMixin):
         capture_observations: bool = False,
         safety_clock: Callable[[], datetime] | None = None,
         tool_gateway: ToolGateway | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         self.env = env
         self.store = store
         self.supervisor = supervisor or Supervisor()
         # AD-4：业务工具凭证只存在于网关；引擎不持有任何 ToolAdapter。
         self.tool_gateway = tool_gateway
+        self.policy_engine = policy_engine  # 四态策略（3.3；None=默认放行）
         self.capture_observations = capture_observations
         if run_context is not None and (config is not None or clock is not None):
             raise ValueError(
@@ -124,6 +127,7 @@ class RunEngine(ContractedMixin):
         capture_observations: bool = False,
         safety_clock: Callable[[], datetime] | None = None,
         tool_gateway: ToolGateway | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -136,6 +140,7 @@ class RunEngine(ContractedMixin):
             capture_observations=capture_observations,
             safety_clock=safety_clock,
             tool_gateway=tool_gateway,
+            policy_engine=policy_engine,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
