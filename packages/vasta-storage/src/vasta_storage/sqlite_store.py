@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -23,8 +24,13 @@ from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import DuplicateEventError, VastaError
 from vasta_protocols.protocols import STORAGE_PROTOCOL_VERSION
 
+from ._scope import validate_scope_pair as _validate_scope_pair
+from .search import EvidenceSearchMixin
+
 DEFAULT_TENANT = "t-default"
 DEFAULT_PROJECT = "p-default"
+
+_SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -47,7 +53,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     source TEXT,
     classification TEXT,
     retention TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    tags_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS artifact_refs (
     tenant_id TEXT NOT NULL,
@@ -81,16 +88,7 @@ def _utcnow_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _validate_scope_pair(tenant_id: str | None, project_id: str | None) -> None:
-    """作用域参数必须成对出现：半作用域调用一律拒绝（fail-closed，AD-14）。"""
-    if (tenant_id is None) != (project_id is None):
-        raise VastaError(
-            code="scope.half_pair",
-            message="tenant_id and project_id must be given together or both omitted",
-        )
-
-
-class SqliteStorage:
+class SqliteStorage(EvidenceSearchMixin):
     """Evidence Store 本地档实现（StorageAdapter 端口 + 元数据/作用域扩展）。"""
 
     protocol_version = STORAGE_PROTOCOL_VERSION
@@ -104,13 +102,25 @@ class SqliteStorage:
         self._lock = threading.Lock()
         with self._lock, self._conn:
             version = self._conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:  # AD-9：过新 schema 拒读，不得静默误读
+            if version > _SCHEMA_VERSION:  # AD-9：过新 schema 拒读，不得静默误读
                 raise VastaError(
                     code="store.schema_too_new",
-                    message=f"store schema user_version={version} > 1; migrate first",
+                    message=(
+                        f"store schema user_version={version} > {_SCHEMA_VERSION};"
+                        " migrate first"
+                    ),
                 )
             self._conn.executescript(_SCHEMA)
-            self._conn.execute("PRAGMA user_version=1")
+            # v1→v2 迁移（AD-9 首次演练）：旧库补 tags_json 列。
+            columns = {
+                row[1] for row in self._conn.execute("PRAGMA table_info(artifacts)")
+            }
+            if "tags_json" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE artifacts ADD COLUMN tags_json"
+                    " TEXT NOT NULL DEFAULT '{}'"
+                )
+            self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
 
     def close(self) -> None:
         with self._lock:
@@ -213,6 +223,7 @@ class SqliteStorage:
         source: str | None = None,
         classification: str | None = None,
         retention: str | None = None,
+        tags: dict[str, str] | None = None,
         tenant_id: str = DEFAULT_TENANT,
         project_id: str = DEFAULT_PROJECT,
     ) -> str:
@@ -223,6 +234,7 @@ class SqliteStorage:
             source,
             classification,
             retention,
+            tags,
             tenant_id,
             project_id,
         )
@@ -234,6 +246,7 @@ class SqliteStorage:
         source: str | None,
         classification: str | None,
         retention: str | None,
+        tags: dict[str, str] | None,
         tenant_id: str,
         project_id: str,
     ) -> str:
@@ -252,13 +265,27 @@ class SqliteStorage:
         elif hashlib.sha256(blob_path.read_bytes()).hexdigest() != sha:
             # 已存在的字节被篡改：不得静默复用（评审修复）
             raise ArtifactCorruptedError(sha)
+        new_tags = json.dumps(tags or {}, sort_keys=True, separators=(",", ":"))
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT OR IGNORE INTO artifacts"
-                " (sha256, mime, size, source, classification, retention, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (sha, mime, len(payload), source, classification, retention, _utcnow_iso()),
+                " (sha256, mime, size, source, classification, retention,"
+                "  created_at, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (sha, mime, len(payload), source, classification, retention,
+                 _utcnow_iso(), new_tags),
             )
+            if tags:
+                # 去重命中：标签并集合并（Story 2.1）
+                row = self._conn.execute(
+                    "SELECT tags_json FROM artifacts WHERE sha256=?", (sha,)
+                ).fetchone()
+                existing = json.loads(row[0]) if row and row[0] else {}
+                merged = {**existing, **tags}
+                if merged != existing:
+                    self._conn.execute(
+                        "UPDATE artifacts SET tags_json=? WHERE sha256=?",
+                        (json.dumps(merged, sort_keys=True, separators=(",", ":")), sha),
+                    )
             self._conn.execute(
                 "INSERT OR IGNORE INTO artifact_refs"
                 " (tenant_id, project_id, sha256, referenced_at) VALUES (?, ?, ?, ?)",

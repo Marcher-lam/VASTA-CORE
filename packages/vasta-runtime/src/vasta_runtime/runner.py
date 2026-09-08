@@ -101,6 +101,7 @@ class RunEngine:
         self._seq = -1
         self._last_event_id: str | None = None
         self._last_action: Action | None = None
+        self._current_action: Action | None = None
         self._last_signature: ObservationSignature | None = None
         self._checkpoint: Checkpoint | None = None
         self.collector = ObservationCollector()
@@ -306,8 +307,12 @@ class RunEngine:
             raise
         self.tracker.record_action()
         self._last_action = action
-        for obs in observations:
-            await self._record_observation(obs)
+        self._current_action = action  # 观察载荷携带动作维度（Story 2.1）
+        try:
+            for obs in observations:
+                await self._record_observation(obs)
+        finally:
+            self._current_action = None
         return observations
 
     async def note_deviation(self, deviation: bool) -> None:
@@ -365,6 +370,11 @@ class RunEngine:
     async def _record_observation(self, obs: Observation) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
         payload = self.collector.record(obs)
+        if self._current_action is not None:
+            # 动作维度（Story 2.1）：step 期间的观察携带产生它的动作，
+            # 供 payload_equals={"last_action": ...} 检索；非事件族，不与
+            # Epic 3 的 action.* 管道冲突。
+            payload["last_action"] = self._current_action.tool
         if self.capture_observations:
             # AD-3：证据先落盘（哈希校验），事件才引用（artifact_refs）。
             captured = json.dumps(

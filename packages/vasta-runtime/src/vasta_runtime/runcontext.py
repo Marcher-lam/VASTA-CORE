@@ -76,9 +76,10 @@ class RunContext:
         if seed is not None:
             effective_clock: Callable[[], datetime] = clock or _SeededClock()
             # 双流（评审修复）：事件 ID 与应用随机分离，插入一个事件
-            # 不再平移后续所有随机数。
+            # 不再平移后续所有随机数；ID 流掺入 run_id——同 run_id+seed 可再生，
+            # 不同 run 同 seed 不撞全局唯一 event_id。
             rng = random.Random(seed)
-            id_rng = random.Random(f"{seed}:event-id")
+            id_rng = random.Random(f"{seed}:{run_id}:event-id")
         else:
             effective_clock = clock or now_utc
             rng = random.Random()
