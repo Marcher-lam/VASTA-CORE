@@ -33,6 +33,11 @@ from .checkpoint import Checkpoint, ObservationSignature
 from .observation import ObservationCollector, TerminalObservationError
 from .runcontext import RunContext
 from .state import RunState, assert_transition
+from .supervisor import (
+    Escalation,
+    Supervisor,
+    SupervisorEscalationError,
+)
 
 
 class RunConfig(BaseModel):
@@ -60,9 +65,11 @@ class RunEngine:
         config: RunConfig | None = None,
         clock: Callable[[], datetime] | None = None,
         run_context: RunContext | None = None,
+        supervisor: Supervisor | None = None,
     ) -> None:
         self.env = env
         self.store = store
+        self.supervisor = supervisor or Supervisor()
         # Story 1.5：时间/随机/事件 ID/身份统一来自 RunContext（AD-5）；
         # legacy clock/config 参数在此归一为默认 context。
         if run_context is None:
@@ -99,6 +106,7 @@ class RunEngine:
         config: RunConfig | None = None,
         clock: Callable[[], datetime] | None = None,
         run_context: RunContext | None = None,
+        supervisor: Supervisor | None = None,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -107,6 +115,7 @@ class RunEngine:
             config=config,
             clock=clock,
             run_context=run_context,
+            supervisor=supervisor,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
@@ -173,6 +182,7 @@ class RunEngine:
             and signature != self._checkpoint.last_observation
         )
         self._last_signature = signature
+        self.supervisor.reset_all()  # 人工已审阅恢复：计数清零
         resumed = await self._transition(
             RunState.STARTED,
             "run.resumed",
@@ -208,6 +218,7 @@ class RunEngine:
             )
         marker = Observation(kind="reset", detail={"seed": seed})
         await self._record_observation(marker)  # collector 同时清除终局态
+        self.supervisor.reset_all()  # 新 episode：循环与偏差计数清零
         first = await self.env.reset(seed=seed)
         await self._record_observation(first)
         return first
@@ -250,6 +261,9 @@ class RunEngine:
             self.collector.ensure_actable()  # 性质：终局后不行动（蓝图 §33.1）
         except TerminalObservationError as exc:
             raise VastaError(code="run.terminal", message=str(exc)) from exc
+        escalation = self.supervisor.check_loop(self._last_signature, action)
+        if escalation is not None:  # 循环先到 → 暂停升级（不执行、不耗预算）
+            await self._escalate(escalation)
         try:
             self.tracker.check()  # 预算先检（无余量即拒，超限动作不执行）
         except BudgetExceededError as exc:
@@ -262,6 +276,17 @@ class RunEngine:
             await self._record_observation(obs)
         return observations
 
+    async def note_deviation(self, deviation: bool) -> None:
+        """核验结果喂给 Supervisor（Epic 3 接线）：连续 M 次偏差触发升级。"""
+        if self._state is not RunState.STARTED:
+            raise VastaError(
+                code="run.not_started",
+                message=f"note_deviation requires started run, current={self._state.value}",
+            )
+        escalation = self.supervisor.note_deviation(deviation)
+        if escalation is not None:
+            await self._escalate(escalation)
+
     async def record_model_call(self) -> None:
         """登记一次模型调用：先检余量，无余量即安全停止并抛出。"""
         try:
@@ -272,6 +297,19 @@ class RunEngine:
         self.tracker.record_model_call()
 
     # ---- 内部 ----
+    async def _escalate(self, escalation: Escalation) -> None:
+        """Supervisor 升级：incident.opened → 暂停 → 抛出。"""
+        await self._emit(
+            "incident.opened",
+            {"reason": escalation.reason.value, **escalation.detail},
+        )
+        await self._transition(
+            RunState.PAUSED,
+            "run.paused",
+            {"escalation": {"reason": escalation.reason.value, **escalation.detail}},
+        )
+        raise SupervisorEscalationError(escalation)
+
     async def _record_observation(self, obs: Observation) -> None:
         self._last_signature = ObservationSignature.from_observation(obs)
         payload = self.collector.record(obs)
