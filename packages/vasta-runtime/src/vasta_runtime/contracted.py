@@ -20,6 +20,7 @@ from vasta_protocols.errors import VastaError
 from vasta_protocols.protocols import Action, Observation, Verifier
 
 from .budget import BudgetExceededError
+from .gateway import ToolNotRegisteredError
 from .observation import TerminalObservationError
 
 
@@ -73,6 +74,7 @@ class ContractedMixin:
         *,
         policy_check: PolicyCheck | None = None,
         verifiers: Mapping[str, Verifier] | None = None,
+        plan_step_id: str = "default",
     ) -> list[Observation]:
         """契约化执行写动作：六段链全部落事件（NFR-001）。"""
         self._require_started("execute_contracted")  # noqa: SLF001
@@ -127,6 +129,23 @@ class ContractedMixin:
             {"tool": contract.tool, "decision": "allow", "basis": outcome.reason},
         )
 
+        # ── 工具注册检查（FR-032：未声明清单的工具不得被写动作调用）──
+        risk_effective: str | None = None
+        read_only: bool | None = None
+        if self.tool_gateway is not None:  # noqa: SLF001
+            try:
+                read_only, risk_effective = self.tool_gateway.classify(contract.tool)
+            except ToolNotRegisteredError as exc:
+                await self._emit(  # noqa: SLF001
+                    "action.policy_denied",
+                    {"phase": "tool", "tool": contract.tool,
+                     "basis": "工具未在网关注册（清单缺失）"},
+                )
+                raise VastaError(
+                    code="tool.not_registered",
+                    message=f"工具 {contract.tool!r} 未注册，写动作不执行",
+                ) from exc
+
         # ── 守卫与预算（与 step 同语义）──
         try:
             self.collector.ensure_actable()  # noqa: SLF001
@@ -135,29 +154,43 @@ class ContractedMixin:
         escalation = self.supervisor.check_loop(self._last_signature, action)  # noqa: SLF001
         if escalation is not None:
             await self._escalate(escalation)  # noqa: SLF001
-        try:
-            self.tracker.check()  # noqa: SLF001
-        except BudgetExceededError as exc:
-            await self._safe_stop(reason=exc.kind.value, safe_stop=True)  # noqa: SLF001
-            raise
-
-        # ── 执行段 ──
-        try:
-            observations = await self.env.execute(action)  # noqa: SLF001
-        except Exception as exc:
-            await self._emit(  # noqa: SLF001
-                "action.failed",
-                {"tool": contract.tool, "phase": "execution",
-                 "error": f"{type(exc).__name__}: {exc}"},
+        # AD-11：重放命中不是新动作——预算闸对其放行（结果仍由网关缓存返回）
+        is_replay = (
+            self.tool_gateway is not None  # noqa: SLF001
+            and self.tool_gateway.is_replay(  # noqa: SLF001
+                self.config.run_id, plan_step_id, action  # noqa: SLF001
             )
-            await self.fail(f"env_error:{type(exc).__name__}")  # noqa: SLF001
-            raise
-        self.tracker.record_action()  # noqa: SLF001
-        self._last_action = action  # noqa: SLF001
-        await self._emit(  # noqa: SLF001
-            "action.executed",
-            {"tool": contract.tool, "ok": True},
         )
+        if not is_replay:
+            try:
+                self.tracker.check()  # noqa: SLF001
+            except BudgetExceededError as exc:
+                await self._safe_stop(reason=exc.kind.value, safe_stop=True)  # noqa: SLF001
+                raise
+
+        # ── 执行段（网关路径 / env 直连路径），之后统一走 after+核验段 ──
+        if self.tool_gateway is not None:  # noqa: SLF001
+            observations = await self._execute_via_gateway(
+                contract, action, plan_step_id=plan_step_id,
+                risk_effective=risk_effective, read_only=read_only,
+            )
+        else:
+            try:
+                observations = await self.env.execute(action)  # noqa: SLF001
+            except Exception as exc:
+                await self._emit(  # noqa: SLF001
+                    "action.failed",
+                    {"tool": contract.tool, "phase": "execution",
+                     "error": f"{type(exc).__name__}: {exc}"},
+                )
+                await self.fail(f"env_error:{type(exc).__name__}")  # noqa: SLF001
+                raise
+            self.tracker.record_action()  # noqa: SLF001
+            self._last_action = action  # noqa: SLF001
+            await self._emit(  # noqa: SLF001
+                "action.executed",
+                {"tool": contract.tool, "ok": True},
+            )
 
         # ── after 段：观察照常采集（带 last_action）──
         for obs in observations:
@@ -182,6 +215,71 @@ class ContractedMixin:
              "outcomes": outcomes, **detail},
         )
         return observations
+
+
+    async def _execute_via_gateway(  # noqa: SLF001（同包 mixin 访问引擎设施）
+        self,
+        contract: ActionContract,
+        action: Action,
+        *,
+        plan_step_id: str,
+        risk_effective: str | None,
+        read_only: bool | None,
+    ) -> list[Observation]:
+        """网关执行路径（AD-4/11，Story 3.2）。
+
+        - ToolResult 原始响应先落 CAS（FR-010）再入事件；
+        - replay 命中不计预算（重复请求非新动作）；
+        - after 段为合成 observation.external（引用 result_sha，带 last_action）。
+        """
+        try:
+            result = await self.tool_gateway.execute(
+                run_id=self.config.run_id,
+                plan_step_id=plan_step_id,
+                action=action,
+            )
+        except Exception as exc:
+            await self._emit(
+                "action.failed",
+                {"tool": contract.tool, "phase": "execution",
+                 "error": f"{type(exc).__name__}: {exc}"},
+            )
+            await self.fail(f"tool_error:{type(exc).__name__}")
+            raise
+        result_sha = await self.store.save_artifact(
+            result.model_dump_json().encode("utf-8"),
+            mime="application/json",
+            source="tool.response",
+            tenant_id=self.config.tenant_id,
+            project_id=self.config.project_id,
+        )
+        if not result.replayed:  # 首次执行才计预算（AD-11）
+            self.tracker.record_action()
+        self._last_action = action
+        await self._emit(
+            "action.executed",
+            {
+                "tool": contract.tool,
+                "ok": result.ok,
+                "replayed": result.replayed,
+                "risk_declared": contract.risk,
+                "risk_effective": risk_effective,  # AD-4：清单强制
+                "read_only": read_only,
+                "result_ref": result_sha,
+            },
+        )
+        after_obs = Observation(
+            kind="external",
+            artifact_refs=[result_sha],
+            detail={
+                "source": "tool",
+                "tool": contract.tool,
+                "ok": result.ok,
+                "replayed": result.replayed,
+            },
+        )
+        # 不在此记录——由 execute_contracted 统一走 after 段（含 last_action）
+        return [after_obs]
 
 
 __all__ = ["ContractedMixin", "PolicyDeniedError", "PolicyOutcome"]

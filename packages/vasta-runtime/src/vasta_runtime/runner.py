@@ -31,6 +31,7 @@ from vasta_protocols.protocols import (
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .contracted import ContractedMixin
+from .gateway import ToolGateway
 from .observation import ObservationCollector, TerminalObservationError
 from .runcontext import RunContext
 from .state import RunState, assert_transition
@@ -69,10 +70,13 @@ class RunEngine(ContractedMixin):
         supervisor: Supervisor | None = None,
         capture_observations: bool = False,
         safety_clock: Callable[[], datetime] | None = None,
+        tool_gateway: ToolGateway | None = None,
     ) -> None:
         self.env = env
         self.store = store
         self.supervisor = supervisor or Supervisor()
+        # AD-4：业务工具凭证只存在于网关；引擎不持有任何 ToolAdapter。
+        self.tool_gateway = tool_gateway
         self.capture_observations = capture_observations
         if run_context is not None and (config is not None or clock is not None):
             raise ValueError(
@@ -119,6 +123,7 @@ class RunEngine(ContractedMixin):
         supervisor: Supervisor | None = None,
         capture_observations: bool = False,
         safety_clock: Callable[[], datetime] | None = None,
+        tool_gateway: ToolGateway | None = None,
     ) -> RunEngine:
         engine = cls(
             env=env,
@@ -130,6 +135,7 @@ class RunEngine(ContractedMixin):
             supervisor=supervisor,
             capture_observations=capture_observations,
             safety_clock=safety_clock,
+            tool_gateway=tool_gateway,
         )
         await engine._emit(
             "run.created", {"budget": engine.tracker.snapshot().model_dump()}
