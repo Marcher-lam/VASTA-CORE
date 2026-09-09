@@ -61,6 +61,26 @@ def serve(root: str = typer.Option(".vasta", help="存储根目录"),
     run_serve(root=root, token=token, host=host, port=port)
 
 
+tool = typer.Typer(help="工具开发（init 脚手架）")
+app.add_typer(tool, name="tool")
+
+
+@tool.command("init")
+def tool_init(name: str = typer.Argument(..., help="工具名（snake_case 标识符）"),
+              directory: str = typer.Option(None, "--dir",
+                                            help="目标目录（默认 ./<name>）")) -> None:
+    """生成工具项目三件套（Story 8.4）：骨架 + 契约模板 + 协议测试。"""
+    from .scaffold import generate_tool_project
+
+    target = directory or name
+    result = generate_tool_project(name, target)
+    typer.echo(f"已生成 {result.tool_name} 工具项目 → {result.root}")
+    typer.echo(f"  {result.tool_path.name}          # ToolAdapter 骨架（从绿改起）")
+    typer.echo(f"  {result.template_path.name}  # 契约模板（填业务语义）")
+    typer.echo(f"  {result.test_path.name}      # 协议测试（pytest test_protocol.py -q）")
+    typer.echo("全绿后即可注册网关上架（FR-081/FR-032）。")
+
+
 @app.command()
 def inspect(root: str = typer.Option(".vasta", help="存储根目录"),
             run_id: str = typer.Argument(..., help="Run ID")) -> None:

@@ -85,3 +85,29 @@ def test_serve_command_registered_and_requires_token() -> None:
     # 缺 --token → typer 必填参数错误（exit code 2）
     missing = runner.invoke(app, ["serve"])
     assert missing.exit_code == 2
+
+
+def test_tool_init_command_generates_green_project(tmp_path) -> None:
+    """Story 8.4：vasta tool init → 三件套生成且骨架开箱即绿。"""
+    import asyncio
+
+    target = tmp_path / "my_tool"
+    result = runner.invoke(app, ["tool", "init", "my_tool", "--dir", str(target)])
+    assert result.exit_code == 0, result.output
+    assert (target / "tool.py").exists()
+    assert (target / "contract_template.py").exists()
+    assert (target / "test_protocol.py").exists()
+    # 骨架协议全绿（开箱即用）
+    import importlib.util
+    import sys
+
+    from vastacore.scaffold import run_tool_protocol_checks
+    spec = importlib.util.spec_from_file_location("cli_scaffold_my_tool", target / "tool.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    failures = asyncio.run(run_tool_protocol_checks(mod.make_tool()))
+    assert failures == [], failures
+    # 重复生成拒绝覆盖
+    dup = runner.invoke(app, ["tool", "init", "my_tool", "--dir", str(target)])
+    assert dup.exit_code != 0

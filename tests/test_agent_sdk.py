@@ -61,11 +61,18 @@ class SetStatusTool(ToolAdapter):
         read_only=False, idempotent=True, supports_read_back=True,
     )
 
+    def __init__(self) -> None:
+        self._results: dict[str, ToolResult] = {}
+
     async def execute(self, action, idempotency_key=None):
-        return ToolResult(ok=True, detail={"status": action.args.get("status")})
+        if idempotency_key in self._results:
+            return self._results[idempotency_key].model_copy(update={"replayed": True})
+        result = ToolResult(ok=True, detail={"status": action.args.get("status")})
+        self._results[idempotency_key] = result
+        return result
 
     async def dry_run(self, action):
-        return DryRunResult(would_execute=True)
+        return DryRunResult(allowed=True)
 
     async def read_back(self, action, result):
         return Observation(kind="decision", detail={"status": result.detail["status"]})

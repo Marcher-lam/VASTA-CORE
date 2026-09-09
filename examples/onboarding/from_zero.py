@@ -80,7 +80,7 @@ class ShipOrderTool(ToolAdapter):
         })
 
     async def dry_run(self, action):
-        return DryRunResult(would_execute=True)
+        return DryRunResult(allowed=True)
 
     async def read_back(self, action, result):
         return Observation(kind="decision", detail={"status": result.detail["status"]})
