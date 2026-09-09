@@ -40,11 +40,11 @@ externalPointerStatus: 'not_used'
 
 | Priority | Total Criteria | FULL Coverage | Coverage % | Status |
 | -------- | -------------- | ------------- | ---------- | ------ |
-| P0（AC-01~08，MVP 出门条件） | 8 | 5 | 62.5% | ❌ FAIL（复评 +2，仍 <100%） |
-| P1（34 ★FR，Must） | 34 | 31 | 91.2% | ✅ PASS（复评翻绿，≥90%） |
+| P0（AC-01~08，MVP 出门条件） | 8 | 6 | 75.0% | ❌ FAIL（复评二 +1，仍 <100%） |
+| P1（34 ★FR，Must） | 34 | 31 | 91.2% | ✅ PASS（维持） |
 | P2 | 0 | 0 | N/A | N/A |
 | P3 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **36** | **85.7%** | ⚠️ 总量过下限；门禁由 P0 决定 |
+| **Total** | **42** | **37** | **88.1%** | ⚠️ 总量过下限；门禁由 P0 决定 |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -52,15 +52,14 @@ externalPointerStatus: 'not_used'
 
 ### Detailed Mapping — AC-01~08（P0）
 
-#### AC-01: 至少 40 个 VastaLab/GUI 任务可运行并生成完整回放 — **PARTIAL** ⚠️
+#### AC-01: 至少 40 个 VastaLab/GUI 任务可运行并生成完整回放 — **FULL** ✅（复评二翻绿）
 
 - **Tests:**
   - `EV-01` — `tests/test_evaluation.py` `TestVastaLabTasks::test_task_generation_meets_ac01_quota`【I】：默认生成 50 任务（20 主 + 20 噪声 + 10 偏差）≥40 配额
   - `EV-02` — `TestVastaLabTasks::test_ground_truth_solver` / `test_hidden_rules_present` / `test_deviation_and_noise_variants`【I】：任务可确定性运行（solve/run_agent）
   - `TL-01` — `tests/test_timeline.py` `TestTimelineProjection::test_full_coverage_and_causal_trace`【I】：时间线覆盖 Run 全部事件（AC-01 完整回放，PRD FR-060 后果条款）
   - `QS-01` — `tests/test_quickstart_e2e.py` `TestQuickstartE2E::test_full_run_with_evidence_and_causal_chain` / `test_same_run_id_and_seed_byte_identical`【E】：单环境任务全量回放 + 字节级复现
-- **判定:** 任务配额与「可运行」FULL；**「生成完整回放」仅在 quickstart 环境形态验证**——VastaLab 评测任务经 AgentSimulator 运行，不产生事件流回放（即 Epic 4-7 评审 defer #1「评测即 Run」）。GUI 形态按蓝图 §31 属 Stage 2（PRD [ASSUMPTION] 已披露）。
-- **缺口:** 评测任务 × Run 事件流的批量回放（需 Stage 2 模型适配器，或 MVP 内以 RunEngine 跑 ≥40 VastaLab 任务的批量演示测试）。
+- **判定:** 复评二翻绿——Story 8.9「评测即 Run」落地：`run_tasks_as_runs` 以 `VastaLabEnv`（任务即环境，隐藏规则真实生效）+ `SolvePolicyStandIn`（确定性替身，不等真实适配器——Assumption Audit P1 修正）批量运行 50 任务（≥40），每任务完整 RunEngine 生命周期事件流（timeline 全覆盖、终局观察、复现包可离线重放、同 seed 双库逐字节一致）。GUI 形态维持 Stage 2 [ASSUMPTION] 披露（蓝图 §31）。
 
 #### AC-02: 100% 状态改变型动作具备动作前后、契约、策略和核验链 — **FULL** ✅
 
@@ -225,3 +224,22 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
   3. **AC-08** verifier 随包重执行（Story 4.4「最小验证」语义，WAIVER 或补实现——用户裁决）
 - P1 翻 PASS（91.2%）；P1 剩余 PARTIAL 三条（FR-013/022/024）均为蓝图 Stage 2/3 范围 WAIVER 候选。
 - **下一步即 WAIVER 决议**：6 项豁免（上列 3 项 P0 + 3 项 P1）经 owner + 到期日豁免后，重跑本工作流——豁免项不计分母，门禁可达 PASS。
+
+
+---
+
+## 复评记录二（2026-09-09，Story 8.9 评测即 Run 落地后）
+
+**变更**: Story 8.9（Assumption Audit P1 修正的执行）——`run_tasks_as_runs` 以替身模型批量运行 VastaLab 任务集，评测任务与真实 Run 同构。+5 测试（470 全绿）。
+
+| 判据 | 复评一 | 复评二 | 依据 |
+|------|--------|--------|------|
+| AC-01 | PARTIAL | **FULL** | `tests/test_eval_as_run.py`：50 任务批量全成功、逐 run timeline 全覆盖 + 终局观察、复现包离线重放数=事件数、同 seed 双库逐任务归一化流一致、模型交换逐步入 CAS |
+
+**复评覆盖:** P0 6/8（75.0%）· P1 31/34（91.2% ✅）· Overall 37/42（88.1%）
+
+## 🚨 GATE DECISION（复评二）: **FAIL → 维持 FAIL，P0 缺口收敛为 2**
+
+- 剩余 P0 缺口：AC-07（置信区间——需真实任务方差，WAIVER 至 Stage 2 后半）、
+  AC-08（verifier 随包重执行——Story 4.4「最小验证」语义，WAIVER 或补实现）。
+- 「评测即 Run」结构性缺口（原 9 分风险项）就此关闭；Epic 4-7 评审 defer #1 落地。

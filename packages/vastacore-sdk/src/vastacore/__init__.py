@@ -2,6 +2,13 @@
 
 from ._version import __version__
 from .agent import AgentSession, ContractTemplate, SessionSummary
+from .batch import (
+    BatchRunSummary,
+    SolvePolicyStandIn,
+    TaskRunResult,
+    VastaLabEnv,
+    run_tasks_as_runs,
+)
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
 from .router import CostEntry, ModelRouter, RouterError
@@ -19,6 +26,11 @@ from .versioning import (
 
 __all__ = [
     "AgentSession",
+    "BatchRunSummary",
+    "SolvePolicyStandIn",
+    "TaskRunResult",
+    "VastaLabEnv",
+    "run_tasks_as_runs",
     "CapabilityReport",
     "ProbeOutcome",
     "probe_capabilities",
