@@ -1,5 +1,9 @@
 ---
 stepsCompleted: [step-01-validate-prerequisites, step-02-design-epics, step-03-create-stories, step-04-final-validation]
+incrementalRuns:
+  - date: 2026-09-09
+    scope: 'Epic 8（Stage 2）增量展开：13 Story（G1-G5 + 并行技术债）；Party Mode 评审 + Assumption Audit 三项修正吸收'
+    status: final-validation-passed
 inputDocuments: ['docs/prds/prd-VastaCore-2026-09-08/prd.md', 'docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md', 'plan.md']
 ---
 
@@ -7,7 +11,7 @@ inputDocuments: ['docs/prds/prd-VastaCore-2026-09-08/prd.md', 'docs/architecture
 
 ## Overview
 
-This document provides the complete epic and story breakdown for VastaCore, decomposing the requirements from the PRD and Architecture spine into implementable stories. 本轮拆解以 **MVP（Stage 0–1，34 条 ★MVP FR）为深度覆盖目标**；Stage 2+ 的 FR 记录到 Epic 级，不展开 Story（[[ASSUMPTION] 用户指令"重点覆盖 MVP"，后续阶段到时再拆）。无 UX 设计契约（MVP 无 UI；Console/Domain Studio 属 Stage 2+，届时需先跑 bmad-ux）。
+This document provides the complete epic and story breakdown for VastaCore, decomposing the requirements from the PRD and Architecture spine into implementable stories. 首轮拆解以 **MVP（Stage 0–1，34 条 ★MVP FR）为深度覆盖目标**；2026-09-09 增量展开 Epic 8（Stage 2）；其余 Stage 记录到 Epic 级待启动（[[ASSUMPTION] 用户指令"重点覆盖 MVP"，后续阶段到时再拆）。无 UX 设计契约（MVP 无 UI；Console/Domain Studio 属 Stage 2+，届时需先跑 bmad-ux）。
 
 ## Requirements Inventory
 
@@ -200,8 +204,8 @@ Working/Hypothesis/Guide/Counterexample 四类记忆；Claim 带证据/反例/�
 评测配置全固化可还原；六组消融（Baseline→Full）、切片、多种子、成本、失败分类自动产出；VastaLab 任务集初版（20+ 任务）。完成后：一份证明 Full 相对 Baseline 净收益的报告。对应蓝图 E6 + VastaLab。
 **FRs covered:** FR-063★, FR-064★（+VastaLab 任务资产）
 
-### Epic 8: 开发者接入体验（Stage 2，仅 Epic 级）
-五种接入方式、模型能力探测与路由、插件脚手架与协议测试工具、GUI Pack（Playwright）与 Tool Proxy、按需派生、版本回溯、历史轨迹离线评估。**FRs covered:** FR-002, FR-003, FR-006, FR-081, FR-015, FR-016, FR-061, FR-066
+### Epic 8: 开发者接入体验（Stage 2，已展开——2026-09-09 增量拆解）
+五种接入方式（轨迹导入升为一等形态）、模型能力探测与路由、插件脚手架与协议测试工具、GUI Pack（Playwright）与 Tool Proxy、按需派生、版本回溯、历史轨迹离线评估；评测即 Run（替身模型）与 lab.py 技术债并行。**FRs covered:** FR-002, FR-003, FR-006, FR-081, FR-015, FR-016, FR-061, FR-066（详见下文 Epic 8 详细节）
 
 ### Epic 9: 团队协作与控制面（Stage 3，仅 Epic 级）
 集中存储（PG/S3）、数据生命周期与删除证明、审批记录、资产发布灰度、租户隔离、配额、版本化回滚、运维基线、定时/批量 Run、Domain Studio 初版。**FRs covered:** FR-007, FR-008, FR-017, FR-018, FR-026, FR-028, FR-034, FR-038, FR-065, FR-070, FR-072, FR-075, FR-076
@@ -674,5 +678,212 @@ So that 每层能力的净收益有数字、故事不靠感觉讲。
 
 ---
 
-*Stage 2+ 的 Epic 8–12（开发者接入体验/团队协作控制面/企业保障/平台化多 Agent/开放生态）按 PRD 阶段标注记录于上文 Epic List，到各自 Stage 启动时再回到本工作流展开 Story。*
+## Epic 8: 开发者接入体验（Stage 2 展开）
+
+**用户成果**：开发者用熟悉的方式（SDK / HTTP / 轨迹导入 / Tool Proxy）在 ≤3 工程日内把 VastaCore 挂到自己的 Agent 上——工具经脚手架与协议测试接入、模型五维能力被自动探测并按策略路由熔断、任何派生物/记忆/模型/策略可回溯到当时版本、历史轨迹可离线评估新配置。（SM-5 出门条件：基础接入 ≤3 工程日 + ≥3 设计伙伴团队每周使用，验证 FR-002/081）
+
+### Epic 8 内部能力分组（2026-09-09 批准，经 Party Mode 评审 + Assumption Audit 修订）
+
+| 组 | 用户价值 | FR | 备注 |
+|---|---|---|---|
+| G1 接入面 | 我的 Agent 三天接入：SDK / HTTP / **轨迹导入（一等形态）** / Tool Proxy | FR-002 | middleware/proxy/sidecar 排 SM-5 伙伴信号之后；首个 Story 验收含**自测接入计时**（≤3 工程日从假设变实验） |
+| G2 工具面 | 写个工具像写函数：脚手架生成清单骨架 + 协议测试本地一键跑 | FR-081 | SM-5 出门条件之二 |
+| G3 模型面 | 换个模型不动代码：五维能力探测 + 路由/超时/重试/熔断/降级 + 成本归集（NFR-015） | FR-003 + FR-006 | 真实模型适配器为实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）；各 Story 标注「伙伴信号可调整」 |
+| G4 回溯与离线评估 | 回到当时那一刻 + 旧轨迹评新配置 | FR-061 + FR-066 | ①已回溯类收口（派生物血缘+Claim.version）②**模型/策略版本化新建**（模型入 CAS+版本链、策略快照入事件）③**评测即 Run**：RunEngine+替身模型（FakeModel 契约）批量跑 VastaLab 产生完整事件流回放——不必等真实适配器，早期关验收矩阵 AC-01 P0 缺口并触发 WAIVER 复评 |
+| G5 多模态按需派生 | 要时才算：视频时间窗/音频对齐 / 按需 OCR·ASR·embedding | FR-015 + FR-016 | Should 级；每个 Story 标注 GUI Pack 决议门槛（无 UX 契约前不实施） |
+| 并行技术债 | lab.py（667 行十概念）拆分 sandbox/models/planner/meta | —（复盘 A5） | 并行不阻塞；388 测试回归护栏 |
+
+### FR Coverage Map（Epic 8）
+
+```
+FR-002 → G1  五种接入 + Tool Proxy（轨迹导入一等形态）
+FR-003 → G3  五维能力探测（真实适配器载体，ASSUMPTION 披露）
+FR-006 → G3  路由/超时/重试/熔断/降级/成本
+FR-081 → G2  脚手架 + 协议测试 + 本地开发工具
+FR-061 → G4  版本回溯（2 类已有收口 + 2 类新建）
+FR-066 → G4  历史轨迹离线评估（与 G1 轨迹导入配对）
+FR-015 → G5  视频时间窗/音频对齐（GUI Pack 门槛）
+FR-016 → G5  按需 OCR/ASR/embedding（GUI Pack 门槛）
+```
+
+**依赖**：G1/G2 可并行；G3 挂在 G1 的 Run 路径上；G4 依赖既有 CAS/事件基座；G5 独立可延后。组间无前向依赖。
+
+
+### Story 8.1: SDK 接入与自测计时（G1）
+
+As a Agent 开发者,
+I want 一个 pip 安装的 SDK 把我的 Agent 循环挂进 RunEngine（生命周期/预算/证据落盘/六段链对我透明）,
+So that 不改架构就获得可信执行与完整回放。
+
+**Acceptance Criteria:**
+
+**Given** 空仓库与一个示例 Agent（README 快速上手为准）
+**When** 按文档从零接入并**计时记录**
+**Then** ≤3 工程日完成接入（SM-5 实验证据，计时记录入档）
+**And** 写动作自动走六段链（开发者无需手工编排核验）；同 seed 字节级复现（FR-002，SM-5）
+
+### Story 8.2: 轨迹导入——一等接入形态（G1）
+
+As a 已有生产 Agent 的团队负责人,
+I want 把历史执行日志导入证据库（映射事件族 + 工具原始响应入 CAS）,
+So that 零侵入获得检索/回放/离线评估。
+
+**Acceptance Criteria:**
+
+**Given** 常见轨迹格式样例（OpenAI messages 风格与自定义 JSONL）
+**When** 执行导入
+**Then** 逐条映射为合法信封事件（schema 校验过）且工具响应入 CAS 可哈希取回
+**And** 导入产物可被 search/timeline/复现包消费；不合法轨迹明确报错不入库（fail-closed）（FR-002 第六种形态）
+
+### Story 8.3: HTTP 接入服务（G1）
+
+As a 非 Python 技术栈的工程师,
+I want HTTP 服务暴露 Run 生命周期与证据查询,
+So that 任何语言都能接入 VastaCore。
+
+**Acceptance Criteria:**
+
+**Given** SDK 已就绪（Story 8.1）
+**When** 以服务模式启动
+**Then** run/step/evidence/timeline 端点可用且经令牌鉴权
+**And** 事件写入仍走唯一通道（AD-2，服务层不旁路）；服务崩溃不丢已落盘证据（FR-002）
+
+### Story 8.4: 工具脚手架与协议测试（G2）
+
+As a 工具作者,
+I want `vasta tool init` 生成清单骨架 + 一键协议测试,
+So that 我的工具过五协议契约才上架，不用读文档抄样例。
+
+**Acceptance Criteria:**
+
+**Given** 脚手架命令与空工具项目
+**When** 生成骨架、填实现、本地跑协议测试
+**Then** 契约套件（manifest 完整性/幂等/读回/风险分类/dry-run）全绿才可注册网关
+**And** 缺风险/幂等声明在构造期拒绝（复用 FR-032 语义）（FR-081，SM-5）
+
+### Story 8.5: 模型五维能力探测（G3）
+
+As a 平台使用者,
+I want 系统自动探测模型的视觉/结构化输出/工具调用/上下文/流式能力,
+So that 路由与提示策略按真实能力走，而不是我手工声明。
+
+**Acceptance Criteria:**
+
+**Given** 任一模型适配器
+**When** 运行能力探测
+**Then** 产出五维能力清单（含探测方法与置信度）作为 Artifact 落盘留痕
+**And** 探测失败 fail-closed（按无该能力处理，不猜测）（FR-003；伙伴信号可调整）
+
+### Story 8.6: 模型路由、熔断与成本（G3）
+
+As a 平台使用者,
+I want 按能力+成本+健康的路由（超时/重试/熔断/降级）,
+So that 换模型不动代码，故障不放大，成本看得见。
+
+**Acceptance Criteria:**
+
+**Given** 多个适配器与可配置路由策略
+**When** 发起模型调用
+**Then** 路由决策落事件留痕；失败按阈值熔断计数；成本计入预算归集（NFR-015）
+**And** 降级链可配置且降级发生留痕（FR-006；伙伴信号可调整）
+
+### Story 8.7: 版本回溯收口——派生物与记忆（G4）
+
+As a 调试中的开发者,
+I want 派生物与记忆一键回到当时版本,
+So that 历史结论可复现、可对质。
+
+**Acceptance Criteria:**
+
+**Given** 任一派生物或 Claim ID
+**When** 执行 as-of 时间点查询
+**Then** 取回当时版本及其血缘链/证据链（哈希校验过）
+**And** 查询只读零副作用（FR-061，验收性收口：复用既有血缘与 Claim.version）
+
+### Story 8.8: 模型与策略版本化（G4）
+
+As a 平台使用者,
+I want 模型资产带版本链、策略配置有快照,
+So that 「回到当时那一刻」覆盖全部四类对象。
+
+**Acceptance Criteria:**
+
+**Given** 模型 manifest 变更或策略配置变更
+**When** 发布新版本
+**Then** 旧版本可完整取回（模型资产入 CAS+版本引用链；策略配置快照入事件流）
+**And** 历史 Run 的事件引用当时的版本（回放不串版）（FR-061）
+
+### Story 8.9: 评测即 Run——替身模型批量回放（G4）
+
+As a 平台负责人,
+I want VastaLab 任务集经 RunEngine（替身模型）批量运行并产生完整事件流回放,
+So that 评测任务与真实 Run 同构，验收 AC-01 从 PARTIAL 翻 FULL。
+
+**Acceptance Criteria:**
+
+**Given** ≥40 个 VastaLab 任务与 FakeModel 契约替身
+**When** 批量运行
+**Then** 每任务产出完整事件流（timeline 全覆盖、因果链可溯）且复现包可离线重放
+**And** 触发验收矩阵 AC-01 与相关 WAIVER 复评（不等真实适配器——Assumption Audit P1 修正）
+
+### Story 8.10: 历史轨迹离线评估（G4）
+
+As a 平台负责人,
+I want 对导入的历史轨迹离线评估新策略/核验器/模型,
+So that 不重跑生产就能预判切换影响。
+
+**Acceptance Criteria:**
+
+**Given** Story 8.2 导入的轨迹与新核验器/策略配置
+**When** 离线评估
+**Then** 产出旧结果 vs 新结果对比报告（偏差清单含事件定位）
+**And** 评估零副作用（只读回放，不产生新动作）（FR-066）
+
+### Story 8.11: Tool Proxy（G1，排 SM-5 信号后）
+
+As a 浏览器自动化团队,
+I want Tool Proxy 把现有 Playwright 工具调用代理进六段链,
+So that GUI Pack 不必重写既有工具。
+
+**Acceptance Criteria:**
+
+**Given** 既有 Playwright 工具调用
+**When** 经 Proxy 执行
+**Then** 走网关通道（清单/幂等/风险分类/超时）；原始响应入 CAS
+**And** 蓝图 §31 Stage 2 交付物项（SM-5 伙伴信号确认需求后启动）
+
+### Story 8.12: 多模态按需派生（G5，GUI Pack 决议门槛）
+
+As a 多模态 Agent 开发者,
+I want 按需触发 OCR/ASR/摘要/embedding 与视频时间窗/音频对齐（不默认全量派生）,
+So that 派生成本可控、需要才算。
+
+**Acceptance Criteria:**
+
+【GUI Pack 决议门槛：UX 契约与 GUI Pack 决议未定前不实施】
+**Given** 证据引用（图像/音视频）
+**When** 显式请求派生
+**Then** 派生物带血缘可回链源时间轴/源 Artifact；按需触发留痕
+**And** 不请求不派生（FR-015 + FR-016，Should）
+
+### Story 8.13: lab.py 模块拆分（并行技术债，复盘 A5）
+
+As a 维护者,
+I want lab.py（667 行十概念）拆分为 sandbox/models/planner/meta 模块,
+So that Epic 8 各接入扩展不再挤单文件。
+
+**Acceptance Criteria:**
+
+**Given** 现有 vasta_model_lab 单文件实现
+**When** 拆分模块
+**Then** 公共 API 不变（`__all__` 兼容再导出）；388 测试全绿；import-linter 契约 KEPT
+**And** 与 G1–G5 并行、不阻塞任何接入 Story（复盘 A5 行动项）
+
+---
+
+*Epic 8 备注：middleware/proxy/sidecar 三种接入形态（FR-002 余下）待 SM-5 伙伴信号确认需求后回到本工作流补拆 Story；真实模型适配器为 FR-003/006 实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）。*
+
+---
+
+*Stage 3+ 的 Epic 9–12（团队协作控制面/企业保障/平台化多 Agent/开放生态）按 PRD 阶段标注记录于上文 Epic List，到各自 Stage 启动时再回到本工作流展开 Story。*
 
