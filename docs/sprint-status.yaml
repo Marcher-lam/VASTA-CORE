@@ -96,7 +96,7 @@ development_status:
   8-4-tool-scaffold: review
   8-5-capability-probe: review
   8-6-model-routing: review
-  8-7-lineage-recall: backlog
+  8-7-lineage-recall: review
   8-8-model-policy-versioning: backlog
   8-9-eval-as-run: backlog
   8-10-offline-trajectory-eval: backlog

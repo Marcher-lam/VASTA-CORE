@@ -7,6 +7,7 @@ from .quickstart import RunSummary, quickstart
 from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
 from .service import VastaService, create_app, serve
+from .timetravel import DerivedRecall, claim_as_of, derived_recall
 from .trajectory import ImportSummary, import_trajectory
 
 __all__ = [
@@ -16,6 +17,9 @@ __all__ = [
     "probe_capabilities",
     "save_capability_report",
     "ContractTemplate",
+    "DerivedRecall",
+    "claim_as_of",
+    "derived_recall",
     "CostEntry",
     "ModelRouter",
     "RouterError",
