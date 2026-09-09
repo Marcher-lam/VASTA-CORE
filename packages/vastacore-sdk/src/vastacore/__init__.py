@@ -9,15 +9,27 @@ from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_c
 from .service import VastaService, create_app, serve
 from .timetravel import DerivedRecall, claim_as_of, derived_recall
 from .trajectory import ImportSummary, import_trajectory
+from .versioning import (
+    PublishedRef,
+    VersionRecord,
+    publish_model_version,
+    publish_policy_snapshot,
+    version_as_of,
+)
 
 __all__ = [
     "AgentSession",
     "CapabilityReport",
     "ProbeOutcome",
     "probe_capabilities",
+    "publish_model_version",
+    "publish_policy_snapshot",
     "save_capability_report",
+    "version_as_of",
     "ContractTemplate",
     "DerivedRecall",
+    "PublishedRef",
+    "VersionRecord",
     "claim_as_of",
     "derived_recall",
     "CostEntry",
