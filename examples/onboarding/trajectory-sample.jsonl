@@ -1,0 +1,4 @@
+{"type": "message", "role": "user", "content": "帮我把订单 A102 标记发货"}
+{"type": "message", "role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "name": "ship_order", "arguments": {"order_id": "A102"}}]}
+{"type": "tool_call", "call_id": "call_1", "name": "ship_order", "output": {"ok": true, "status": "shipped"}}
+{"type": "message", "role": "assistant", "content": "A102 已发货"}

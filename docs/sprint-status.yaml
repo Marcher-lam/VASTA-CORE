@@ -91,7 +91,7 @@ development_status:
 
   epic-8: in-progress
   8-1-sdk-onboarding: review
-  8-2-trajectory-import: backlog
+  8-2-trajectory-import: review
   8-3-http-service: backlog
   8-4-tool-scaffold: backlog
   8-5-capability-probe: backlog
