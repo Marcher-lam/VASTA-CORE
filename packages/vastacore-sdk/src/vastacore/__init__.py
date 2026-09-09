@@ -2,6 +2,7 @@
 
 from ._version import __version__
 from .agent import AgentSession, ContractTemplate, SessionSummary
+from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
 from .service import VastaService, create_app, serve
@@ -9,6 +10,10 @@ from .trajectory import ImportSummary, import_trajectory
 
 __all__ = [
     "AgentSession",
+    "CapabilityReport",
+    "ProbeOutcome",
+    "probe_capabilities",
+    "save_capability_report",
     "ContractTemplate",
     "ImportSummary",
     "ScaffoldResult",
