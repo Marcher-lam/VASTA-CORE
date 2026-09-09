@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-09-2026 02:10
+last_updated: 09-09-2026 10:46
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -43,13 +43,13 @@ development_status:
   1-5-runcontext-确定性注入: review
   1-6-supervisor-循环与预算监控: review
   1-7-示例环境与端到端首跑: review
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: in-progress
   2-1-多维检索索引: review
   2-2-图像回看工具集: review
   2-3-派生血缘与回链校验: review
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: in-progress
   3-1-actioncontract-模型与缺段拒执行: review
@@ -58,21 +58,21 @@ development_status:
   3-4-执行后组合核验: review
   3-5-偏差失效与有界恢复: review
   3-6-人工暂停-接管-批准-撤销: review
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   epic-4: in-progress
   4-1-因果时间线投影: review
   4-2-首个偏差定位: review
   4-3-自包含-html-replay-生成器: review
   4-4-最小复现包与回归任务: review
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   epic-5: in-progress
   5-1-四类记忆与-claim-全生命周期: review
   5-2-显式冲突: review
   5-3-失效传播: review
   5-4-context-builder-预算内装配: review
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   epic-6: in-progress
   6-1-模型接口-清单与双形态加载: review
@@ -81,13 +81,13 @@ development_status:
   6-4-meta-controller-规则版: review
   6-5-受约束规划与逐步现实核验: review
   6-6-worldmodel-失效桥接-ad-13: review
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   epic-7: in-progress
   7-1-评测框架与配置固化: review
   7-2-vastalab-任务集初版: review
   7-3-六组消融-runner: review
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   epic-8: backlog
   epic-8-retrospective: optional
@@ -103,3 +103,42 @@ development_status:
 
   epic-12: backlog
   epic-12-retrospective: optional
+action_items:
+  - id: "epic-1-7-retro-item-1-git-hygiene"
+    epic: 7
+    action: "工作产物显式路径 git add（禁 -A 兜底）；新临时目录先入 .gitignore"
+    owner: "全体会话"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-1-7-retro-item-2-unify-sequencer"
+    epic: 7
+    action: "统一事件信封构造/seq 分配器（单一 Sequencer），消除 runner/cognition/_bookkeeping_stub
+      三处重复"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-1-7-retro-item-3-bridge-wiring"
+    epic: 7
+    action: "cognition→model-lab 桥接自动化：引擎在 refute 后调 WorldModelBridge（AD-13 owner
+      语义落地）"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-1-7-retro-item-4-split-lab"
+    epic: 7
+    action: "lab.py（667 行十概念）拆分为 sandbox/models/planner/meta 模块"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-1-7-retro-item-5-waiver-decisions"
+    epic: 7
+    action: "6 项验收 WAIVER 决议（owner+到期日）后重跑 testarch-trace 复评门禁"
+    owner: "用户"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-1-7-retro-item-6-story-docs"
+    epic: 7
+    action: "Epic 6/7 九份 Story 文档补验收映射"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-1-7-retro-2026-09-09.md"
