@@ -242,8 +242,20 @@ class SandboxExecutor:
                      "code_head": code[:120]},
                 )
 
+    async def _emit_incident(self, payload: dict[str, Any]) -> None:
+        """越权/异常留痕（AC-06「失败且有审计」；留痕失败不掩盖本体）。"""
+        if self.emitter is not None:
+            with contextlib.suppress(Exception):
+                await self.emitter("incident.opened", payload)
+
     async def run(self, code: str, payload: dict[str, Any]) -> dict[str, Any]:
-        wrapped = self._wrap(code)
+        try:
+            wrapped = self._wrap(code)  # 静态检查在此拒绝越权代码
+        except VastaError as exc:
+            await self._emit_incident(
+                {"source": "sandbox", "reason": exc.code, "code_head": code[:120]}
+            )
+            raise
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, "-c", wrapped,

@@ -13,6 +13,7 @@ from .evaluation import (
     generate_tasks,
     make_config,
     run_ablation,
+    run_ablation_slices,
     task_rng_seed,
     verify_config_complete,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "generate_tasks",
     "make_config",
     "run_ablation",
+    "run_ablation_slices",
     "task_rng_seed",
     "verify_config_complete",
 ]

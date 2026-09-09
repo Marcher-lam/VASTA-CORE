@@ -227,3 +227,68 @@ class TestReviewGuards:
              "budget": {"max_actions": 0}}
         )
         assert not verify_config_complete(bad_value)
+
+
+class TestAblationSlicing:
+    """FR-064「切片」：维度切分消融（验收矩阵行动项 2）。"""
+
+    def test_slice_by_hidden_rule(self) -> None:
+        """按隐藏规则切片：每片独立六组，净增益可按任务族拆读。"""
+        from vasta_eval import run_ablation_slices
+
+        tasks = generate_tasks(8, seed=11)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=11)
+        reports = run_ablation_slices(
+            tasks, config, slice_fn=lambda t: t.hidden_rule
+        )
+        assert set(reports) == {"none", "teleport", "wind"}  # 全部任务族
+        total = 0
+        for report in reports.values():
+            assert [g.group for g in report.groups] == [
+                "baseline", "evidence", "cognition", "contract", "model", "full",
+            ]
+            total += len(report.groups[0].results)
+        assert total == len(tasks)  # 切片不重不漏
+
+    def test_slice_by_variant_suffix(self) -> None:
+        from vasta_eval import run_ablation_slices
+
+        tasks = generate_tasks(4, seed=2)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=2)
+
+        def variant(task) -> str:
+            if task.task_id.endswith("-noise"):
+                return "noise"
+            if task.task_id.endswith("-dev"):
+                return "deviation"
+            return "main"
+
+        reports = run_ablation_slices(tasks, config, slice_fn=variant)
+        assert set(reports) == {"main", "noise", "deviation"}
+        assert len(reports["noise"].groups[0].results) == 4  # n_main 噪声变体
+
+    def test_task_ids_subset_slicing(self) -> None:
+        """task_ids 子集切片：未知任务报错，子集内运行。"""
+        tasks = generate_tasks(4, seed=5)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=5)
+        subset = [t.task_id for t in tasks[:3]]
+        report = run_ablation(tasks, config, groups=("baseline", "full"),
+                              task_ids=subset)
+        assert len(report.groups) == 2
+        assert len(report.groups[0].results) == 3
+        with pytest.raises(ValueError):
+            run_ablation(tasks, config, task_ids=["vl-99"])
+
+    def test_slice_net_gain_per_family_readable(self) -> None:
+        """切片后的每族净增益可独立读取（不再只剩全池单一数字）。"""
+        from vasta_eval import run_ablation_slices
+
+        tasks = generate_tasks(8, seed=11)  # 该样本含全部三族规则
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=11)
+        reports = run_ablation_slices(
+            tasks, config, slice_fn=lambda t: t.hidden_rule
+        )
+        gains = {label: r.full_vs_baseline_net_gain
+                 for label, r in reports.items()}
+        assert set(gains) == {"none", "teleport", "wind"}
+        assert all(isinstance(v, float) for v in gains.values())

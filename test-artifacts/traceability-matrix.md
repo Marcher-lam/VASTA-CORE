@@ -27,7 +27,7 @@ externalPointerStatus: 'not_used'
 **Coverage Oracle:** acceptance_criteria（形式化需求）
 **Oracle Confidence:** high（FR/AC 全局稳定编号；PRD/蓝图/Story 三层一致）
 **Oracle Sources:** `plan.md §32.1`、`docs/prds/.../prd.md`、`docs/epics.md`
-**测试基线:** 380 collected → 379 passed + 1 skipped（Windows sandbox resource 限额跳过），commit `3217cc2`
+**测试基线:** 388 collected → 387 passed + 1 skipped（Windows sandbox resource 限额跳过）；初评 @ `3217cc2`（380/379），复评含缺口补齐 +8 测试
 
 > 本工作流只审计覆盖与门禁，不生成测试。缺口补齐走 `/bmad-testarch-automate` 或实现 Story。
 > 覆盖状态取值：FULL / PARTIAL / NONE / UNIT-ONLY / INTEGRATION-ONLY。门禁百分比只计 FULL。
@@ -40,11 +40,11 @@ externalPointerStatus: 'not_used'
 
 | Priority | Total Criteria | FULL Coverage | Coverage % | Status |
 | -------- | -------------- | ------------- | ---------- | ------ |
-| P0（AC-01~08，MVP 出门条件） | 8 | 3 | 37.5% | ❌ FAIL |
-| P1（34 ★FR，Must） | 34 | 30 | 88.2% | ⚠️ WARN（≥80% <90%） |
+| P0（AC-01~08，MVP 出门条件） | 8 | 5 | 62.5% | ❌ FAIL（复评 +2，仍 <100%） |
+| P1（34 ★FR，Must） | 34 | 31 | 91.2% | ✅ PASS（复评翻绿，≥90%） |
 | P2 | 0 | 0 | N/A | N/A |
 | P3 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **33** | **78.6%** | **❌ FAIL**（<80% 总下限） |
+| **Total** | **42** | **36** | **85.7%** | ⚠️ 总量过下限；门禁由 P0 决定 |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -86,23 +86,21 @@ externalPointerStatus: 'not_used'
   - `DR-02` — `TestBoundedRecovery::test_side_effect_limit_safe_stop` / `test_engine_recovery_limit_safe_stops`【I】：不继续批量执行（副作用总闸 + 恢复预算）
   - `EV-03` — `tests/test_evaluation.py::test_deviation_and_noise_variants`【U】：任务集含偏差注入变体
 
-#### AC-05: 至少 10 个确定性任务的激活模型通过声明范围内全部历史回放 — **PARTIAL** ⚠️
+#### AC-05: 至少 10 个确定性任务的激活模型通过声明范围内全部历史回放 — **FULL** ✅（复评翻绿）
 
 - **Tests:**
   - `ML-01` — `tests/test_model_lab.py` `TestValidationPipeline::test_replay_all_pass_with_approval_activatable` / `test_replay_mismatch_detected`【I】：回放全过 + 人工批准才可激活（含零重叠空转守卫 `test_replay_zero_overlap_fails`）
   - `ML-02` — `TestValidationPipeline::test_without_approval_not_activatable`【I】：激活门槛四要素
-- **判定:** 机制 FULL（validate_model + activatable 门槛 + 零重叠防伪）；**「≥10 个任务」批量激活实验无测试**——现有验证为单/少轨迹规模。
-- **缺口:** 一个构造 ≥10 条 VastaLabTask 轨迹、逐一生成历史并断言全部回放通过的批量测试（纯测试缺口，无需新实现）。
+- **判定:** 机制与批量实验均 FULL。复评补 `TestAcceptanceGaps::test_batch_activation_over_ten_tasks`：单一受限 Python 模型镜像 VastaLabTask 转移语义（teleport/wind），15 个任务（≥10）各自以确定性求解器生成历史，全部回放通过 + 确定性性质测试 + 人工批准 → activatable。
 
-#### AC-06: 网络、密钥、宿主文件和资源越权测试全部失败并有审计 — **PARTIAL** ⚠️
+#### AC-06: 网络、密钥、宿主文件和资源越权测试全部失败并有审计 — **FULL** ✅（复评翻绿）
 
 - **Tests:**
   - `SB-01` 网络 — `tests/test_model_lab.py::TestSandbox::test_sandbox_no_network`【I】：socket 连接失败
   - `SB-02` 资源 — `test_sandbox_memory_error`（内存限额 MemoryError）+ `test_sandbox_timeout_real_clock`【I】
   - `SB-03` 宿主文件 — `test_from_import_whitelist_enforced` / `test_reflection_builtins_rejected` / `test_local_exec_builtins_restricted`（open 拒绝 + exec 无全量 builtins）【U/I】
   - `SB-04` 静态拒绝 — `test_sandbox_run_rejects_forbidden_code`【I】
-- **判定:** 网络/文件/资源三维 FULL；**密钥维度无显式测试**（`sandbox_subprocess_env` 已实现环境清除但无「子进程内凭证不可达」断言）；**「有审计」无测试**（越权拒绝抛 VastaError 但未断言 incident/审计事件落库）。
-- **缺口:** ① 子进程内 `os.environ` 无凭证的断言测试；② 越权失败落 `incident.opened`（或等价审计事件）的断言测试。
+- **判定:** 四维 + 审计全部 FULL。复评补三件：`SandboxExecutor.run` 静态拒绝越权代码时经 emitter 落 `incident.opened`（实现 + `test_forbidden_code_emits_incident_audit`）；`test_sandbox_env_drops_parent_credentials`（白名单式最小环境，父进程凭证不透传）；`test_env_access_paths_statically_rejected`（os/from-import/sys/__import__/file 五条环境读取通道全拒）。
 
 #### AC-07: 自动产出六组消融、成本、置信区间和失败分类 — **PARTIAL** ⚠️
 
@@ -111,8 +109,8 @@ externalPointerStatus: 'not_used'
   - `AB-02` 成本 — `test_overhead_separately_measured`（NFR-005 平台开销单列）【U】
   - `AB-03` 失败分类 — `test_failure_breakdown_categorized`（四桶）【U】
   - `AB-04` 多种子 — `test_multi_seed_aggregation_with_stddev`【U】：成功率标准差（非置信区间）
-- **判定:** 六组/成本/失败分类 FULL；**置信区间未实现未测**（Epic 4-7 评审 defer #2，需真实任务方差定样本量）；**切片（组×任务维度切分）未实现未测**。
-- **缺口:** CI 属实现缺口（可 WAIVER 至 Stage 2）；切片可低成本实现+测试。
+- **判定:** 六组/成本/失败分类/切片 FULL（复评补 `run_ablation_slices`）；**仅置信区间未实现未测**（Epic 4-7 评审 defer #2，需真实任务方差定样本量）。
+- **缺口:** CI 单项——WAIVER 至 Stage 2 候选。
 
 #### AC-08: 失败复现包可在干净环境离线重放非模型事件和 verifier — **PARTIAL** ⚠️
 
@@ -161,7 +159,7 @@ externalPointerStatus: 'not_used'
 | FR-060 | 完整因果时间线 | FULL ✅ | `test_timeline.py` 覆盖/纯度/外部变化/render（I）+ HTML 转义守卫 |
 | FR-062 | 复现包+回归任务 | FULL ✅ | TestReproBundle + 契约上移守卫（I）（verifier 重执行同 AC-08 备注） |
 | FR-063 | 评测配置七要素固化 | FULL ✅ | `test_config_complete_and_reproducible` + 跨进程种子稳定（评审后）（U） |
-| FR-064 | 消融五要素 | PARTIAL ⚠️ | 六组/多种子/成本/失败分类 FULL；**切片无实现无测试** |
+| FR-064 | 消融五要素 | FULL ✅（复评翻绿） | 六组/多种子/成本/失败分类 + **切片**（`run_ablation(task_ids=)` 子集 + `run_ablation_slices` 维度切分，`TestAblationSlicing` 4 条：按隐藏规则/按变体/子集校验/逐族净增益） |
 
 ---
 
@@ -202,3 +200,28 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
 4. **AC-01 结构项**：Stage 2 模型适配器落地时以 RunEngine 批量跑 VastaLab 任务集（接 defer #1）
 
 📂 Full Report: `test-artifacts/traceability-matrix.md`
+
+
+---
+
+## 复评记录（2026-09-09，缺口补齐后）
+
+**变更:** 按初评行动项 1/2 补齐——AC-05 批量激活实验、AC-06 密钥断言 + 越权审计事件（含 ~10 行 `incident.opened` 发射实现）、FR-064 切片（`run_ablation(task_ids=)` + `run_ablation_slices`）。+8 测试（380→388 collected，全绿；ruff/import-linter 通过）。
+
+| 判据 | 初评 | 复评 | 依据 |
+|------|------|------|------|
+| AC-05 | PARTIAL | **FULL** | `test_batch_activation_over_ten_tasks`：15 任务全回放 + 性质 + 批准 → activatable |
+| AC-06 | PARTIAL | **FULL** | `test_forbidden_code_emits_incident_audit` / `test_sandbox_env_drops_parent_credentials` / `test_env_access_paths_statically_rejected` |
+| AC-07 | PARTIAL（CI+切片） | PARTIAL（仅 CI） | 切片翻绿；置信区间维持 WAIVER 候选 |
+| FR-064 | PARTIAL | **FULL** | `TestAblationSlicing` 4 条 |
+
+**复评覆盖:** P0 5/8（62.5%）· P1 31/34（91.2% ✅）· Overall 36/42（85.7%）
+
+## 🚨 GATE DECISION（复评）: **FAIL → 维持 FAIL，缺口收敛**
+
+- P0 62.5%（需 100%）→ 仍 FAIL；但剩余 P0 缺口由 5 个收敛为 3 个，且全部为**结构性/裁决项**而非可补测试项：
+  1. **AC-01** 评测任务 × Run 事件流（「评测即 Run」，需 Stage 2 模型适配器——实现级 defer）
+  2. **AC-07** 置信区间（需真实任务方差，Stage 2 WAIVER 候选）
+  3. **AC-08** verifier 随包重执行（Story 4.4「最小验证」语义，WAIVER 或补实现——用户裁决）
+- P1 翻 PASS（91.2%）；P1 剩余 PARTIAL 三条（FR-013/022/024）均为蓝图 Stage 2/3 范围 WAIVER 候选。
+- **下一步即 WAIVER 决议**：6 项豁免（上列 3 项 P0 + 3 项 P1）经 owner + 到期日豁免后，重跑本工作流——豁免项不计分母，门禁可达 PASS。

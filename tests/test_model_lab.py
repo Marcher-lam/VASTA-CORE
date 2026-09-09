@@ -361,3 +361,112 @@ class TestReviewGuards:
         )
         with pytest.raises(NameError):
             m.transition({"col": 0}, {"tool": "right"})
+
+
+class TestAcceptanceGaps:
+    """验收矩阵缺口补齐（test-artifacts/traceability-matrix.md 行动项 1）。"""
+
+    def test_batch_activation_over_ten_tasks(self) -> None:
+        """AC-05：≥10 个确定性任务的激活模型通过声明范围内全部历史回放。
+
+        同一个受限 Python 模型镜像 VastaLabTask 转移语义（含 teleport/wind），
+        ≥10 条任务各自以确定性求解器生成历史，validate_model 全部回放通过，
+        人工批准后 activatable。"""
+        from vasta_eval import generate_tasks
+
+        model = PythonWorldModel(
+            grid_manifest("grid-mirror"),
+            "r, c = state['row'], state['col']\n"
+            "m = action['tool']\n"
+            "size = state['_size']\n"
+            "if m == 'down': r = min(r + 1, size - 1)\n"
+            "elif m == 'up': r = max(r - 1, 0)\n"
+            "elif m == 'right': c = min(c + 1, size - 1)\n"
+            "elif m == 'left': c = max(c - 1, 0)\n"
+            "steps = state.get('_steps', 0) + 1\n"
+            "if state.get('_rule') == 'teleport' and (r, c) == (1, 1):\n"
+            "    r, c = 2, 2\n"
+            "if state.get('_rule') == 'wind' and steps % 2 == 0:\n"
+            "    r = min(r + 1, size - 1)\n"
+            "result = {'row': r, 'col': c, '_steps': steps,"
+            " '_size': size, '_rule': state.get('_rule')}\n",
+        )
+        tasks = generate_tasks(6, seed=3)  # 6 主 + 6 噪声 + 3 偏差 = 15 ≥ 10
+        assert len(tasks) >= 10
+        trajectories = []
+        for task in tasks:
+            init = {
+                "row": task.start[0], "col": task.start[1],
+                "_size": task.grid_size, "_rule": task.hidden_rule, "_steps": 0,
+            }
+            actions = [{"tool": m} for m in task.solve()]
+            observations = []
+            pos = task.start
+            for i, move in enumerate(task.solve(), start=1):
+                pos = task._step(pos, move, i)
+                observations.append({"row": pos[0], "col": pos[1], "kind": "decision"})
+            trajectories.append(
+                Trajectory(
+                    {"detail": init},
+                    actions,
+                    observations,
+                    "ongoing",  # 到达目标与否不影响回放（outcome 不在观察面）
+                )
+            )
+        report = validate_model(
+            model,
+            trajectories,
+            properties=[
+                # 性质：模型确定性——同状态同动作重复转移结果一致（FR-044 性质测试）
+                lambda m: m.transition({"row": 0, "col": 0, "_size": 4,
+                                        "_rule": "none", "_steps": 0},
+                                       {"tool": "right"})
+                == m.transition({"row": 0, "col": 0, "_size": 4,
+                                 "_rule": "none", "_steps": 0},
+                                {"tool": "right"})
+            ],
+            activation_approved=True,
+        )
+        assert report.replay_total == len(tasks) >= 10
+        assert report.all_replay_passed  # 声明范围内全部历史回放通过
+        assert report.activatable  # 静态过 + 全回放过 + 人工批准
+
+    def test_sandbox_env_drops_parent_credentials(self, monkeypatch) -> None:
+        """AC-06 密钥维度：子进程环境不含父进程凭证（最小环境）。"""
+        from vasta_model_lab._bookkeeping_stub import sandbox_subprocess_env
+
+        monkeypatch.setenv("VASTA_FAKE_SECRET", "sk-live-do-not-leak")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        env = sandbox_subprocess_env()
+        assert "VASTA_FAKE_SECRET" not in env
+        assert "AWS_SECRET_ACCESS_KEY" not in env
+        allowed = {"PYTHONIOENCODING", "PYTHONHASHSEED", "SYSTEMROOT"}
+        assert set(env) <= allowed  # 白名单式：任何新变量都必须显式加入
+
+    def test_env_access_paths_statically_rejected(self) -> None:
+        """AC-06 密钥维度：所有环境读取通道在静态检查层拒绝。"""
+        forbidden = [
+            "import os\nresult = {'e': os.environ}\n",
+            "from os import environ\nresult = {'e': environ}\n",
+            "result = {'e': sys.environ}\n",
+            "result = {'e': __import__('os').environ}\n",
+            "result = {'e': open('/proc/self/environ').read()}\n",
+        ]
+        for code in forbidden:
+            with pytest.raises(VastaError):
+                PythonWorldModel(grid_manifest("env-probe"), code)
+
+    async def test_forbidden_code_emits_incident_audit(self) -> None:
+        """AC-06 审计维度：越权拒绝落 incident.opened 事件（有审计）。"""
+        emitted: list[tuple[str, dict]] = []
+
+        async def emitter(type_: str, payload: dict) -> None:
+            emitted.append((type_, payload))
+
+        executor = SandboxExecutor(timeout_s=2, emitter=emitter)
+        with pytest.raises(VastaError) as excinfo:
+            await executor.run("import os\nresult = 1\n", {"state": {}, "action": {}})
+        assert excinfo.value.code == "model_lab.forbidden_import"
+        assert emitted and emitted[0][0] == "incident.opened"
+        assert emitted[0][1]["reason"] == "model_lab.forbidden_import"
+        assert emitted[0][1]["source"] == "sandbox"

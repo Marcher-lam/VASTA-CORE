@@ -17,6 +17,7 @@ from __future__ import annotations
 import random
 import zlib
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -336,14 +337,23 @@ def run_ablation(
     groups: tuple[str, ...] = ABLATION_GROUPS,
     simulator: AgentSimulator | None = None,
     n_seeds: int = 1,
+    task_ids: list[str] | None = None,
 ) -> EvaluationReport:
     """六组消融（AC-07）：自动产出成功率/动作/开销/失败分类。
 
     评审修复：``n_seeds > 1`` 时以 ``config.seed, config.seed+1, ...``
     逐种子运行并聚合——组报告携带 ``seeds_run`` 与成功率标准差，
-    单点净增益不再被当作稳定结论。"""
+    单点净增益不再被当作稳定结论。
+    切片（FR-064）：``task_ids`` 限定任务子集（None=全量）——
+    配合 :func:`run_ablation_slices` 做维度切分。"""
     if n_seeds < 1:
         raise ValueError("n_seeds 必须 ≥ 1")
+    if task_ids is not None:
+        wanted = set(task_ids)
+        tasks = [t for t in tasks if t.task_id in wanted]
+        missing = wanted - {t.task_id for t in tasks}
+        if missing:
+            raise ValueError(f"task_ids 含未知任务: {sorted(missing)}")
     sim = simulator or AgentSimulator()
     seeds = [config.seed + i for i in range(n_seeds)]
     reports: list[GroupReport] = []
@@ -368,6 +378,25 @@ def run_ablation(
             )
         )
     return EvaluationReport(config=config, groups=reports)
+
+
+def run_ablation_slices(
+    tasks: list[VastaLabTask],
+    config: EvaluationConfig,
+    *,
+    slice_fn: Callable[[VastaLabTask], str],
+    **kwargs: Any,
+) -> dict[str, EvaluationReport]:
+    """维度切片消融（FR-064「切片」）：按 ``slice_fn(task)`` 标签分组，
+    每片独立跑六组——净增益可按任务族（隐藏规则/变体/难度）拆读，
+    而不是只剩全池单一数字。"""
+    slices: dict[str, list[VastaLabTask]] = {}
+    for task in tasks:
+        slices.setdefault(slice_fn(task), []).append(task)
+    return {
+        label: run_ablation(slice_tasks, config, **kwargs)
+        for label, slice_tasks in sorted(slices.items())
+    }
 
 
 def make_config(
@@ -406,6 +435,7 @@ __all__ = [
     "generate_tasks",
     "make_config",
     "run_ablation",
+    "run_ablation_slices",
     "task_rng_seed",
     "verify_config_complete",
 ]
