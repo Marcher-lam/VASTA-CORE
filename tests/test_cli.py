@@ -76,3 +76,12 @@ def test_end_to_end_run_then_inspect_replay(tmp_path) -> None:
     )
     assert replay_result.exit_code == 0
     assert (tmp_path / f"{run_id}.html").exists()
+
+
+def test_serve_command_registered_and_requires_token() -> None:
+    """Story 8.3：serve 命令注册且 token 必填（无匿名面）。"""
+    result = runner.invoke(app, ["--help"])
+    assert "serve" in result.output
+    # 缺 --token → typer 必填参数错误（exit code 2）
+    missing = runner.invoke(app, ["serve"])
+    assert missing.exit_code == 2

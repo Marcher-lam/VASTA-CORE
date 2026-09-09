@@ -10,6 +10,8 @@ dependencies = [
     "vasta-adapters",
     "pydantic>=2.13,<3",
     "typer>=0.12",
+    "fastapi>=0.115,<0.142",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
