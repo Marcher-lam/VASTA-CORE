@@ -169,7 +169,7 @@ class TestTimeoutEnforcement:
     async def test_timeout_fails_run(self) -> None:
         engine, store = await make_engine(env=SlowEnv())
         contract = make_complete_contract(timeout_ms=50)  # 50ms 超时
-        with pytest.raises(Exception):  # noqa: B017（TimeoutError）
+        with pytest.raises((TimeoutError, VastaError)):
             await engine.execute_contracted(contract)
         assert engine.state.value == "failed"
         types = [e.type for e in events(store)]
@@ -188,7 +188,7 @@ class TestSupervisorReset:
         from tests.test_deviation_recovery import DeviationVerifier
 
         deviation = {"read_back": DeviationVerifier()}
-        passing = {"read_back": SchemaVerifier()}  # schema 无 result → inconclusive
+        _passing = {"read_back": SchemaVerifier()}  # schema 无 result → inconclusive
         engine, store = await make_engine(
             policy_engine=PolicyEngine(),
             supervisor=Supervisor(SupervisorConfig(deviation_threshold=3)),

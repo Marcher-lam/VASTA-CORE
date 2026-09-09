@@ -175,7 +175,9 @@ class TestBoundedRecovery:
         assert "action.recovered" in types_of(store)
         assert engine.state.value == "started"
         # 第二次偏差：恢复预算耗尽 → 安全停止
-        with pytest.raises(Exception):  # noqa: B017（RecoveryLimitExceeded）
+        from vasta_runtime.recovery import RecoveryLimitExceededError
+
+        with pytest.raises(RecoveryLimitExceededError):
             await engine.execute_contracted(contract, verifiers=verifier)
         assert engine.state.value == "failed"
         failed = [e for e in events(store) if e.type == "run.failed"][-1]

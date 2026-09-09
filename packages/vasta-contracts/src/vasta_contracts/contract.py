@@ -43,7 +43,9 @@ class Prediction(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    changes: list[str] = Field(default_factory=list, description="预期变化（如 A102.status=approved）")
+    changes: list[str] = Field(
+        default_factory=list, description="预期变化（如 A102.status=approved）"
+    )
     invariants: list[str] = Field(default_factory=list, description="不变量（如 amount unchanged）")
 
 

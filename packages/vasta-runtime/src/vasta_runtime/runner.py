@@ -275,13 +275,13 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         return first
 
     async def ingest_external(self, detail: dict[str, object]) -> None:
-        """采集外部事件（环境侧推送/外部变化）：observation.external。"""
+        """采集外部事件（环境侧推送/外部变化）：observation.external。
+
+        外部变化来源由 _record_observation 以 external_source 键入
+        payload（仅 source≠tool，回放定位用，Story 4.1/4.2）。"""
         self._require_started("ingest_external")
         obs = Observation(kind="external", detail=detail)
         await self._record_observation(obs)
-        # 外部变化来源入 payload（回放定位用，Story 4.1/4.2）
-        if isinstance(detail, dict) and "source" in detail:
-            self._last_external_source = str(detail["source"])
 
     async def record_model_exchange(
         self, request: BaseModel, response: BaseModel

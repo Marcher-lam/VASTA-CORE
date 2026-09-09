@@ -2,6 +2,7 @@
 
 from .evaluation import (
     ABLATION_GROUPS,
+    FAILURE_KINDS,
     GROUP_FLAGS,
     AgentSimulator,
     EvaluationConfig,
@@ -12,6 +13,7 @@ from .evaluation import (
     generate_tasks,
     make_config,
     run_ablation,
+    task_rng_seed,
     verify_config_complete,
 )
 
@@ -19,6 +21,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ABLATION_GROUPS",
+    "FAILURE_KINDS",
     "AgentSimulator",
     "EvaluationConfig",
     "EvaluationReport",
@@ -29,5 +32,6 @@ __all__ = [
     "generate_tasks",
     "make_config",
     "run_ablation",
+    "task_rng_seed",
     "verify_config_complete",
 ]

@@ -59,7 +59,6 @@ PACKAGES = [
     vasta_model_lab,
     vasta_storage,
     vasta_eval,
-    vasta_model_lab,
 ]
 
 

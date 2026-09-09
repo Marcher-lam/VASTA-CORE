@@ -21,6 +21,7 @@ from .protocols import (
     TOOL_PROTOCOL_VERSION,
     VERIFIER_PROTOCOL_VERSION,
 )
+from .regression import REGRESSION_FORMAT_VERSION, RegressionTask
 
 __version__ = "0.1.0"
 
@@ -34,6 +35,8 @@ __all__ = [
     "InMemoryEventLog",
     "MODEL_PROTOCOL_VERSION",
     "PROTOCOL_VERSION",
+    "REGRESSION_FORMAT_VERSION",
+    "RegressionTask",
     "STORAGE_PROTOCOL_VERSION",
     "TOOL_PROTOCOL_VERSION",
     "VERIFIER_PROTOCOL_VERSION",

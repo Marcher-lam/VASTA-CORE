@@ -267,9 +267,10 @@ class EvidenceSearchMixin:
         blob = self.objects_dir / sha[:2] / sha
         if not blob.exists():
             return False
-        if verify_hash and hashlib.sha256(blob.read_bytes()).hexdigest() != sha:
-            return False
-        return True
+        return not (
+            verify_hash
+            and hashlib.sha256(blob.read_bytes()).hexdigest() != sha
+        )
 
     def _assert_no_dead_links(
         self,

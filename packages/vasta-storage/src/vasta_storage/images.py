@@ -174,7 +174,9 @@ def _crop_sync(image: Image.Image, box: Box) -> bytes:
     return buffer.getvalue()
 
 
-def _read_pixels_sync(image: Image.Image, box: Box) -> list[tuple[int, int, tuple[int, int, int, int]]]:
+def _read_pixels_sync(
+    image: Image.Image, box: Box
+) -> list[tuple[int, int, tuple[int, int, int, int]]]:
     rgba = image.convert("RGBA")
     out = []
     for y in range(box.top, box.bottom):

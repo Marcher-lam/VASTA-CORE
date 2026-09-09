@@ -42,6 +42,9 @@ def grid_dsl() -> DSLWorldModel:
             "left": {"add": {"col": -1}},
             "down": {"add": {"row": 1}},
             "up": {"add": {"row": -1}},
+            # 评审修复：原先没有任何规则能置 done——goal_check 不可达，
+            # BFS 目标测试因此只能写成恒真断言
+            "finish": {"set": {"done": 1}},
         },
         goal_check="done",
     )
@@ -149,7 +152,8 @@ class TestValidationPipeline:
 class TestMetaController:
     def test_rules(self) -> None:
         # 长规划 + 高风险 + 无模型 → BUILD
-        assert decide_meta(MetaSignals(planning_horizon=8, real_action_risk="R3")) is MetaDecision.BUILD
+        signals = MetaSignals(planning_horizon=8, real_action_risk="R3")
+        assert decide_meta(signals) is MetaDecision.BUILD
         # 有验证模型 → USE
         assert decide_meta(
             MetaSignals(planning_horizon=8, real_action_risk="R3",
@@ -169,14 +173,39 @@ class TestMetaController:
 
 class TestPlanner:
     def test_bfs_finds_goal(self) -> None:
+        """评审修复：goal 真可达（finish 置 done），断言非恒真。"""
         m = grid_dsl()
-        # 目标：col=3 → 构造 goal 轨迹
-        actions = [{"tool": "right"}, {"tool": "down"}, {"tool": "left"}, {"tool": "up"}]
+        actions = [{"tool": "right"}, {"tool": "down"}, {"tool": "left"},
+                   {"tool": "up"}, {"tool": "finish"}]
         plan = plan_bfs(
             m, {"detail": {"row": 0, "col": 0, "done": 0}},
             actions=actions, caps=PlanCaps(max_depth=6),
         )
-        assert isinstance(plan, list)  # 超限/无目标返回已达最佳（可为空）
+        assert plan and plan[-1] == {"tool": "finish"}  # 找到真目标
+        # 计划在模型内回放确为 goal
+        state = m.init_state({"detail": {"row": 0, "col": 0, "done": 0}})
+        for action in plan:
+            state = m.transition(state, action)
+        assert m.outcome(state) == "goal"
+
+    def test_goal_at_exact_max_depth_accepted(self) -> None:
+        """评审修复：恰落在 max_depth 的目标路径不再被深度截断丢弃。"""
+        m = grid_dsl()
+        plan = plan_bfs(
+            m, {"detail": {"row": 0, "col": 0, "done": 0}},
+            actions=[{"tool": "finish"}], caps=PlanCaps(max_depth=1),
+        )
+        assert plan == [{"tool": "finish"}]
+
+    def test_max_cost_prunes_expensive_branches(self) -> None:
+        """评审修复：max_cost 原先不参与搜索，现在生效（成本剪枝）。"""
+        m = grid_dsl()
+        cheap = [{"tool": "finish", "cost": 1.0}]
+        plan = plan_bfs(
+            m, {"detail": {"row": 0, "col": 0, "done": 0}},
+            actions=cheap, caps=PlanCaps(max_cost=0.5),
+        )
+        assert plan == []  # 唯一动作超成本 → 剪除
 
     def test_caps_terminate(self) -> None:
         m = grid_dsl()
@@ -219,3 +248,116 @@ class TestBridge:
               if e.type == "world_model.suspended"][-1]
         assert ev.payload["bridge"] == "cognition"
         assert ev.payload["propagated_from_claim"] == "hyp-1"
+
+
+class TestReviewGuards:
+    """Epic 4-7 code-review 修复的守卫（沙箱接线/白名单/STOP/留痕/清单）。"""
+
+    def test_stop_decision_reachable(self) -> None:
+        """评审修复：MetaDecision.STOP 原为不可达枚举。"""
+        assert decide_meta(
+            MetaSignals(repeated_prediction_failure=5, has_validated_model=False)
+        ) is MetaDecision.STOP
+
+    async def test_meta_decision_emits_event(self) -> None:
+        """FR-040：元决策留痕（评审实锤：原 decide_meta 不落事件）。"""
+        from vasta_model_lab import emit_meta_decision
+
+        store = FakeStorageAdapter()
+        signals = MetaSignals(planning_horizon=8, real_action_risk="R3")
+        await emit_meta_decision(store, MetaDecision.BUILD, signals,
+                                 reason="长视野+高风险且无验证模型")
+        events = list(store.iter_run_events("cognition"))
+        assert events[-1].type == "world_model.meta_decision"
+        assert events[-1].payload["decision"] == "build"
+        assert events[-1].payload["signals"]["planning_horizon"] == 8
+
+    def test_from_import_whitelist_enforced(self) -> None:
+        """评审实锤：`from X import Y` 形态原先绕过 import 白名单。"""
+        manifest = grid_manifest("evil")
+        with pytest.raises(VastaError) as excinfo:
+            PythonWorldModel(
+                manifest,
+                "result = {'x': 1}\nfrom socket import socket\n",
+            )
+        assert excinfo.value.code == "model_lab.forbidden_import"
+
+    def test_reflection_builtins_rejected(self) -> None:
+        """评审修复：getattr/globals/vars 等反射通道入禁止模式。"""
+        manifest = grid_manifest("evil2")
+        with pytest.raises(VastaError) as excinfo:
+            PythonWorldModel(
+                manifest, "result = getattr(state, 'keys')()\n"
+            )
+        assert excinfo.value.code == "model_lab.forbidden_pattern"
+
+    def test_manifest_requires_unknowns_and_coverage(self) -> None:
+        """FR-043：unknowns/coverage 必填且非空（原空清单可过）。"""
+        with pytest.raises(ValueError):
+            WorldModelManifest(
+                name="m", version="1", scope="s",
+                unknowns=[], coverage=["a"],
+            )
+        with pytest.raises(ValueError):
+            WorldModelManifest(
+                name="m", version="1", scope="s",
+                unknowns=["u"], coverage=[],
+            )
+
+    def test_replay_zero_overlap_fails(self) -> None:
+        """评审修复：预测与观察零键重叠 = 回放空转，不再判通过。"""
+        m = grid_dsl()
+        traj = Trajectory(
+            {"detail": {"row": 0, "col": 0}},
+            [{"tool": "right"}],
+            [{"unrelated_key": 42}],  # 与预测（含 kind）零键交集
+            "ongoing",
+        )
+        report = validate_model(m, [traj])
+        assert not report.all_replay_passed
+
+    async def test_sandbox_run_rejects_forbidden_code(self) -> None:
+        """评审修复：SandboxExecutor.run 前置静态检查（原先不查）。"""
+        executor = SandboxExecutor(timeout_s=2)
+        with pytest.raises(VastaError) as excinfo:
+            await executor.run("import os\nresult = 1\n", {"state": {}, "action": {}})
+        assert excinfo.value.code == "model_lab.forbidden_import"
+
+    async def test_sandbox_timeout_emits_system_event(self) -> None:
+        """AD-15：沙箱超时留 system.timeout 事件（评审实锤缺失）。"""
+        emitted: list[tuple[str, dict]] = []
+
+        async def emitter(type_: str, payload: dict) -> None:
+            emitted.append((type_, payload))
+
+        executor = SandboxExecutor(timeout_s=0.3, emitter=emitter)
+        with pytest.raises(VastaError) as excinfo:
+            await executor.run(
+                "x = 0\nwhile True: x = x + 1\n", {"state": {}, "action": {}}
+            )
+        assert excinfo.value.code == "sandbox.timeout"
+        assert emitted and emitted[0][0] == "system.timeout"
+
+    def test_python_model_wired_to_sandbox(self) -> None:
+        """评审实锤：PythonWorldModel 声称沙箱执行实则进程内 exec——
+        现在 sandbox= 装配后 transition 走受限子进程。"""
+        code = "result = {'col': state['col'] + 1, '_steps': state.get('_steps', 0) + 1}"
+        sandboxed = PythonWorldModel(
+            grid_manifest("sbx"), code, sandbox=SandboxExecutor(timeout_s=5.0)
+        )
+        state = sandboxed.init_state({"detail": {"col": 0, "_steps": 0}})
+        nxt = sandboxed.transition(state, {"tool": "right"})
+        assert nxt["col"] == 1 and nxt["_steps"] == 1
+
+    def test_local_exec_builtins_restricted(self) -> None:
+        """受限 builtins：open 静态拦截；iter 等未入白名单的内置在
+        运行期 NameError（本地直跑不再挂全量 builtins）。"""
+        with pytest.raises(VastaError):
+            PythonWorldModel(
+                grid_manifest("noio"), "result = {'ok': True}\nopen('x.txt')\n"
+            )
+        m = PythonWorldModel(
+            grid_manifest("noiter"), "result = {'i': iter([1])}\n"
+        )
+        with pytest.raises(NameError):
+            m.transition({"col": 0}, {"tool": "right"})

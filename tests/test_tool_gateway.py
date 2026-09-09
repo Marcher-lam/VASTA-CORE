@@ -125,7 +125,9 @@ class TestRegistrationAndClassification:
 
     def test_manifest_incomplete_rejected_at_construction(self) -> None:
         """FR-032：缺风险/幂等声明的清单在 ToolManifest 构造期即拒。"""
-        with pytest.raises(Exception):  # noqa: B017（pydantic 校验错误）
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             ToolManifest(name="bad", version="1")  # 缺 risk/read_only/idempotent
 
 

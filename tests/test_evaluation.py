@@ -120,3 +120,110 @@ class TestAblation:
             by_group["full"].mean_overhead_ms
             > by_group["baseline"].mean_overhead_ms
         )
+
+
+class TestReviewGuards:
+    """Epic 4-7 code-review 修复的守卫（复现/规则/失败分类/多种子/配置）。"""
+
+    def test_task_seed_stable_across_processes(self) -> None:
+        """评审实锤：hash(task_id) 播种跨进程漂移（net_gain 0.32 vs 0.44）。
+
+        子进程两跑必须得到同一首随机数（crc32 播种）。"""
+        import subprocess
+        import sys
+
+        code = (
+            "from vasta_eval.evaluation import task_rng_seed\n"
+            "import random\n"
+            "print(random.Random(task_rng_seed(9, 'vl-00')).random())\n"
+        )
+        outs = [
+            subprocess.run(
+                [sys.executable, "-c", code], capture_output=True, text=True
+            ).stdout.strip()
+            for _ in range(2)
+        ]
+        assert outs[0] == outs[1]
+
+    def test_report_reproducible_same_seed(self) -> None:
+        """同 seed 两次完整消融 → 逐组逐字段一致（FR-063）。"""
+        tasks = generate_tasks(8, seed=3)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=3)
+        r1 = run_ablation(tasks, config).to_summary()
+        r2 = run_ablation(tasks, config).to_summary()
+        assert r1 == r2
+
+    def test_solve_reaches_goal_for_all_rules(self) -> None:
+        """评审修复：solve 为真实转移上的 BFS——全部隐藏规则可证达。"""
+        from vasta_eval import VastaLabTask
+
+        for rule in ("none", "teleport", "wind"):
+            for size in (4, 5):
+                t = VastaLabTask(
+                    task_id=f"chk-{rule}-{size}", grid_size=size,
+                    start=(0, 0), goal=(size - 1, size - 1), hidden_rule=rule,
+                )
+                assert t.run_agent(t.solve()), (rule, size)
+
+    def test_wind_has_transition_effect(self) -> None:
+        """评审实锤：wind 原先无转移语义（纯装饰字段）。"""
+        from vasta_eval import VastaLabTask
+
+        calm = VastaLabTask(task_id="calm", start=(0, 0), goal=(3, 3))
+        windy = VastaLabTask(
+            task_id="windy", start=(0, 0), goal=(3, 3), hidden_rule="wind"
+        )
+        # 同一动作序列在 wind 下落到不同位置（偶数步顺风波 +1 行）
+        assert calm._pos_after(["right", "up"]) != windy._pos_after(["right", "up"])
+
+    def test_teleport_changes_position(self) -> None:
+        from vasta_eval import VastaLabTask
+
+        t = VastaLabTask(
+            task_id="tp", start=(0, 0), goal=(3, 3), hidden_rule="teleport"
+        )
+        assert t._pos_after(["down", "right"]) == (2, 2)  # 踩 (1,1) 即传送
+
+    def test_failure_breakdown_categorized(self) -> None:
+        """评审修复：失败按 kind 分类（原为单一 failed 桶）。"""
+        from vasta_eval import FAILURE_KINDS
+
+        tasks = generate_tasks(12, seed=5)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=5)
+        report = run_ablation(tasks, config)
+        baseline = next(g for g in report.groups if g.group == "baseline")
+        breakdown = baseline.failure_breakdown
+        if not baseline.results[0].success:  # 有失败时
+            assert set(breakdown) <= set(FAILURE_KINDS) | {"all_passed"}
+        # 成功项 failure_kind 为 None；失败项必有合法 kind
+        for r in baseline.results:
+            if not r.success:
+                assert r.failure_kind in FAILURE_KINDS
+
+    def test_multi_seed_aggregation_with_stddev(self) -> None:
+        """评审修复：多种子聚合 + 成功率标准差（方差可见）。"""
+        tasks = generate_tasks(10, seed=1)
+        config = make_config(task_ids=[t.task_id for t in tasks], seed=1)
+        report = run_ablation(tasks, config, n_seeds=3)
+        for group in report.groups:
+            assert group.seeds_run == 3
+            assert len(group.results) == 3 * len(tasks)
+            assert group.success_rate_stddev >= 0.0
+
+    def test_verify_config_complete_budget_required(self) -> None:
+        """评审修复：budget 缺失/非法原也判 True。"""
+        from vasta_eval import EvaluationConfig, verify_config_complete
+
+        ok = EvaluationConfig(
+            task_ids=["t1"], seed=1, code_version="v", budget={"max_actions": 10}
+        )
+        assert verify_config_complete(ok)
+        bad_budget = EvaluationConfig(
+            task_ids=["t1"], seed=1, code_version="v", budget={}
+        )
+        assert not verify_config_complete(bad_budget)
+        bad_value = EvaluationConfig.model_validate(
+            {"task_ids": ["t1"], "seed": 1, "code_version": "v",
+             "budget": {"max_actions": 0}}
+        )
+        assert not verify_config_complete(bad_value)

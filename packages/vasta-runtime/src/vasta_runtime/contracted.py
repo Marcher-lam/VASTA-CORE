@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from vasta_contracts import (
     ActionContract,
@@ -27,6 +27,9 @@ from vasta_protocols.errors import VastaError
 from vasta_protocols.protocols import Action, Observation, Verifier
 
 from .budget import BudgetExceededError
+
+if TYPE_CHECKING:  # 仅类型标注用（运行时延迟导入防环）
+    from vasta_policy import PolicyEngine
 from .gateway import ToolNotRegisteredError
 from .observation import TerminalObservationError
 from .recovery import (
@@ -144,14 +147,14 @@ class ContractedMixin:
         if policy_check is not None:
             try:
                 outcome = policy_check(contract)
-            except Exception:
+            except Exception as exc:
                 # 评审修复：callable 异常不得裸传播——按 fail-closed 拒
                 await self._emit(  # noqa: SLF001
                     "action.policy_denied",
                     {"phase": "policy", "tool": contract.tool,
                      "basis": "策略 callable 异常（fail-closed）", "fail_closed": True},
                 )
-                raise PolicyDeniedError("策略 callable 异常（fail-closed）")
+                raise PolicyDeniedError("策略 callable 异常（fail-closed）") from exc
             if outcome.decision != "allow":
                 await self._emit(  # noqa: SLF001
                     "action.policy_denied",

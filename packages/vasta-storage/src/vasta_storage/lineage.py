@@ -37,7 +37,8 @@ class RecordVerification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     record: DerivationRecord
-    status: str  # verified | source_missing | source_corrupted | derived_missing | derived_corrupted
+    # verified | source_missing | source_corrupted | derived_missing | derived_corrupted
+    status: str
 
 
 class LineageVerification(BaseModel):

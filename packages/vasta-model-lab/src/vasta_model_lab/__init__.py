@@ -5,7 +5,6 @@ from .lab import (
     MetaDecision,
     MetaSignals,
     PlanCaps,
-    PlanningLimitExceededError,
     PythonWorldModel,
     RuleSet,
     SandboxExecutor,
@@ -14,6 +13,7 @@ from .lab import (
     WorldModelBridge,
     WorldModelManifest,
     decide_meta,
+    emit_meta_decision,
     plan_bfs,
     validate_model,
 )
@@ -25,7 +25,6 @@ __all__ = [
     "MetaDecision",
     "MetaSignals",
     "PlanCaps",
-    "PlanningLimitExceededError",
     "PythonWorldModel",
     "RuleSet",
     "SandboxExecutor",
@@ -34,6 +33,7 @@ __all__ = [
     "WorldModelBridge",
     "WorldModelManifest",
     "decide_meta",
+    "emit_meta_decision",
     "plan_bfs",
     "validate_model",
 ]

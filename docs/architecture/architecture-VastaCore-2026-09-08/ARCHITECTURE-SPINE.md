@@ -51,6 +51,7 @@ graph TD
   RT --> PO
   RT --> LAB
   LAB --> ST
+  COG --> LAB
   EVAL --> RT
   ST --> PROTO
   COG --> PROTO
@@ -133,7 +134,7 @@ graph TD
 
 - **Binds:** E2（cognition）/E5（model-lab）
 - **Prevents:** claim.\* 与 world_model.\* 两族事件各建"当前状态"、反例到达时无人桥接（AC-04 系统级失效）
-- **Rule:** WorldModel 的状态以 `world_model.*` 事件族为唯一事实源（Claim 九类走 `claim.*`，互不代管）；但失效传播由 `vasta-cognition` 单向桥接且它是唯一 owner：使 WorldModel 失效的反例经 `claim.refuted` 后，cognition 必须发出对应 `world_model.suspended/scope_narrowed`，model-lab 不得自行监听反例再各写一套。下游读"当前活跃模型"只能读 cognition 的投影。
+- **Rule:**（评审修复补记：AD-13 产生 cognition → model-lab 的单向依赖边，已补入 AD-1 图。）WorldModel 的状态以 `world_model.*` 事件族为唯一事实源（Claim 九类走 `claim.*`，互不代管）；但失效传播由 `vasta-cognition` 单向桥接且它是唯一 owner：使 WorldModel 失效的反例经 `claim.refuted` 后，cognition 必须发出对应 `world_model.suspended/scope_narrowed`，model-lab 不得自行监听反例再各写一套。下游读"当前活跃模型"只能读 cognition 的投影。
 
 ### AD-14 — CAS 租户语义：字节全局去重，可达性租户私有
 
