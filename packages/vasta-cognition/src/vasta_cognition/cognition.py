@@ -336,6 +336,16 @@ class CognitionService:
         })
         return after
 
+    async def annotate(
+        self, claim_id: str, note: str, *, annotator: str,
+    ) -> EventEnvelope:
+        """专家标注（Story 9.13 Domain Studio）：claim.annotated 纯留痕
+        （状态/置信不变——标注是旁注不是判定；判定走 review 路径）。"""
+        self._require_active(claim_id)
+        return await self._emit("claim.annotated", {
+            "claim_id": claim_id, "note": note, "annotator": annotator,
+        })
+
     # ---- 查询 ----
     def get(self, claim_id: str) -> Claim | None:
         return self._claims.get(claim_id)
