@@ -150,6 +150,13 @@ class CognitionService:
             elif type_ == "claim.retired":
                 claim.status = "retired"
                 claim.version += 1
+            elif type_ == "claim.confidence_decayed":
+                # 认知衰减（Story 9.11）：环境升级重验证失败 → 置信按规则
+                # 衰减（低于推翻线的处置由调用方决定 refuted）
+                claim.confidence = float(
+                    payload.get("confidence_after", claim.confidence))
+                claim.version += 1
+            # claim.revalidated：纯留痕（verdict/env 入审计流），状态不变
 
     async def _emit(self, type_: str, payload: dict[str, Any]) -> EventEnvelope:
         envelope = await self._sequencer.emit(type_, payload)
@@ -301,6 +308,33 @@ class CognitionService:
     async def retire(self, claim_id: str) -> EventEnvelope:
         self._require_active(claim_id)
         return await self._emit("claim.retired", {"claim_id": claim_id})
+
+    async def revalidated(
+        self, claim_id: str, *, verdict: str, env_version: str,
+    ) -> EventEnvelope:
+        """重验证留痕（Story 9.11）：verdict=pass 保留主张（状态不变）；
+        fail 的处置（衰减/推翻）由调用方续作——本方法只落审计事件。"""
+        self._require_active(claim_id)
+        return await self._emit("claim.revalidated", {
+            "claim_id": claim_id, "verdict": verdict,
+            "env_version": env_version,
+        })
+
+    async def decay_confidence(
+        self, claim_id: str, *, factor: float, reason: str,
+    ) -> float:
+        """置信衰减（Story 9.11）：confidence ×= factor，落
+        claim.confidence_decayed；返回衰减后置信。"""
+        claim = self._require_active(claim_id)
+        after = round(claim.confidence * factor, 6)
+        await self._emit("claim.confidence_decayed", {
+            "claim_id": claim_id,
+            "confidence_before": claim.confidence,
+            "confidence_after": after,
+            "factor": factor,
+            "reason": reason,
+        })
+        return after
 
     # ---- 查询 ----
     def get(self, claim_id: str) -> Claim | None:

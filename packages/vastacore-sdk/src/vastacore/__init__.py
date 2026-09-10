@@ -37,6 +37,15 @@ from .release import (
     rollback_release,
     set_canary_percent,
 )
+from .revalidation import (
+    DecayPolicy,
+    ImpactItem,
+    ImpactReport,
+    impact_analysis,
+    record_env_upgrade,
+    revalidate_claims,
+    seed_confidence_interval,
+)
 from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
 from .scheduling import CronSpec, FireRecord, Scheduler, ScheduleSpec
@@ -103,6 +112,13 @@ __all__ = [
     "FireRecord",
     "ScheduleSpec",
     "Scheduler",
+    "DecayPolicy",
+    "ImpactItem",
+    "ImpactReport",
+    "impact_analysis",
+    "record_env_upgrade",
+    "revalidate_claims",
+    "seed_confidence_interval",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",
