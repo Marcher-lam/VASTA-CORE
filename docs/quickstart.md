@@ -27,7 +27,7 @@ VastaCore quickstart (vastacore v0.1.0)
   run_id       : run-quickstart
   final_state  : completed
   steps        : 6
-  events       : 17
+  events       : 23
   artifacts    : 14
   goal_reached : True
   store        : .vasta\store

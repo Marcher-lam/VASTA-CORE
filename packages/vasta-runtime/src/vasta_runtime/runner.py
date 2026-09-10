@@ -158,7 +158,13 @@ class RunEngine(ContractedMixin, HumanControlMixin):
             recovery_policy=recovery_policy,
         )
         await engine._emit(
-            "run.created", {"budget": engine.tracker.snapshot().model_dump()}
+            "run.created",
+            {
+                "budget": engine.tracker.snapshot().model_dump(),
+                # seed 入流（Story 9.10）：跨进程接管（adopt_run）据此
+                # 重建 RunContext——事件 ID 流与幂等键派生跨进程可再生
+                "seed": engine.context.seed,
+            },
         )
         return engine
 
@@ -321,6 +327,13 @@ class RunEngine(ContractedMixin, HumanControlMixin):
             raise
         self.tracker.record_action()
         self._last_action = action
+        # 动作执行留痕（Story 9.10 补口）：env 直连路径与六段链统一发
+        # action.executed——跨进程接管（adopt_run）的预算重放与已执行
+        # 动作审计按此计数（此前仅观察带 last_action 间接可见）
+        await self._emit(
+            "action.executed", {"tool": action.tool, "ok": True,
+                                "path": "env"},
+        )
         for obs in observations:
             # 动作维度经参数传递（Story 2.1；评审修复：消共享状态，并发交错不错标）
             await self._record_observation(obs, action=action)

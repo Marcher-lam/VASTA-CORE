@@ -78,6 +78,7 @@ class TestFiveKindCollection:
             "run.started",
             "observation.reset",
             "observation.decision",
+            "action.executed",  # env 路径动作留痕（Story 9.10 补口）
             "observation.transition",
             "observation.terminal",
         ]
@@ -139,9 +140,10 @@ class TestTerminalGuard:
         assert engine.collector.episode_ended is False
         observations = await engine.step(Action(tool="go"))
         assert [o.kind for o in observations] == ["transition", "decision"]
-        assert types_of(store)[-4:] == [
+        assert types_of(store)[-5:] == [
             "observation.reset",
             "observation.decision",
+            "action.executed",  # env 路径动作留痕（Story 9.10 补口）
             "observation.transition",
             "observation.decision",
         ]

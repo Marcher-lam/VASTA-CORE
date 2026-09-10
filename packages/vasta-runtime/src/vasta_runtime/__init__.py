@@ -1,5 +1,6 @@
 """vasta-runtime：Run 循环、Supervisor、Tool Gateway、RunContext（Epic 1/3）。"""
 
+from .adoption import AdoptionReport, adopt_run
 from .budget import Budget, BudgetExceededError, BudgetKind, BudgetSnapshot, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
 from .contracted import PolicyDeniedError, PolicyOutcome
@@ -38,6 +39,8 @@ from .supervisor import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "AdoptionReport",
+    "adopt_run",
     "HumanControlMixin",
     "RevocationError",
     "TakeoverRequiredError",

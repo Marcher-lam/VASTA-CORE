@@ -91,6 +91,15 @@ class BudgetTracker:
     def record_model_call(self) -> None:
         self._model_calls += 1
 
+    def restore(
+        self, actions_used: int, model_calls_used: int,
+    ) -> None:
+        """跨进程接管恢复计数（Story 9.10）——max_* 沿构造时的 Budget，
+        used 由事件流重放注入；墙钟不可从流恢复（接管后重新计费——
+        安全侧：崩溃期间的空闲墙时不计，剩余预算只多不少）。"""
+        self._actions = max(0, int(actions_used))
+        self._model_calls = max(0, int(model_calls_used))
+
     @property
     def wall_seconds_used(self) -> float:
         if self._started_at is None:

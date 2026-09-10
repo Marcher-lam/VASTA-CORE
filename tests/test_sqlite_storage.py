@@ -176,6 +176,7 @@ class TestEngineIntegration:
             "run.started",
             "observation.reset",
             "observation.decision",
+            "action.executed",  # env 路径动作留痕（Story 9.10 补口）
             "observation.transition",
             "observation.decision",
         ]

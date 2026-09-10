@@ -32,7 +32,7 @@ class TestQuickstartE2E:
         assert summary.steps == 6  # right×3 + down×3
         assert summary.vastacore_version == vastacore.__version__
         # 文档预期输出的数字守卫（与 docs/quickstart.md 同步）
-        assert summary.events == 17
+        assert summary.events == 23  # +6 action.executed（env 路径留痕，9.10）
         assert summary.artifacts == 14
 
         # 重开存储：完整事件链 + 因果父链
