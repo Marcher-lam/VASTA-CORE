@@ -26,6 +26,12 @@ from .governance.approvals import (
     search_approvals,
 )
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
+from .governance.drift import (
+    DriftMetrics,
+    DriftPolicy,
+    DriftReport,
+    run_drift_check,
+)
 from .governance.quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
 from .governance.release import (
     ReleaseResult,
@@ -115,6 +121,10 @@ __all__ = [
     "get_canary_percent",
     "get_release_status",
     "RevocationResult",
+    "DriftMetrics",
+    "DriftPolicy",
+    "DriftReport",
+    "run_drift_check",
     "promote_release",
     "resume_release",
     "retire_release",
