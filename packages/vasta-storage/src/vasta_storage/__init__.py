@@ -1,5 +1,11 @@
 """vasta-storage：Evidence Store（CAS、事件库、派生索引、生命周期，Epic 1/2）。"""
 
+from .evidence_access import (
+    check_evidence_access,
+    get_artifact_checked,
+    restrict_evidence,
+    unrestrict_evidence,
+)
 from .images import Box, DiffResult, EvidenceImages, ImageInfo, InspectResult, PixelReading
 from .lifecycle import (
     DeletionBlocker,
@@ -39,6 +45,10 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DeletionBlocker",
+    "check_evidence_access",
+    "get_artifact_checked",
+    "restrict_evidence",
+    "unrestrict_evidence",
     "DeletionResult",
     "LifecyclePolicy",
     "PostgresEventStore",
