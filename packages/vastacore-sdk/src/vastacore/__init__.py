@@ -39,6 +39,7 @@ from .release import (
 )
 from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
+from .scheduling import CronSpec, FireRecord, Scheduler, ScheduleSpec
 from .service import VastaService, create_app, serve
 from .timetravel import DerivedRecall, claim_as_of, derived_recall
 from .toolproxy import ProxyToolAdapter, browser_action_proxy, browser_read_proxy, proxy_tool
@@ -98,6 +99,10 @@ __all__ = [
     "QuotaEnforcer",
     "QuotaExceededError",
     "QuotaSpec",
+    "CronSpec",
+    "FireRecord",
+    "ScheduleSpec",
+    "Scheduler",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",
