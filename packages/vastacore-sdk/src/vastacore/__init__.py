@@ -9,6 +9,7 @@ from .batch import (
     VastaLabEnv,
     run_tasks_as_runs,
 )
+from .offline_eval import ActionComparison, OfflineEvalReport, offline_evaluate
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
 from .router import CostEntry, ModelRouter, RouterError
@@ -25,6 +26,7 @@ from .versioning import (
 )
 
 __all__ = [
+    "ActionComparison",
     "AgentSession",
     "BatchRunSummary",
     "SolvePolicyStandIn",
@@ -46,6 +48,8 @@ __all__ = [
     "derived_recall",
     "CostEntry",
     "ModelRouter",
+    "OfflineEvalReport",
+    "offline_evaluate",
     "RouterError",
     "ImportSummary",
     "ScaffoldResult",

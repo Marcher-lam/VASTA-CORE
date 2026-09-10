@@ -99,7 +99,7 @@ development_status:
   8-7-lineage-recall: review
   8-8-model-policy-versioning: review
   8-9-eval-as-run: review
-  8-10-offline-trajectory-eval: backlog
+  8-10-offline-trajectory-eval: review
   8-11-tool-proxy: backlog
   8-12-multimodal-on-demand: backlog
   8-13-lab-split: backlog
