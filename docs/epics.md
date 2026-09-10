@@ -266,6 +266,15 @@ So that 回归信号不被测试基础设施噪声侵蚀。
 **Then** Epic 9 测试文件与 TestClient 类任意组合选取稳定绿（复现命令 5/5）；FakeStorageAdapter 补 event_id 唯一模拟（或惯例文档化+关键路径真实存储测试）
 **And** asyncio/TestClient portal 干扰根因记录入档
 
+**完成注记（2026-09-09）**：① 审计复现命令修复后代码上 5/5 绿 + 4 变体
+组合 ×3 全绿——**flaky 未复现**（G4-G6 评审修复大概率顺带消除触发面：
+F8 Studio refresh/F3 重试路径改变了循环交互）；机制性隐患仍实修：
+5 处裸 `new_event_loop()` 循环泄漏 → `asyncio.run`（创建即关闭）。
+② Fake 约束对齐：`InMemoryEventLog` 补 event_id 全局唯一模拟（错误码
+对齐 sqlite event.duplicate_id）+ 契约套件锚定 test_duplicate_event_id_
+rejected（所有实现强制）；顺带修出契约测试自身复用 event_id 的假信封
+构造债 2 处。728 全绿。
+
 ### Story 10.3: 模型全生命周期状态机（G1）
 
 As a 模型治理负责人,

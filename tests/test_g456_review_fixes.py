@@ -230,7 +230,7 @@ class TestStudioTenantIsolation:
                                       statement="B 租户主张",
                                       scope={"x": "1"}))
 
-        asyncio.new_event_loop().run_until_complete(seed())
+        asyncio.run(seed())
         app = FastAPI()
         mount_studio(app, store=store, token="tk",
                      tenant_id="t-a", project_id="p-a")
@@ -251,11 +251,11 @@ class TestStudioTenantIsolation:
             await cog.propose(Claim(claim_id="early", memory_type="guide",
                                     statement="早", scope={"r": "p"}))
 
-        asyncio.new_event_loop().run_until_complete(seed_and_late())
+        asyncio.run(seed_and_late())
         app = FastAPI()
         mount_studio(app, store=store, token="tk")
         with TestClient(app) as client:
-            asyncio.new_event_loop().run_until_complete(
+            asyncio.run(
                 CognitionService(store).propose(Claim(
                     claim_id="late", memory_type="guide",
                     statement="晚", scope={"r": "p"})))

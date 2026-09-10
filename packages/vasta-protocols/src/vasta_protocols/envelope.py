@@ -93,21 +93,32 @@ class EventEnvelope(BaseModel):
 
 
 class InMemoryEventLog:
-    """参考实现：强制 (run_id, seq) 唯一（AD-2）的追加式事件日志。
+    """参考实现：强制 (run_id, seq) 唯一（AD-2）+ event_id 全局唯一的
+    追加式事件日志。
 
     存储 adapter（Story 1.4 SQLite）必须满足同一契约——由
     contract_suites.event_log.EventLogContractTests 驱动验证。
+    Story 10.2 约束对齐：补 event_id 全局唯一模拟（此前缺失——
+    G4-G6 评审 F1 的 seeded 接管撞号缺陷在 fake 面不可见即源于此；
+    错误码与 sqlite 实现对齐：event_id 先查 → event.duplicate_id）。
     """
 
     def __init__(self) -> None:
         self._by_key: dict[tuple[str, int], EventEnvelope] = {}
+        self._by_id: dict[str, EventEnvelope] = {}
         self._by_run: dict[str, list[EventEnvelope]] = {}
 
     def append(self, envelope: EventEnvelope) -> EventEnvelope:
+        if envelope.event_id in self._by_id:
+            raise VastaError(
+                code="event.duplicate_id",
+                message=f"event_id {envelope.event_id} already stored",
+            )
         key = (envelope.run_id, envelope.seq)
         if key in self._by_key:
             raise DuplicateEventError(envelope.run_id, envelope.seq)
         self._by_key[key] = envelope
+        self._by_id[envelope.event_id] = envelope
         self._by_run.setdefault(envelope.run_id, []).append(envelope)
         return envelope
 

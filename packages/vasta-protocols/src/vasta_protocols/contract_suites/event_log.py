@@ -42,9 +42,13 @@ class EventLogContract:
     def test_iter_run_preserves_order(self) -> None:
         log = self.make_log()
         run = a = make_envelope(seq=0)
+        from ..ids import new_event_id
+
         b = EventEnvelope.model_validate(
+            # 每信封独立 event_id（Story 10.2 约束对齐——复用 ID 的
+            # 假信封在真实存储 UNIQUE 约束下非法）
             {**run.model_dump(), "seq": 1, "type": "observation.decision",
-             "parent_event_id": run.event_id}
+             "parent_event_id": run.event_id, "event_id": new_event_id()}
         )
         log.append(a)
         log.append(b)
@@ -53,8 +57,11 @@ class EventLogContract:
     def test_parent_chain_traceable(self) -> None:
         log = self.make_log()
         root = make_envelope(seq=0)
+        from ..ids import new_event_id
+
         child = EventEnvelope.model_validate(
-            {**root.model_dump(), "seq": 1, "parent_event_id": root.event_id}
+            {**root.model_dump(), "seq": 1, "parent_event_id": root.event_id,
+             "event_id": new_event_id()}
         )
         log.append(root)
         log.append(child)
@@ -69,3 +76,25 @@ class EventLogContract:
         with pytest.raises(VastaError) as excinfo:
             log.get("run-missing", 0)
         assert excinfo.value.code == "event.not_found"
+
+    def test_duplicate_event_id_rejected(self) -> None:
+        """Story 10.2 约束对齐：event_id 全局唯一（跨 run）——与
+        sqlite `event_id UNIQUE` 一致（曾缺失致 seeded 接管缺陷在
+        fake 面不可见）。"""
+        from ..errors import VastaError
+        from ..ids import new_event_id
+
+        log = self.make_log()
+        a = make_envelope(seq=0)
+        dup_id = EventEnvelope.model_validate(
+            {**a.model_dump(), "run_id": "other-run", "seq": 0,
+             "event_id": a.event_id}
+        )
+        fresh = EventEnvelope.model_validate(
+            {**a.model_dump(), "seq": 1, "event_id": new_event_id()}
+        )
+        log.append(a)
+        with pytest.raises(VastaError) as excinfo:
+            log.append(dup_id)  # 跨 run 同 ID 拒
+        assert excinfo.value.code == "event.duplicate_id"
+        log.append(fresh)  # 新 ID 同 run 正常

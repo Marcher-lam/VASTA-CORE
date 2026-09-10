@@ -43,8 +43,7 @@ def client(tmp_path):
 
     import asyncio
 
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-        _seed())
+    asyncio.run(_seed())
     app = FastAPI()
     mount_studio(app, store=store, token="tok-studio")
     with TestClient(app) as c:
@@ -174,8 +173,7 @@ class TestExpertWrites:
         import asyncio
 
         cog = CognitionService(store)
-        asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-            cog.refute("c2", ["test"]))
+        asyncio.run(cog.refute("c2", ["test"]))
         r = c.post("/studio/api/claims/c2/review", headers=H, json={
             "decision": "approve", "approver": "e", "reason": "r"})
         assert r.status_code == 409
