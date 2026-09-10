@@ -101,7 +101,7 @@ development_status:
   8-9-eval-as-run: review
   8-10-offline-trajectory-eval: review
   8-11-tool-proxy: review
-  8-12-multimodal-on-demand: backlog
+  8-12-multimodal-on-demand: review
   8-13-lab-split: backlog
   epic-8-retrospective: optional
 

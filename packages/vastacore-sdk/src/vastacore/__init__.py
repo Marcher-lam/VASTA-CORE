@@ -9,6 +9,7 @@ from .batch import (
     VastaLabEnv,
     run_tasks_as_runs,
 )
+from .derive import DerivedRef, DeriverRegistry, default_registry, derive_on_demand
 from .offline_eval import ActionComparison, OfflineEvalReport, offline_evaluate
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
@@ -46,6 +47,10 @@ __all__ = [
     "save_capability_report",
     "version_as_of",
     "ContractTemplate",
+    "DerivedRef",
+    "DeriverRegistry",
+    "default_registry",
+    "derive_on_demand",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",
