@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-09-2026 10:46
+last_updated: 09-10-2026 10:31
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -89,7 +89,7 @@ development_status:
   7-3-六组消融-runner: review
   epic-7-retrospective: done
 
-  epic-8: in-progress
+  epic-8: done
   8-1-sdk-onboarding: review
   8-2-trajectory-import: review
   8-3-http-service: review
@@ -103,7 +103,7 @@ development_status:
   8-11-tool-proxy: review
   8-12-multimodal-on-demand: review
   8-13-lab-split: review
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
 
   epic-9: backlog
   epic-9-retrospective: optional
@@ -141,7 +141,7 @@ action_items:
     epic: 7
     action: "lab.py（667 行十概念）拆分为 sandbox/models/planner/meta 模块"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-1-7-retro-item-5-waiver-decisions"
     epic: 7
@@ -155,3 +155,40 @@ action_items:
     owner: "开发"
     status: open
     ref: "docs/epic-1-7-retro-2026-09-09.md"
+  - id: "epic-8-retro-item-1-unify-sequencer"
+    epic: 8
+    action: "统一 Sequencer/EnvelopeBuilder（现 5 处构造点，Epic 8 又增 2）；Stage 3 存储改造首项，此前新写路径不得新增第
+      6 处（评审检查项）"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-8-retro-item-2-ac-wording"
+    epic: 8
+    action: "epics.md AC 措辞对齐：8.6 留痕=Artifact 形态、NFR-015 标注 MVP 档与 Stage 3 接线项"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-8-retro-item-3-review-cadence"
+    epic: 8
+    action: "评审节奏惯例：每 ~6 Story 或风险组边界跑四层评审，不等 Epic 末（本轮 4 高危平均存活 8+ 提交）"
+    owner: "全体"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-8-retro-item-4-git-add-explicit"
+    epic: 8
+    action: "git add 显式路径（忽略规则是兜底不是许可；评审提交仍出现过一次 -A）"
+    owner: "全体会话"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-8-retro-item-5-waiver-and-bridge"
+    epic: 8
+    action: "WAIVER 决议（承 Epic1-7 A6）+ cognition→lab 桥接接线（承 A3）——Stage 3 启动前"
+    owner: "用户/架构"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-8-retro-item-6-sdk-subpackage"
+    epic: 8
+    action: "sdk 子包化评估（现 16 文件六正交领域；Stage 3 继续加模块则先拆子包）"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-8-retro-2026-09-10.md"
