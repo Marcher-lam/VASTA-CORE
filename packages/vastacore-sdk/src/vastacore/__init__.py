@@ -25,6 +25,7 @@ from .offline_eval import (
 )
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
+from .quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
 from .release import (
     ReleaseResult,
     ReleaseStatus,
@@ -93,6 +94,10 @@ __all__ = [
     "BatchStep",
     "TransactionBatch",
     "execute_batch",
+    "CostLedger",
+    "QuotaEnforcer",
+    "QuotaExceededError",
+    "QuotaSpec",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",
