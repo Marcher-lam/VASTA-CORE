@@ -2,6 +2,7 @@
 
 from .images import Box, DiffResult, EvidenceImages, ImageInfo, InspectResult, PixelReading
 from .lineage import DerivationRecord, LineageVerification, RecordVerification
+from .pg_store import PostgresEventStore
 from .replay import (
     DeviationHit,
     RegressionTask,
@@ -16,6 +17,7 @@ from .replay import (
     replay_non_model_events,
     timeline,
 )
+from .s3_blobs import S3BlobStore
 from .sqlite_store import (
     DEFAULT_PROJECT,
     DEFAULT_TENANT,
@@ -27,6 +29,8 @@ from .sqlite_store import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "PostgresEventStore",
+    "S3BlobStore",
     "DeviationHit",
     "RegressionTask",
     "ReproBundle",

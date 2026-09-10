@@ -28,6 +28,7 @@ from vasta_protocols.protocols import (
     Observation,
     StorageAdapter,
 )
+from vasta_protocols.sequencer import EventSequencer
 
 from .budget import Budget, BudgetExceededError, BudgetTracker
 from .checkpoint import Checkpoint, ObservationSignature
@@ -110,8 +111,15 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         # 不得挂在（seeded/replay 模式下不走的）注入时钟上。
         self.tracker = BudgetTracker(budget or Budget(), clock=safety_clock or now_utc)
         self._state = RunState.CREATED
-        self._seq = -1
-        self._last_event_id: str | None = None
+        # 统一序列器（Story 9.1）：快道模式——seq 只在 append 成功后推进
+        self._sequencer = EventSequencer.resuming(
+            store, run_context.run_id,
+            last_seq=-1, last_event_id=None,
+            tenant_id=run_context.tenant_id,
+            project_id=run_context.project_id,
+            clock=run_context.clock,
+            event_id_factory=run_context.new_event_id,
+        )
         self._last_action: Action | None = None
         self._last_signature: ObservationSignature | None = None
         self._checkpoint: Checkpoint | None = None
@@ -169,24 +177,8 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         return self._checkpoint
 
     async def _emit(self, type_: str, payload: dict[str, object]) -> EventEnvelope:
-        # seq 只在写入成功后推进：写失败不留序号空洞（评审修复）。
-        envelope = EventEnvelope.model_validate(
-            {
-                "run_id": self.config.run_id,
-                "seq": self._seq + 1,
-                "type": type_,
-                "parent_event_id": self._last_event_id,
-                "ts": self._clock(),
-                "tenant_id": self.config.tenant_id,
-                "project_id": self.config.project_id,
-                "event_id": self.context.new_event_id(),
-                "payload": payload,
-            }
-        )
-        await self.store.append_event(envelope)
-        self._seq = envelope.seq
-        self._last_event_id = envelope.event_id
-        return envelope
+        # 统一序列器（Story 9.1）：成功才推进，写失败不留洞（语义保持）
+        return await self._sequencer.emit(type_, dict(payload))
 
     # ---- 生命周期 ----
     async def start(self) -> None:
@@ -208,7 +200,7 @@ class RunEngine(ContractedMixin, HumanControlMixin):
         return Checkpoint(
             run_id=self.config.run_id,
             state=RunState.PAUSED,
-            last_event_seq=self._seq,
+            last_event_seq=self._sequencer.last_seq,
             last_action=self._last_action,
             active_plans=[],
             budget=self.tracker.snapshot(),

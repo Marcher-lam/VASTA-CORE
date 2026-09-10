@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
+from vasta_protocols.sequencer import EventSequencer
 
 MemoryType = Literal[
     "working",
@@ -85,11 +86,14 @@ class CognitionService:
     ) -> None:
         self.store = store
         self._claims: dict[str, Claim] = {}
-        self._seq = -1
-        self._last_event_id: str | None = None
         self._run_id = "cognition"
         self._tenant = tenant_id
         self._project = project_id
+        # 统一序列器（Story 9.1）：系统流模式（每发全量同步——桥接并发安全）
+        self._sequencer = EventSequencer(
+            store, self._run_id,
+            tenant_id=tenant_id, project_id=project_id,
+        )
         self._known_conflicts: set[frozenset[str]] = set()
         # 恢复已有事件投影（AD-2：投影从事件流重建）
         self._rebuild()
@@ -100,21 +104,16 @@ class CognitionService:
             events = list(self.store.iter_run_events(self._run_id))
         except Exception:
             events = []
+        # 统一序列器（系统流模式）每发全量同步——重放恢复无需手动对齐游标
         for event in events:
-            self._seq = max(self._seq, event.seq)
-            self._last_event_id = event.event_id
             if event.type.startswith("claim."):
                 self._apply_claim_event(event.type, event.payload)
 
     def _sync_from_store(self) -> None:
-        """与存储对齐 seq/parent——桥接（AD-13）可能已在本 run 追加事件。"""
-        try:
-            for event in self.store.iter_run_events(self._run_id):
-                if event.seq > self._seq:
-                    self._seq = event.seq
-                    self._last_event_id = event.event_id
-        except Exception:
-            pass  # 存储adapter不支持时退化为内存 seq（FakeStorage 场景）
+        """与存储对齐——桥接（AD-13）可能已在本 run 追加事件。
+
+        统一序列器（Story 9.1）：同步策略收敛进 EventSequencer（系统流模式）。"""
+        self._sequencer._sync_from_store()  # noqa: SLF001——同对象内部状态对齐
 
     def _apply_claim_event(self, type_: str, payload: dict[str, Any]) -> None:
         claim_id = str(payload.get("claim_id", ""))
@@ -153,25 +152,7 @@ class CognitionService:
                 claim.version += 1
 
     async def _emit(self, type_: str, payload: dict[str, Any]) -> EventEnvelope:
-        from vasta_protocols.ids import new_event_id, now_utc
-
-        self._sync_from_store()
-        self._seq += 1
-        envelope = EventEnvelope.model_validate(
-            {
-                "run_id": self._run_id,
-                "seq": self._seq,
-                "type": type_,
-                "parent_event_id": self._last_event_id,
-                "ts": now_utc(),
-                "tenant_id": self._tenant,
-                "project_id": self._project,
-                "event_id": new_event_id(),
-                "payload": payload,
-            }
-        )
-        await self.store.append_event(envelope)
-        self._last_event_id = envelope.event_id
+        envelope = await self._sequencer.emit(type_, payload)
         self._apply_claim_event(type_, payload)
         return envelope
 
@@ -415,29 +396,14 @@ class ConflictService:
         conflict.resolved = True
         conflict.kept = keep
         if self._store is not None:
-            from vasta_protocols.ids import new_event_id, now_utc
-
-            events = list(self._store.iter_run_events("cognition"))
-            seq = (events[-1].seq + 1) if events else 0
-            parent = events[-1].event_id if events else None
-            await self._store.append_event(
-                EventEnvelope.model_validate(
-                    {
-                        "run_id": "cognition",
-                        "seq": seq,
-                        "type": "claim.conflict_resolved",
-                        "parent_event_id": parent,
-                        "ts": now_utc(),
-                        "tenant_id": "t-default",
-                        "project_id": "p-default",
-                        "event_id": new_event_id(),
-                        "payload": {
-                            "conflict_id": conflict_id,
-                            "claim_ids": conflict.claim_ids,
-                            "kept": keep,
-                        },
-                    }
-                )
+            # 统一序列器（Story 9.1）：系统流模式（原为第六处手工构造）
+            await EventSequencer(self._store, "cognition").emit(
+                "claim.conflict_resolved",
+                {
+                    "conflict_id": conflict_id,
+                    "claim_ids": conflict.claim_ids,
+                    "kept": keep,
+                },
             )
         return conflict
 

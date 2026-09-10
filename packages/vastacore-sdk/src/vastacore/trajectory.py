@@ -19,6 +19,7 @@ fail-closed（all-or-nothing）：任一记录非法 → 整体拒入（零事�
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -27,9 +28,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
-from vasta_protocols.ids import new_event_id
+from vasta_protocols.sequencer import EventSequencer
 
 #: 合成时间戳基准（确定性：与导入时刻无关）。
 _BASE_TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -253,23 +253,18 @@ async def import_trajectory(
         )
     plan = await _plan_records(records, source_format)  # 全量校验（此时零写入）
 
-    seq = 0
-    parent: str | None = None
     artifact_count = 0
+    # 统一序列器（Story 9.1）：合成确定性时间戳（固定基准 + seq 秒递增）
+    step_clock = itertools.count()
+    sequencer = EventSequencer(
+        store, run_id, tenant_id=tenant_id, project_id=project_id,
+        clock=lambda: _BASE_TS + timedelta(seconds=next(step_clock)),
+        resync_each_emit=False,  # 导入为单写者全量校验后写入（快道 + 预检）
+    )
 
     async def emit(type_: str, payload: dict[str, Any]) -> None:
-        nonlocal seq, parent
-        envelope = EventEnvelope.model_validate({
-            "run_id": run_id, "seq": seq, "type": type_,
-            "parent_event_id": parent,
-            "ts": _BASE_TS + timedelta(seconds=seq),  # 合成确定性时间戳
-            "tenant_id": tenant_id, "project_id": project_id,
-            "event_id": new_event_id(),
-            "payload": payload,
-        })
-        await store.append_event(envelope)
-        parent = envelope.event_id
-        seq += 1
+        nonlocal artifact_count
+        await sequencer.emit(type_, payload)
 
     await emit("run.created", {"imported": True, "source_format": source_format,
                                "records": len(records)})
@@ -290,7 +285,7 @@ async def import_trajectory(
     await emit("run.completed", {"imported": True})
 
     return ImportSummary(
-        run_id=run_id, records=len(records), events=seq,
+        run_id=run_id, records=len(records), events=sequencer.last_seq + 1,
         artifacts=artifact_count, source_format=source_format,
     )
 

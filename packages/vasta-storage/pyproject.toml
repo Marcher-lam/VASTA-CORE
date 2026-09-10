@@ -5,6 +5,10 @@ description = "Evidence Store: CAS, event store, derived index, lifecycle (Epic 
 requires-python = ">=3.12"
 dependencies = ["vasta-protocols", "pillow>=12.3,<13"]
 
+[project.optional-dependencies]
+pg = ["asyncpg>=0.30"]
+s3 = ["boto3>=1.35"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

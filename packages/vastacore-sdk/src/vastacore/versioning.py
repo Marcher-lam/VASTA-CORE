@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict
 
 from vasta_protocols.envelope import EventEnvelope
 from vasta_protocols.errors import VastaError
-from vasta_protocols.ids import new_event_id, now_utc
+from vasta_protocols.sequencer import EventSequencer
 
 _REGISTRY_RUN = "registry"
 
@@ -90,16 +90,11 @@ async def _emit_registry(
     store: Any, type_: str, payload: dict[str, Any],
     *, tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> EventEnvelope:
-    events = list(store.iter_run_events(_REGISTRY_RUN))
-    seq = (events[-1].seq + 1) if events else 0
-    envelope = EventEnvelope.model_validate({
-        "run_id": _REGISTRY_RUN, "seq": seq, "type": type_,
-        "parent_event_id": events[-1].event_id if events else None,
-        "ts": now_utc(), "tenant_id": tenant_id, "project_id": project_id,
-        "event_id": new_event_id(), "payload": payload,
-    })
-    await store.append_event(envelope)
-    return envelope
+    # 统一序列器（Story 9.1）：系统流模式（registry 并发发布安全）
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN, tenant_id=tenant_id, project_id=project_id,
+    )
+    return await sequencer.emit(type_, payload)
 
 
 def _existing_version(

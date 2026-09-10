@@ -105,7 +105,21 @@ development_status:
   8-13-lab-split: review
   epic-8-retrospective: done
 
-  epic-9: backlog
+  epic-9: in-progress
+  9-1-storage-backends-sequencer: review
+  9-2-entity-index: backlog
+  9-3-lifecycle-deletion-proof: backlog
+  9-4-raw-evidence-permissions: backlog
+  9-5-approval-records: backlog
+  9-6-release-canary: backlog
+  9-7-transaction-batches: backlog
+  9-8-quota-cost-rollup: backlog
+  9-9-scheduled-batch-runs: backlog
+  9-10-cross-process-resume: backlog
+  9-11-batch-revalidation-decay: backlog
+  9-12-ops-baseline: backlog
+  9-13-domain-studio: backlog
+  9-14-sandbox-bridge-close: backlog
   epic-9-retrospective: optional
 
   epic-10: backlog

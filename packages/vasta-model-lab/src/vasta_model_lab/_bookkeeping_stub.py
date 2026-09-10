@@ -10,7 +10,7 @@ import sys
 from typing import Any
 
 from vasta_protocols.envelope import EventEnvelope
-from vasta_protocols.ids import new_event_id, now_utc
+from vasta_protocols.sequencer import EventSequencer
 
 
 def default_monotonic() -> float:
@@ -35,22 +35,8 @@ def sandbox_subprocess_env() -> dict[str, str]:
 async def emit_world_model_event(
     store: Any, type_: str, payload: dict[str, Any]
 ) -> EventEnvelope:
-    """以 cognition run 落 world_model.* 事件（因果链续接）。"""
-    events = list(store.iter_run_events("cognition"))
-    seq = (events[-1].seq + 1) if events else 0
-    parent = events[-1].event_id if events else None
-    envelope = EventEnvelope.model_validate(
-        {
-            "run_id": "cognition",
-            "seq": seq,
-            "type": type_,
-            "parent_event_id": parent,
-            "ts": now_utc(),
-            "tenant_id": "t-default",
-            "project_id": "p-default",
-            "event_id": new_event_id(),
-            "payload": payload,
-        }
-    )
-    await store.append_event(envelope)
-    return envelope
+    """以 cognition run 落 world_model.* 事件（因果链续接）。
+
+    统一序列器（Story 9.1）：系统流模式——与 CognitionService 并发写安全。"""
+    sequencer = EventSequencer(store, "cognition")
+    return await sequencer.emit(type_, payload)

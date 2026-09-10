@@ -22,6 +22,7 @@ from .protocols import (
     VERIFIER_PROTOCOL_VERSION,
 )
 from .regression import REGRESSION_FORMAT_VERSION, RegressionTask
+from .sequencer import EventSequencer
 
 __version__ = "0.1.0"
 
@@ -36,6 +37,7 @@ __all__ = [
     "MODEL_PROTOCOL_VERSION",
     "PROTOCOL_VERSION",
     "REGRESSION_FORMAT_VERSION",
+    "EventSequencer",
     "RegressionTask",
     "STORAGE_PROTOCOL_VERSION",
     "TOOL_PROTOCOL_VERSION",
