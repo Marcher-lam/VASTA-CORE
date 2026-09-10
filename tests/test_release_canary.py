@@ -45,8 +45,10 @@ class TestStateMachine:
         """AC：candidate→testing→shadow→canary→active 全路径。"""
         await seed_two_versions(store)
         for to_status in ("testing", "shadow", "canary", "active"):
-            result = await promote_release(store, "model", "grid", "2.0.0",
-                                           to=to_status)
+            result = await promote_release(
+                store, "model", "grid", "2.0.0", to=to_status,
+                # FR-055 复核门（10.3）：上线须人工复核（其余推进免）
+                approver="reviewer@corp" if to_status == "active" else None)
             assert result.status == to_status
         assert await get_release_status(store, "model", "grid") == "active"
 
@@ -75,12 +77,14 @@ class TestRollback:
     async def test_rollback_restores_previous_active(self, store) -> None:
         """AC：回滚恢复引用至前 active 版本。"""
         await seed_two_versions(store)
-        # v1 全推到 active
+        # v1 全推到 active（上线步带复核——FR-055）
         for s in ("testing", "shadow", "canary", "active"):
-            await promote_release(store, "model", "grid", "1.0.0", to=s)
+            await promote_release(store, "model", "grid", "1.0.0", to=s,
+                                  approver="r" if s == "active" else None)
         # v2 全推到 active（替换 v1）
         for s in ("testing", "shadow", "canary", "active"):
-            await promote_release(store, "model", "grid", "2.0.0", to=s)
+            await promote_release(store, "model", "grid", "2.0.0", to=s,
+                                  approver="r" if s == "active" else None)
         assert await get_release_status(store, "model", "grid") == "active"
         # 回滚 → 恢复 v1 active
         result = await rollback_release(store, "model", "grid")
