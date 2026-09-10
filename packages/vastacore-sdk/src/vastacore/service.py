@@ -58,6 +58,8 @@ class VastaService:
         self.store = SqliteStorage(Path(root) / "store")  # 与 AgentSession 同规则
         self.sessions: dict[str, AgentSession] = {}
         self.lock = asyncio.Lock()
+        # 运维指标计数（Story 9.12：/metrics 数据面——错误计数由 act 路径维护）
+        self.metrics_counters = {"errors": 0, "actions": 0}
 
     def close(self) -> None:
         for session in self.sessions.values():
@@ -111,6 +113,49 @@ def create_app(
         if session is None:
             raise HTTPException(status_code=404, detail=f"run {run_id!r} not found")
         return session
+
+    # ---- 运维基线端点（Story 9.12，FR-076）----
+    # /healthz（活性）与 /readyz（就绪）**匿名**：K8s probe 场景，只回
+    # 进程/依赖状态、零业务数据（数据面端点仍全部 token 保护）；/metrics
+    # 携带指标与告警——带 token。
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "alive"}  # 活性：进程在即活（无依赖判定）
+
+    @app.get("/readyz")
+    async def readyz() -> dict[str, Any]:
+        try:  # 就绪：存储心跳（元数据面点查）
+            service.store.last_event_info("__readyz_probe__")
+        except Exception as exc:  # noqa: BLE001——依赖故障即未就绪
+            raise HTTPException(
+                status_code=503, detail=f"store not ready: {exc}") from exc
+        return {"status": "ready", "sessions": len(service.sessions)}
+
+    @app.get("/metrics", dependencies=[Depends(require_token)])
+    async def metrics() -> dict[str, Any]:
+        from .ops import MetricsSnapshot, evaluate_alerts
+
+        counters = service.metrics_counters
+        actions = max(counters["actions"], 1)  # 空转时错误率定义 0
+        snapshot = MetricsSnapshot(
+            error_rate=round(counters["errors"] / actions, 6),
+            queue_depth=len(service.sessions),
+            quota_throttled=_quota_throttle_count(service.store),
+            sessions_active=len(service.sessions),
+        )
+        return {
+            "metrics": snapshot.model_dump(),
+            "alerts": [a.model_dump() for a in evaluate_alerts(snapshot)],
+        }
+
+    def _quota_throttle_count(store: Any) -> int:
+        """配额触顶计数（quotas 系统流的 run.throttled 事件数）。"""
+        try:
+            return sum(
+                1 for e in store.iter_run_events("quotas")
+                if e.type == "run.throttled")
+        except Exception:  # noqa: BLE001——指标面不因单源缺失失败
+            return 0
 
     @app.post("/runs", status_code=201, dependencies=[Depends(require_token)])
     async def create_run(body: CreateRunBody) -> dict[str, str]:
@@ -166,7 +211,9 @@ def create_app(
                     Action(tool=body.tool, args=body.args), goal=body.goal
                 )
             except VastaError as exc:
+                service.metrics_counters["errors"] += 1  # /metrics 错误率面
                 raise HTTPException(status_code=400, detail=exc.message) from exc
+            service.metrics_counters["actions"] += 1
         return {"observations": [
             {"kind": o.kind, "detail": o.detail} for o in observations
         ]}

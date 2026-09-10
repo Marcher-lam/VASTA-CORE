@@ -23,6 +23,22 @@ from .offline_eval import (
     offline_evaluate,
     replay_bundle_verifiers,
 )
+from .ops import (
+    Alert,
+    AlertRule,
+    IncidentRecord,
+    IntegrityReport,
+    MetricsSnapshot,
+    backup_snapshot,
+    declare_incident,
+    default_alert_rules,
+    evaluate_alerts,
+    incident_archive,
+    recovery_drill,
+    resolve_incident,
+    restore_snapshot,
+    verify_stream_integrity,
+)
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
 from .quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
@@ -119,6 +135,20 @@ __all__ = [
     "record_env_upgrade",
     "revalidate_claims",
     "seed_confidence_interval",
+    "Alert",
+    "AlertRule",
+    "IncidentRecord",
+    "IntegrityReport",
+    "MetricsSnapshot",
+    "backup_snapshot",
+    "declare_incident",
+    "default_alert_rules",
+    "evaluate_alerts",
+    "incident_archive",
+    "recovery_drill",
+    "resolve_incident",
+    "restore_snapshot",
+    "verify_stream_integrity",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",

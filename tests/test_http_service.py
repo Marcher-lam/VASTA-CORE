@@ -186,3 +186,41 @@ class TestCrashSafety:
             tl = c2.get(f"/runs/{run_id}/timeline", headers=H)
             assert tl.status_code == 200
             assert tl.json()["total_events"] >= 3
+
+
+class TestOpsEndpoints:
+    """Story 9.12：运维基线端点（/healthz /readyz /metrics）。"""
+
+    def test_healthz_liveness_anonymous(self, client) -> None:
+        """AC：活性探针——匿名（K8s probe 场景），只回进程状态。"""
+        r = client.get("/healthz")  # 无 token
+        assert r.status_code == 200
+        assert r.json()["status"] == "alive"
+
+    def test_readyz_ready_when_store_alive(self, client) -> None:
+        """AC：就绪探针——存储心跳通过即 ready。"""
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert r.json()["status"] == "ready"
+
+    def test_readyz_503_when_store_down(self, tmp_path) -> None:
+        """存储故障 → 503 未就绪。"""
+        c, _ = make_client(tmp_path)
+        with c:
+            c.app.state.service.store.close()  # 模拟存储故障
+            r = c.get("/readyz")
+            assert r.status_code == 503
+            assert "not ready" in r.json()["detail"]
+
+    def test_metrics_requires_token(self, client) -> None:
+        """指标端点带 token（泄露内部数据——匿名拒）。"""
+        assert client.get("/metrics").status_code == 401
+        assert client.get("/metrics", headers=H).status_code == 200
+
+    def test_metrics_snapshot_and_alerts(self, client) -> None:
+        """指标快照 + 告警评估（基线规则内联）。"""
+        r = client.get("/metrics", headers=H)
+        body = r.json()
+        assert set(body["metrics"]) >= {"error_rate", "queue_depth",
+                                        "quota_throttled"}
+        assert isinstance(body["alerts"], list)
