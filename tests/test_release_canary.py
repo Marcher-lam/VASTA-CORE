@@ -10,7 +10,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.release import (
+from vastacore.governance.release import (
     compare_shadow,
     get_canary_percent,
     get_release_status,
@@ -18,7 +18,7 @@ from vastacore.release import (
     rollback_release,
     set_canary_percent,
 )
-from vastacore.versioning import publish_model_version
+from vastacore.governance.versioning import publish_model_version
 
 RULESET_V1 = {"rules": {"right": {"add": {"col": 1}}}, "goal_check": "done"}
 RULESET_V2 = {"rules": {"right": {"add": {"col": 2}}}, "goal_check": "done"}

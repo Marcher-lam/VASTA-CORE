@@ -210,8 +210,8 @@ class TestConstructionSitesConverged:
             "packages/vasta-runtime/src/vasta_runtime/runner.py",
             "packages/vasta-cognition/src/vasta_cognition/cognition.py",
             "packages/vasta-model-lab/src/vasta_model_lab/_bookkeeping_stub.py",
-            "packages/vastacore-sdk/src/vastacore/trajectory.py",
-            "packages/vastacore-sdk/src/vastacore/versioning.py",
+            "packages/vastacore-sdk/src/vastacore/evidence/trajectory.py",
+            "packages/vastacore-sdk/src/vastacore/governance/versioning.py",
         ]
         for site in sites:
             text = Path(site).read_text(encoding="utf-8")

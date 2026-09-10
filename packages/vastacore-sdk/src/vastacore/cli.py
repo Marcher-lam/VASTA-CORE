@@ -55,7 +55,7 @@ def serve(root: str = typer.Option(".vasta", help="存储根目录"),
           host: str = typer.Option("127.0.0.1", help="监听地址"),
           port: int = typer.Option(8700, help="监听端口")) -> None:
     """HTTP 接入服务（Story 8.3）：run 生命周期 + 证据查询，令牌鉴权。"""
-    from .service import serve as run_serve
+    from .ops.service import serve as run_serve
 
     typer.echo(f"VastaCore service → http://{host}:{port}（root={root}）")
     run_serve(root=root, token=token, host=host, port=port)

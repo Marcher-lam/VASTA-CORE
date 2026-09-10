@@ -10,7 +10,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.trajectory import ImportSummary, import_trajectory
+from vastacore.evidence.trajectory import ImportSummary, import_trajectory
 
 # ---- OpenAI messages 风格样例 ----
 OPENAI_TRAJECTORY = [

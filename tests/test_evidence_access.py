@@ -9,7 +9,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.derive import derive_on_demand
+from vastacore.evidence.derive import derive_on_demand
 
 
 @pytest.fixture

@@ -13,8 +13,8 @@ import pytest
 from vasta_eval import VastaLabTask
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.quotas import QuotaEnforcer, QuotaSpec
-from vastacore.scheduling import CronSpec, Scheduler, ScheduleSpec
+from vastacore.governance.quotas import QuotaEnforcer, QuotaSpec
+from vastacore.ops.scheduling import CronSpec, Scheduler, ScheduleSpec
 
 
 @pytest.fixture

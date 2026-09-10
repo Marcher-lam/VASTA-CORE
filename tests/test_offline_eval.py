@@ -9,8 +9,8 @@ import pytest
 
 from vasta_protocols.protocols import Verification, VerifierManifest
 from vasta_storage import SqliteStorage
-from vastacore.offline_eval import OfflineEvalReport, offline_evaluate
-from vastacore.trajectory import import_trajectory
+from vastacore.evidence.trajectory import import_trajectory
+from vastacore.models.offline_eval import OfflineEvalReport, offline_evaluate
 
 # ---- 导入轨迹样例（Story 8.2 形态）----
 
@@ -179,7 +179,7 @@ class TestBundleVerifierReplay:
         from vasta_protocols.protocols import Action
         from vasta_storage import export_repro_bundle
         from vastacore import AgentSession
-        from vastacore.offline_eval import replay_bundle_verifiers
+        from vastacore.models.offline_eval import replay_bundle_verifiers
 
         from .test_agent_sdk import STATUS_CONTRACT, SetStatusTool, TodoEnv
 

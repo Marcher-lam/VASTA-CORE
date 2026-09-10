@@ -10,7 +10,7 @@ import pytest
 
 from vasta_cognition.cognition import Claim, CognitionService
 from vasta_storage import SqliteStorage
-from vastacore.bridge_wiring import refute_with_propagation
+from vastacore.governance.bridge_wiring import refute_with_propagation
 
 
 @pytest.fixture

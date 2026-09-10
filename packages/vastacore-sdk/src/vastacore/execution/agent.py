@@ -41,7 +41,7 @@ from vasta_runtime import Budget, RunContext, RunEngine
 from vasta_runtime.gateway import ToolGateway
 from vasta_storage import SqliteStorage
 
-from ._version import __version__
+from .._version import __version__
 
 #: 契约模板：必填段齐全的普通字典（args/tool 由每次调用覆写）。
 ContractTemplate = dict[str, Any]

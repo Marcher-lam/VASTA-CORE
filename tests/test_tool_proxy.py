@@ -11,7 +11,7 @@ from vasta_protocols.protocols import Action
 from vasta_runtime import ToolGateway
 from vasta_storage import SqliteStorage
 from vastacore import AgentSession
-from vastacore.toolproxy import (
+from vastacore.execution.toolproxy import (
     browser_action_proxy,
     browser_read_proxy,
     proxy_tool,

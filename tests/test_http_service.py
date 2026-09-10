@@ -14,7 +14,7 @@ from .test_agent_sdk import STATUS_CONTRACT, SetStatusTool, TodoEnv
 def make_client(tmp_path, token="secret-token"):
     from fastapi.testclient import TestClient
 
-    from vastacore.service import create_app
+    from vastacore.ops.service import create_app
 
     app = create_app(
         env_factory=TodoEnv,
@@ -94,7 +94,7 @@ class TestLifecycle:
         contract_template_missing（原先 in (200,400) 恒真，零回归保护）。"""
         from fastapi.testclient import TestClient
 
-        from vastacore.service import create_app
+        from vastacore.ops.service import create_app
 
         from .test_agent_sdk import SetStatusTool, TodoEnv
 
@@ -149,7 +149,7 @@ class TestCrashSafety:
     def test_evidence_survives_service_dispose(self, tmp_path) -> None:
         """AC：服务崩溃不丢已落盘证据——dispose 后新进程读同根目录。"""
         from vasta_storage import SqliteStorage, timeline
-        from vastacore.service import create_app
+        from vastacore.ops.service import create_app
 
         app = create_app(
             env_factory=TodoEnv, tools=[SetStatusTool()],

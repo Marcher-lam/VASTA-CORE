@@ -12,7 +12,7 @@ import pytest
 from vasta_cognition import Claim, CognitionService
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.timetravel import claim_as_of, derived_recall
+from vastacore.evidence.timetravel import claim_as_of, derived_recall
 
 
 def make_claim(claim_id: str, **overrides) -> Claim:

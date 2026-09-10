@@ -207,7 +207,7 @@ class Scheduler:
         tenant_id: str = "t-default",
         project_id: str = "p-default",
     ) -> None:
-        from .batch import run_tasks_as_runs
+        from ..execution.batch import run_tasks_as_runs
 
         self._store = store
         self._enforcer = enforcer

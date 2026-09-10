@@ -11,7 +11,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.approvals import (
+from vastacore.governance.approvals import (
     ApprovalRecord,
     is_approval_valid,
     record_approval,
@@ -112,7 +112,7 @@ class TestRevoke:
 
     async def test_revoke_scoped_not_cross_tenant(self, store) -> None:
         """评审修复：撤销按作用域匹配——他租户同 id 不可误撤。"""
-        from vastacore.approvals import get_approval
+        from vastacore.governance.approvals import get_approval
 
         rec = await record_approval(
             store, tool="ship", args={}, approver="c", scope="t-a:p-a",

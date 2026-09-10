@@ -13,7 +13,7 @@ from vasta_protocols.errors import VastaError
 from vasta_protocols.protocols import Action, Observation
 from vasta_runtime import Budget, RunContext, RunEngine
 from vasta_storage import SqliteStorage
-from vastacore.revalidation import (
+from vastacore.governance.revalidation import (
     DecayPolicy,
     impact_analysis,
     record_env_upgrade,

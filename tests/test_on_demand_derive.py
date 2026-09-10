@@ -11,7 +11,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.derive import (
+from vastacore.evidence.derive import (
     DeriverRegistry,
     default_registry,
     derive_on_demand,

@@ -18,7 +18,7 @@ from vasta_protocols.protocols import (
     ToolManifest,
     ToolResult,
 )
-from vastacore.agent import AgentSession
+from vastacore.execution.agent import AgentSession
 
 # ---- 被接入方（「外部团队」自带的 env 与工具）----
 

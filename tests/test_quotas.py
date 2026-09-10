@@ -15,13 +15,13 @@ from vasta_protocols.protocols import (
     ModelResponse,
 )
 from vasta_storage import SqliteStorage
-from vastacore.quotas import (
+from vastacore.governance.quotas import (
     CostLedger,
     QuotaEnforcer,
     QuotaExceededError,
     QuotaSpec,
 )
-from vastacore.router import ModelRouter
+from vastacore.models.router import ModelRouter
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ from vasta_protocols.protocols import (
     ToolResult,
 )
 from vastacore import AgentSession
-from vastacore.transactions import TransactionBatch, execute_batch
+from vastacore.governance.transactions import TransactionBatch, execute_batch
 
 # ---- 测试替身 ----
 
@@ -172,7 +172,7 @@ class TestTransactionBatch:
             batch = TransactionBatch(batch_id="idem-tx", steps=[
                 {"tool": "step", "args": {"id": "s1"}},
             ])
-            from vastacore.transactions import _step_idempotency_key
+            from vastacore.governance.transactions import _step_idempotency_key
 
             key = _step_idempotency_key(batch, 0)
             assert key.startswith("idem-tx:step_0:")

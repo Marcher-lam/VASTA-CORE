@@ -11,7 +11,7 @@ import pytest
 from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
 from vasta_storage import SqliteStorage
-from vastacore.ops import (
+from vastacore.ops.ops import (
     AlertRule,
     MetricsSnapshot,
     backup_snapshot,

@@ -11,7 +11,7 @@ import pytest
 
 from vasta_eval import generate_tasks
 from vasta_storage import SqliteStorage, export_repro_bundle, replay_non_model_events, timeline
-from vastacore.batch import BatchRunSummary, run_tasks_as_runs
+from vastacore.execution.batch import BatchRunSummary, run_tasks_as_runs
 
 
 @pytest.fixture(scope="module")

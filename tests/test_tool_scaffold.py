@@ -11,7 +11,7 @@ import sys
 import pytest
 
 from vasta_protocols.protocols import Action
-from vastacore.agent import AgentSession
+from vastacore.execution.agent import AgentSession
 from vastacore.scaffold import (
     ScaffoldResult,
     generate_tool_project,

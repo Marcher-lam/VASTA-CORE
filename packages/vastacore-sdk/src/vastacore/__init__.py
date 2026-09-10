@@ -1,30 +1,69 @@
 """vastacore-sdk：组装入口与便捷 API（AD-1 组装根）。"""
 
 from ._version import __version__
-from .agent import AgentSession, ContractTemplate, SessionSummary
-from .approvals import (
-    ApprovalRecord,
-    is_approval_valid,
-    record_approval,
-    revoke_approval,
-    search_approvals,
-)
-from .batch import (
+from .evidence.derive import DerivedRef, DeriverRegistry, default_registry, derive_on_demand
+from .evidence.timetravel import DerivedRecall, claim_as_of, derived_recall
+from .evidence.trajectory import ImportSummary, import_trajectory
+from .execution.agent import AgentSession, ContractTemplate, SessionSummary
+from .execution.batch import (
     BatchRunSummary,
     SolvePolicyStandIn,
     TaskRunResult,
     VastaLabEnv,
     run_tasks_as_runs,
 )
-from .bridge_wiring import PropagationReport, refute_with_propagation
-from .derive import DerivedRef, DeriverRegistry, default_registry, derive_on_demand
-from .offline_eval import (
+from .execution.toolproxy import (
+    ProxyToolAdapter,
+    browser_action_proxy,
+    browser_read_proxy,
+    proxy_tool,
+)
+from .governance.approvals import (
+    ApprovalRecord,
+    is_approval_valid,
+    record_approval,
+    revoke_approval,
+    search_approvals,
+)
+from .governance.bridge_wiring import PropagationReport, refute_with_propagation
+from .governance.quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
+from .governance.release import (
+    ReleaseResult,
+    ReleaseStatus,
+    RollbackResult,
+    compare_shadow,
+    get_canary_percent,
+    get_release_status,
+    promote_release,
+    rollback_release,
+    set_canary_percent,
+)
+from .governance.revalidation import (
+    DecayPolicy,
+    ImpactItem,
+    ImpactReport,
+    impact_analysis,
+    record_env_upgrade,
+    revalidate_claims,
+    seed_confidence_interval,
+)
+from .governance.transactions import BatchResult, BatchStep, TransactionBatch, execute_batch
+from .governance.versioning import (
+    PublishedRef,
+    VersionRecord,
+    publish_model_version,
+    publish_policy_snapshot,
+    version_as_of,
+)
+from .models.offline_eval import (
     ActionComparison,
     OfflineEvalReport,
     offline_evaluate,
     replay_bundle_verifiers,
 )
-from .ops import (
+from .models.probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
+from .models.router import CostEntry, ModelRouter, RouterError
+from .ops.ops import (
     Alert,
     AlertRule,
     IncidentRecord,
@@ -40,44 +79,11 @@ from .ops import (
     restore_snapshot,
     verify_stream_integrity,
 )
-from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
+from .ops.scheduling import CronSpec, FireRecord, Scheduler, ScheduleSpec
+from .ops.service import VastaService, create_app, serve
+from .ops.studio import mount_studio  # noqa: F401
 from .quickstart import RunSummary, quickstart
-from .quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
-from .release import (
-    ReleaseResult,
-    ReleaseStatus,
-    RollbackResult,
-    compare_shadow,
-    get_canary_percent,
-    get_release_status,
-    promote_release,
-    rollback_release,
-    set_canary_percent,
-)
-from .revalidation import (
-    DecayPolicy,
-    ImpactItem,
-    ImpactReport,
-    impact_analysis,
-    record_env_upgrade,
-    revalidate_claims,
-    seed_confidence_interval,
-)
-from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
-from .scheduling import CronSpec, FireRecord, Scheduler, ScheduleSpec
-from .service import VastaService, create_app, serve
-from .timetravel import DerivedRecall, claim_as_of, derived_recall
-from .toolproxy import ProxyToolAdapter, browser_action_proxy, browser_read_proxy, proxy_tool
-from .trajectory import ImportSummary, import_trajectory
-from .transactions import BatchResult, BatchStep, TransactionBatch, execute_batch
-from .versioning import (
-    PublishedRef,
-    VersionRecord,
-    publish_model_version,
-    publish_policy_snapshot,
-    version_as_of,
-)
 
 __all__ = [
     "ActionComparison",
@@ -175,4 +181,5 @@ __all__ = [
     "import_trajectory",
     "quickstart",
     "__version__",
+    "mount_studio",
 ]

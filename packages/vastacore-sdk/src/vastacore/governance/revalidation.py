@@ -121,7 +121,7 @@ async def _verdict_of(
 ) -> str:
     """单主张重验证判定：源 Run 离线重评估（8.10 复用）——
     changed 为空 = pass。无源 Run → no_source_run（按 fail 处置）。"""
-    from .offline_eval import offline_evaluate
+    from ..models.offline_eval import offline_evaluate
 
     if not claim.run_id:
         return "no_source_run"

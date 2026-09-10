@@ -9,7 +9,7 @@ import pytest
 
 from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
-from vastacore.versioning import (
+from vastacore.governance.versioning import (
     VersionRecord,
     publish_model_version,
     publish_policy_snapshot,
@@ -163,7 +163,7 @@ class TestRunReferencesVersion:
     v2 发布后按 run 时点解析 = v1（回放不串版的 run 侧演示）。"""
 
     async def test_run_event_references_version_at_time(self, store) -> None:
-        from vastacore.versioning import _emit_registry  # noqa: PLC2701
+        from vastacore.governance.versioning import _emit_registry  # noqa: PLC2701
 
         await publish_model_version(
             store, "grid", "1.0.0", ruleset=RULESET_V1, manifest=MANIFEST,

@@ -18,14 +18,14 @@ from vasta_eval import VastaLabTask
 from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
 from vasta_storage import SqliteStorage
-from vastacore.ops import backup_snapshot, restore_snapshot
-from vastacore.quotas import CostLedger, QuotaEnforcer, QuotaSpec
-from vastacore.revalidation import (
+from vastacore.governance.quotas import CostLedger, QuotaEnforcer, QuotaSpec
+from vastacore.governance.revalidation import (
     DecayPolicy,
     revalidate_claims,
     seed_confidence_interval,
 )
-from vastacore.scheduling import CronSpec, Scheduler, ScheduleSpec
+from vastacore.ops.ops import backup_snapshot, restore_snapshot
+from vastacore.ops.scheduling import CronSpec, Scheduler, ScheduleSpec
 
 
 @pytest.fixture
@@ -183,7 +183,7 @@ class TestOpsBackupFixes:
 
     async def test_parent_break_detected(self, store) -> None:
         """验证缺口 M17b：父链断裂注入检出（原零锚定）。"""
-        from vastacore.ops import verify_stream_integrity
+        from vastacore.ops.ops import verify_stream_integrity
 
         await EventSequencer(store, "r1").emit("run.created", {})
         await EventSequencer(store, "r1").emit("run.started", {})
@@ -214,7 +214,7 @@ async def _first_artifact_sha(store) -> str:
 class TestStudioTenantIsolation:
     def test_claims_scoped_to_tenant(self, tmp_path) -> None:
         """H2：Studio 认知投影按租户过滤——他租户主张不可见。"""
-        from vastacore.studio import mount_studio
+        from vastacore.ops.studio import mount_studio
 
         store = SqliteStorage(tmp_path / "iso")
 
@@ -242,7 +242,7 @@ class TestStudioTenantIsolation:
 
     def test_projection_refresh_sees_late_writes(self, tmp_path) -> None:
         """F8：mount 后其他实例写入的主张可见（投影刷新）。"""
-        from vastacore.studio import mount_studio
+        from vastacore.ops.studio import mount_studio
 
         store = SqliteStorage(tmp_path / "late")
 

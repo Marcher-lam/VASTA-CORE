@@ -138,7 +138,7 @@ def mount_studio(
     @app.get("/studio/api/impact",
              dependencies=[Depends(require_token)])
     async def impact_preview(k: str, v: str) -> dict[str, Any]:
-        from .revalidation import impact_analysis
+        from ..governance.revalidation import impact_analysis
 
         cognition.refresh()  # 评审修复 F8
         affected = impact_analysis(cognition, {k: v})
@@ -161,7 +161,7 @@ def mount_studio(
         counterevidence）。终态主张拒审（cognition 状态机守卫）。"""
         from vasta_protocols.errors import VastaError
 
-        from .approvals import record_approval
+        from ..governance.approvals import record_approval
 
         cognition.refresh()  # 终态判定不基于陈旧投影
         _claim_or_404(claim_id)

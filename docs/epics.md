@@ -244,6 +244,15 @@ So that Stage 4+ 新增企业模块不再进平铺目录。
 **Then** 零行为变更（727 测试全绿不动断言）；导入面后向兼容（顶层 `vastacore.*` 再导出保留一个 Stage）
 **And** import-linter 增子包边界契约；常驻 Sequencer 评估结论入档（C3③——是否随包装配收敛）
 
+**完成注记（2026-09-09）**：五子包（governance 7 / ops 4 / models 3 /
+execution 3 / evidence 3）+ 根装配（cli/quickstart/scaffold）；727 全绿
+零断言改动；顶层 96 符号再导出后向兼容；import-linter 5 契约 KEPT
+（layers: ops→governance→base + 底层三包 independence + 子包禁导装配）。
+**常驻 Sequencer 评估结论（C3③）**：维持按调用新建 + 有界重试——常驻化
+的主要收益（省同步）已被 last_event_info O(1) 点查消解；竞态面已被
+有界重试兜底（8 并发实测）；常驻需引入生命周期注册表增加装配复杂度，
+收益不抵。F3 竞态问题就此关闭。
+
 ### Story 10.2: 测试卫生三件套（G0）
 
 As a 平台维护者,

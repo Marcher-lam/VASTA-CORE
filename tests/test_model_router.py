@@ -15,7 +15,7 @@ from vasta_protocols.protocols import (
     ModelResponse,
 )
 from vasta_storage import SqliteStorage
-from vastacore.router import ModelRouter, RouterError
+from vastacore.models.router import ModelRouter, RouterError
 
 
 class FakeModel:

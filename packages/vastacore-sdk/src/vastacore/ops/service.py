@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field
 from vasta_protocols.protocols import EnvironmentAdapter, ToolAdapter
 from vasta_storage import SqliteStorage
 
-from ._version import __version__
-from .agent import AgentSession, ContractTemplate
+from .._version import __version__
+from ..execution.agent import AgentSession, ContractTemplate
 
 
 class CreateRunBody(BaseModel):

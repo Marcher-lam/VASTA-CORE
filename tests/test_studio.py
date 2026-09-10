@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from vasta_cognition.cognition import Claim, CognitionService
 from vasta_protocols.sequencer import EventSequencer
 from vasta_storage import SqliteStorage
-from vastacore.studio import mount_studio
+from vastacore.ops.studio import mount_studio
 
 H = {"Authorization": "Bearer tok-studio"}
 

@@ -14,7 +14,7 @@ from vasta_protocols.protocols import (
     ModelResponse,
 )
 from vasta_storage import SqliteStorage
-from vastacore.probe import (
+from vastacore.models.probe import (
     CapabilityReport,
     probe_capabilities,
     save_capability_report,

@@ -90,3 +90,33 @@ source_modules = [
     "vasta_protocols",
 ]
 forbidden_modules = ["vasta_adapters", "vastacore"]
+
+[[tool.importlinter.contracts]]
+name = "Story 10.1: sdk subpackage layers (ops -> governance -> base)"
+type = "layers"
+layers = [
+    "vastacore.ops",
+    "vastacore.governance",
+    "vastacore.models | vastacore.execution | vastacore.evidence",
+]
+
+[[tool.importlinter.contracts]]
+name = "Story 10.1: subpackages must not import assembly modules"
+type = "forbidden"
+source_modules = [
+    "vastacore.ops",
+    "vastacore.governance",
+    "vastacore.models",
+    "vastacore.execution",
+    "vastacore.evidence",
+]
+forbidden_modules = [
+    "vastacore.cli",
+    "vastacore.quickstart",
+    "vastacore.scaffold",
+]
+
+[[tool.importlinter.contracts]]
+name = "Story 10.1: base subpackages are mutually independent"
+type = "independence"
+modules = ["vastacore.models", "vastacore.execution", "vastacore.evidence"]
