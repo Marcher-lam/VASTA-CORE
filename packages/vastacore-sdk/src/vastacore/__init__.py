@@ -42,6 +42,7 @@ from .service import VastaService, create_app, serve
 from .timetravel import DerivedRecall, claim_as_of, derived_recall
 from .toolproxy import ProxyToolAdapter, browser_action_proxy, browser_read_proxy, proxy_tool
 from .trajectory import ImportSummary, import_trajectory
+from .transactions import BatchResult, BatchStep, TransactionBatch, execute_batch
 from .versioning import (
     PublishedRef,
     VersionRecord,
@@ -88,6 +89,10 @@ __all__ = [
     "DeriverRegistry",
     "default_registry",
     "derive_on_demand",
+    "BatchResult",
+    "BatchStep",
+    "TransactionBatch",
+    "execute_batch",
     "DerivedRecall",
     "PublishedRef",
     "VersionRecord",

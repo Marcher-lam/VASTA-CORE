@@ -112,7 +112,7 @@ development_status:
   9-4-raw-evidence-permissions: review
   9-5-approval-records: review
   9-6-release-canary: review
-  9-7-transaction-batches: backlog
+  9-7-transaction-batches: review
   9-8-quota-cost-rollup: backlog
   9-9-scheduled-batch-runs: backlog
   9-10-cross-process-resume: backlog
