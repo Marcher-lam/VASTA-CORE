@@ -260,9 +260,9 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
 
 | # | 判据 | 豁免理由（证据） | Owner | 到期 | 解除条件 |
 |---|------|------------------|-------|------|----------|
-| W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五（2026-09-10）**：CI 计算面已挂 Story 9.11（`seed_confidence_interval` 正态近似 + 数值测试）——剩真实适配器接入后并入评测报告 | BMad | Stage 3 后半（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪） |
+| W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五**：CI 计算面已挂 Story 9.11。**复评八（2026-09-09）用户裁决：续豁至 Stage 5**（多 Agent 平台化——真实适配器接入为必然前置；解除条件不变） | BMad | Stage 5（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪） |
 | W-2 | FR-013 业务实体维度 | payload_equals 已覆盖实体字段级检索（五维实测）；专用实体索引/别名属存储增强 | BMad | Stage 3 存储改造（PG 迁移同期） | 实体索引落地 + 检索测试 |
-| W-3 | FR-022 revise/promote/narrow | support/accept 近似承载修订/晋升语义（事件留痕可辨）；narrow 无实现 | BMad | Stage 3 认知服务扩展 | 三算子显式事件 + 状态机测试 |
+| W-3 | FR-022 revise/promote/narrow | support/accept 近似承载修订/晋升语义（事件留痕可辨）；narrow 无实现。**复评八（2026-09-09）用户裁决：解除**——挂 Epic 10 认知算子 Story（解除条件不变） | BMad | ~~Stage 3~~ → Epic 10 Story 落地 | 三算子显式事件 + 状态机测试 |
 | W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3）。**复评六（2026-09-10）已解除**——Story 9.14 `refute_with_propagation`（refute→world_model.suspended→plan.invalidated 三跳链路 + `tests/test_bridge_wiring.py` 四项锚定） | BMad | ~~Stage 3 编排~~ 已解除 | ✅ 达成（`test_bridge_wiring.py`：全链三跳/无模型零传播/缺省 provider/传播不越界） |
 
 **豁免语义**: 四项均「机制部分在、字母级缺口」，豁免期间不计分母；到期未解除
@@ -344,3 +344,14 @@ docs/reviews/epic9-g456-code-review.md。
 
 **门禁**: 判据覆盖不变——P0 7/7、P1 33/33、**Overall 40/40 = 100%
 → PASS 维持**。
+
+
+---
+
+## 复评记录八（2026-09-09，Stage 4 启动裁决）
+
+**变更**: 用户裁决两项到期豁免——W-3（FR-022 三算子）**解除**：挂
+Epic 10 认知算子 Story（解除条件不变：三算子显式事件 + 状态机测试，
+Story 落地时转正）；W-1（AC-07 CI）**续豁至 Stage 5**（真实适配器
+接入为 Stage 5 多 Agent 前置；解除条件不变）。豁免在册数不变
+（2 项），门禁 40/40 = 100% PASS 维持。

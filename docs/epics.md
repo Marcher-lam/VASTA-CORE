@@ -213,8 +213,192 @@ Working/Hypothesis/Guide/Counterexample 四类记忆；Claim 带证据/反例/�
 ### Epic 9: 团队协作与控制面（Stage 3，已展开——2026-09-10 增量拆解）
 集中存储（PG/S3）与统一 Sequencer、数据生命周期与删除证明、原始证据权限独立、审批记录、资产发布灰度与版本回滚、配额与成本归集、定时/批量/跨进程 Run、批量重验证、运维基线、Domain Studio 初版、沙箱生产化与桥接收口。**FRs covered:** FR-007, FR-008, FR-017, FR-018, FR-026, FR-028, FR-034, FR-038, FR-065, FR-070, FR-072, FR-075, FR-076（详见下文 Epic 9 详细节）
 
-### Epic 10: 企业保障（Stage 4，仅 Epic 级）
+### Epic 10: 企业保障（Stage 4，2026-09-09 增量拆解）
 模型全生命周期与影子、漂移告警、审计导出、RBAC/ABAC/SSO/SCIM、驻留/保留/法律保留、BYOK/air-gapped、计费、开放 Schema 迁移。**FRs covered:** FR-029, FR-045, FR-049, FR-055, FR-067, FR-068, FR-071, FR-073, FR-074, FR-078, FR-085
+
+#### Epic 10 内部能力分组（2026-09-09 拆解）
+
+| 组 | 用户价值 | FR | 带入项 |
+|---|---|---|---|
+| G0 工程前置 | 地基先稳：sdk 子包化（26 模块临界）与测试卫生（flaky/Fake 约束/常驻 Sequencer）——零行为变更 | —（Epic 9 复盘 C2/C3） | 子包化后新增模块不再进平铺目录 |
+| G1 模型与认知治理 | 模型资产可信退役：全生命周期状态机、漂移检测与影响告警、认知三算子 | FR-045 + FR-055 + FR-067（+FR-049 版本比较/影响分析部分；组合属 Stage 5） | W-3 解除挂 10.5；C4 模型级重验证并入 10.4（漂移判定即重验证入口） |
+| G2 审计与开放 | 审计导出是采购硬条件：JSON/HTML 企业导出 + 事件/契约 Schema 版本化与迁移策略 | FR-068 + FR-085 | — |
+| G3 身份与访问 | 谁能做什么：RBAC/ABAC 角色模型、OIDC/SAML 集成、SCIM 同步、审计日志 | FR-071 | 机制面完整交付；真实 IdP 集成测试门控（先例：VASTA_PG_DSN） |
+| G4 数据治理企业档 | 数据放哪里留多久：分类/驻留/保留时间表/法律保留（9.3/9.4 企业档扩展）+ BYOK/air-gapped | FR-073 + FR-074 | C4 PG 档备份并入 10.11（备份是保留策略执行面） |
+| G5 计量计费 | 用量可计费、成本可优化：计费周期聚合、租户账单、成本优化建议 | FR-078 | 9.8 成本台账为底座 |
+
+备注：FR-029（认知图查询可视化，Could）大部已由 9.13 Domain Studio 覆盖（认知图浏览/冲突/下钻），可视化分析增强随 Studio 迭代不再单列 Story；FR-049 的模型组合明确 Stage 5（多 Agent 前置）。
+
+#### Story 列表
+
+### Story 10.1: sdk 子包化（G0）
+
+As a 平台架构师,
+I want vastacore-sdk 按 storage/governance/ops 分子包（平铺 26 模块临界）,
+So that Stage 4+ 新增企业模块不再进平铺目录。
+
+**Acceptance Criteria:**
+
+**Given** Epic 9 复盘 C2（26 模块 5762 行）
+**When** 分子包重构
+**Then** 零行为变更（727 测试全绿不动断言）；导入面后向兼容（顶层 `vastacore.*` 再导出保留一个 Stage）
+**And** import-linter 增子包边界契约；常驻 Sequencer 评估结论入档（C3③——是否随包装配收敛）
+
+### Story 10.2: 测试卫生三件套（G0）
+
+As a 平台维护者,
+I want 子集 flaky 修复 + Fake 约束对齐惯例 + 真实存储关键路径覆盖,
+So that 回归信号不被测试基础设施噪声侵蚀。
+
+**Acceptance Criteria:**
+
+**Given** G4-G6 验收审计（子集漂移失败）与两轮评审（FakeStorage 不查 event_id UNIQUE 等三类假绿面）
+**When** 修复测试基础设施
+**Then** Epic 9 测试文件与 TestClient 类任意组合选取稳定绿（复现命令 5/5）；FakeStorageAdapter 补 event_id 唯一模拟（或惯例文档化+关键路径真实存储测试）
+**And** asyncio/TestClient portal 干扰根因记录入档
+
+### Story 10.3: 模型全生命周期状态机（G1）
+
+As a 模型治理负责人,
+I want candidate/shadow/active/suspended/retired/revoked 全生命周期,
+So that 模型资产从试验到吊销每一步有门有痕。
+
+**Acceptance Criteria:**
+
+**Given** 9.6 发布灰度（五态）与 8.8 版本化 registry
+**When** 扩展生命周期
+**Then** 六态+revoked 全状态机（非法迁移拒）；吊销（revoked）不可逆且级联（依赖它的计划/路由失效）
+**And** 生命周期事件全留痕（release 族扩展）；FR-055 独立复核（人工复核门——复用 9.5 批准流）
+
+### Story 10.4: 漂移检测与影响告警（G1）
+
+As a 模型治理负责人,
+I want 模型漂移检测、版本比较与影响分析接入告警,
+So that 世界变了模型结论的可信度跟着变、有人被通知。
+
+**Acceptance Criteria:**
+
+**Given** 9.11 重验证（主张侧）与 9.12 告警规则
+**When** 模型漂移事件到达（性能衰减/重验证失败率/分布偏移指标）
+**Then** **模型级重验证**（C4 解除：受影响模型跑离线评估/性质测试——lab validation 复用）；漂移超阈 → 告警规则触发 → incident 联动
+**And** 版本比较与影响分析（FR-049 部分——受影响 Run/计划清单报告）
+
+### Story 10.5: 认知三算子——revise/promote/narrow（G1）
+
+As a 认知资产维护者,
+I want revise（修订）/promote（晋升）/narrow（收窄范围）显式算子,
+So that 主张演化有精确语义而非 support/accept 近似（W-3 解除）。
+
+**Acceptance Criteria:**
+
+**Given** CognitionService（Epic 5）与 W-3 解除裁决（复评八）
+**When** 调用三算子
+**Then** claim.revised/claim.promoted/claim.narrowed 显式事件（payload 携旧值→新值）；状态机迁移合法（含 version 递增）；narrow 收窄 scope 显式入流
+**And** 三算子状态机测试（W-3 解除条件字面达成——矩阵转正复评）
+
+### Story 10.6: 企业审计导出（G2）
+
+As a 企业合规官,
+I want JSON 只读导出与 HTML 审计报告,
+So that 审计与采购合规有交付物（FR-068 采购硬条件）。
+
+**Acceptance Criteria:**
+
+**Given** 事件溯源（AD-2）与既有系统流（approvals/access/quotas/incidents/billing）
+**When** 触发审计导出（时间窗 + 作用域）
+**Then** JSON 导出（只读——事件流逐条+工件引用清单，不含 blob 内容）；HTML 报告（时间线/批准/访问拒绝/事故/成本五节）
+**And** 导出本身留痕（incident 族或 evaluation 族——导出行为可审计）
+
+### Story 10.7: 开放 Schema 与迁移策略（G2）
+
+As a 平台架构师,
+I want 事件与契约 Schema 显式版本化 + 迁移工具,
+So that 下游消费者与企业集成有稳定契约（FR-085）。
+
+**Acceptance Criteria:**
+
+**Given** ENVELOPE_SCHEMA_VERSION（协议已有版本位）与 13 族封闭集
+**When** Schema 演进
+**Then** JSON Schema 导出（信封/事件类型目录/系统流清单）；版本迁移器（旧→新版事件可读升级）；破坏性变更检测（同 run 混版本拒或显式升级）
+**And** 迁移测试（构造 v0.1 事件 → 升级 → 断言等价）
+
+### Story 10.8: RBAC/ABAC 角色模型（G3）
+
+As a 安全负责人,
+I want 角色与属性访问控制贯穿服务面与 Studio,
+So that 共享 token 升级为每操作鉴权。
+
+**Acceptance Criteria:**
+
+**Given** Epic 9 复盘（进程侧身份未落地——共享 Bearer token）
+**When** 定义角色（admin/auditor/operator/viewer）与属性规则（作用域×动作×资源类）
+**Then** 策略评估点接入 service.py 与 studio.py 端点（拒绝 403 留痕）；approver/annotator 事件携带真实身份
+**And** 角色分配留痕；策略评估单测 + 端点集成测试
+
+### Story 10.9: OIDC/SAML 集成与 SCIM 同步（G3）
+
+As a IT 管理员,
+I want 企业 IdP 联邦登录与 SCIM 用户组同步,
+So that 身份生命周期由企业系统管理。
+
+**Acceptance Criteria:**
+
+**Given** 10.8 角色模型
+**When** 配置 IdP（OIDC issuer/JWKS）与 SCIM 端点
+**Then** token 验签（JWKS 轮换）；SCIM 用户/组同步到角色映射；机制面完整 + 真实 IdP 集成测试门控（环境变量注入，先例 VASTA_PG_DSN）
+**And** 身份断言审计留痕；无 IdP 配置时回退本地 token（开发档标注）
+
+### Story 10.10: 审计日志聚合（G3）
+
+As a 合规官,
+I want 「谁在何时对什么做了什么」的统一审计日志,
+So that 安全审查与追责有单一查询面。
+
+**Acceptance Criteria:**
+
+**Given** 分散系统流（approvals/access/quotas/incidents/lifecycle/release）
+**When** 查询审计日志（时间窗 + 主体 + 资源）
+**Then** 跨流聚合统一视图（主体→动作→资源→结果四元组）；导出接 10.6
+**And** 不可篡改声明（append-only 事件流为源——与 AD-2 一致性说明）
+
+### Story 10.11: 驻留、保留与法律保留策略（G4）
+
+As a 数据保护官,
+I want 数据分类、区域驻留策略、保留时间表与企业档法律保留,
+So that 数据生命周期合规可执行可证明。
+
+**Acceptance Criteria:**
+
+**Given** 9.3 生命周期（热温冷+法律保留+删除证明）与 9.4 证据权限
+**When** 配置企业策略（分类标签×区域×保留期×管辖域）
+**Then** 保留到期自动处置建议（删除/归档清单+证明事件延续）；区域驻留校验（store 路径/后端标记 vs 策略——违规拒写或告警）；**C4 PG 档备份并入**（pg_dump 形态备份+恢复演练对 PG）
+**And** 策略配置留痕；处置演练报告
+
+### Story 10.12: BYOK 与 air-gapped 形态（G4）
+
+As a 安全架构师,
+I want 客户自管密钥与离线部署形态,
+So that 敏感环境可用（FR-074）。
+
+**Acceptance Criteria:**
+
+**Given** 模型凭证经适配器注入（AD-4 网关唯一持有）
+**When** 配置外部 KMS/密钥引用（BYOK）
+**Then** 凭证不落库（引用+运行期解析）；air-gapped 检查（无外网依赖清单——模型路由降级链在纯本地形态可用）
+**And** 密钥引用配置留痕（不含密钥本体）；离线形态冒烟测试
+
+### Story 10.13: 用量计费与成本优化（G5）
+
+As a 运营负责人,
+I want 计费周期聚合、租户账单与成本优化建议,
+So that 用量可计费、成本可归因可优化（FR-078）。
+
+**Acceptance Criteria:**
+
+**Given** 9.8 CostLedger 三级归集（run→项目→租户）
+**When** 计费周期闭合（月度/自定义窗）
+**Then** 账单生成（按模型/项目分项，basis 口径延续）；预算使用率与优化建议（低效路由/高成本模型替代候选——router 成本面复用）
+**And** 账单留痕（billing 流周期闭合事件）；账单不可变（再生成=新周期版本）
 
 ### Epic 11: 平台化与多 Agent（Stage 5，仅 Epic 级）
 组合/概率模型、动态自治、多 Agent 委派与共享边界、组织级风险预算、跨组织知识、排行榜、流式/边缘协同。**FRs covered:** FR-009, FR-027, FR-039, FR-042, FR-050, FR-051, FR-054, FR-056, FR-069, FR-077
