@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from vasta_protocols.errors import VastaError
-from vasta_protocols.protocols import Action, ToolAdapter
+from vasta_protocols.protocols import Action, ToolAdapter, ToolResult
 
 
 class ScaffoldResult(BaseModel):
@@ -53,6 +53,22 @@ async def run_tool_protocol_checks(tool: ToolAdapter) -> list[str]:
         return [f"清单完整性失败（FR-032 构造期拒绝）: {exc}"]
 
     action = Action(tool=manifest.name, args={})
+    # dry-run 门先行（评审修复：与网关同序——先 dry_run 后 execute；且只在
+    # 清单声明 supports_dry_run 时探测，声明了却未实现即失败）
+    if manifest.supports_dry_run:
+        try:
+            dry = await tool.dry_run(action)
+            if not isinstance(dry.allowed, bool):
+                failures.append("dry-run 形态失败：allowed 应为 bool")
+        except NotImplementedError:
+            failures.append(
+                "dry-run 失败：清单声明 supports_dry_run 但未实现 dry_run"
+                "（网关路径会裸抛——正是要拦的协议违规）"
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"dry-run 协议失败: {exc}")
+
+    first: ToolResult | None = None
     try:
         first = await tool.execute(action, idempotency_key="proto-check")
         second = await tool.execute(action, idempotency_key="proto-check")
@@ -62,19 +78,12 @@ async def run_tool_protocol_checks(tool: ToolAdapter) -> list[str]:
             failures.append("幂等重放失败：重放结果与首次不一致")
     except Exception as exc:  # noqa: BLE001
         failures.append(f"execute 协议失败（签名须含 idempotency_key 关键字）: {exc}")
+    # 注意：协议检查会真实执行工具两次（幂等键相同）——副作用工具请在
+    # 干净环境跑检查（网关路径因同键重放只执行一次）
 
-    try:
-        dry = await tool.dry_run(action)
-        if not isinstance(dry.allowed, bool):
-            failures.append("dry-run 形态失败：allowed 应为 bool")
-    except NotImplementedError:
-        pass  # 未声明支持则不查
-    except Exception as exc:  # noqa: BLE001
-        failures.append(f"dry-run 协议失败: {exc}")
-
-    if manifest.supports_read_back:
+    if manifest.supports_read_back and first is not None:
         try:
-            obs = await tool.read_back(action, first)  # type: ignore[arg-type]
+            obs = await tool.read_back(action, first)
             if obs.kind not in {"decision", "transition", "terminal", "reset", "external"}:
                 failures.append(f"读回形态失败：kind={obs.kind!r} 不在五类 Observation")
         except NotImplementedError:

@@ -87,15 +87,36 @@ class TestLifecycle:
         assert "action.executed" in types
         assert "verification.passed" in types
 
-    def test_act_without_contract_template_fails_closed(self, client) -> None:
-        """无模板工具经 HTTP 同样 fail-closed（400，不裸跑）。"""
-        run_id = _new_run(client)
-        client.post(f"/runs/{run_id}/start", headers=H)
-        client.post(f"/runs/{run_id}/reset", headers=H)
-        r = client.post(f"/runs/{run_id}/act",
-                        json={"tool": "unknown_tool", "args": {}}, headers=H)
-        # 未注册工具走 env.step（观察路径）——换用注册但缺模板的工具测 fail-closed
-        assert r.status_code in (200, 400)
+    def test_registered_without_template_fails_closed_400(
+        self, tmp_path
+    ) -> None:
+        """评审修复后的真守卫：注册网关但缺契约模板 → 精确 400 +
+        contract_template_missing（原先 in (200,400) 恒真，零回归保护）。"""
+        from fastapi.testclient import TestClient
+
+        from vastacore.service import create_app
+
+        from .test_agent_sdk import SetStatusTool, TodoEnv
+
+        app = create_app(
+            env_factory=TodoEnv, tools=[SetStatusTool()],
+            contracts={},  # 注册了工具但无模板——fail-closed 目标场景
+            root=tmp_path, token="secret-token",
+        )
+        with TestClient(app) as c:
+            hh = {"Authorization": "Bearer secret-token"}
+            run_id = c.post("/runs", json={"seed": 1}, headers=hh).json()["run_id"]
+            c.post(f"/runs/{run_id}/start", headers=hh)
+            c.post(f"/runs/{run_id}/reset", headers=hh)
+            r = c.post(f"/runs/{run_id}/act",
+                       json={"tool": "set_status", "args": {"status": "done"}},
+                       headers=hh)
+            assert r.status_code == 400, (r.status_code, r.text)
+            assert "无契约模板" in r.json()["detail"] and "fail-closed" in r.json()["detail"]
+            # 对照：未注册工具走观察路径（200）——两种路径区分明确
+            r2 = c.post(f"/runs/{run_id}/act",
+                        json={"tool": "unknown_tool", "args": {}}, headers=hh)
+            assert r2.status_code == 200
 
     def test_unknown_run_404(self, client) -> None:
         assert client.post("/runs/nope/start", headers=H).status_code == 404

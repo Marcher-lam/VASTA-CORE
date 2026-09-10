@@ -131,10 +131,17 @@ async def _publish(
     bundle: dict[str, Any],
     *, tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> PublishedRef:
-    canonical = json.dumps(
-        {"kind": kind, "name": name, "version": version, "bundle": bundle},
-        ensure_ascii=False, sort_keys=True,
-    ).encode("utf-8")
+    try:
+        canonical = json.dumps(
+            {"kind": kind, "name": name, "version": version, "bundle": bundle},
+            ensure_ascii=False, sort_keys=True,
+        ).encode("utf-8")
+    except TypeError as exc:
+        # 评审修复：与策略路径对称——不可序列化内容在构造期拒绝
+        raise VastaError(
+            code="versioning.bad_bundle",
+            message=f"bundle 含不可 JSON 序列化的值: {exc}",
+        ) from exc
     import hashlib
 
     sha = hashlib.sha256(canonical).hexdigest()

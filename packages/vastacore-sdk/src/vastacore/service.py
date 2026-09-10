@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from .agent import AgentSession, ContractTemplate
 
 class CreateRunBody(BaseModel):
     seed: int | None = None
-    max_actions: int = 50
+    max_actions: int = Field(default=50, ge=1)
 
 
 class ActBody(BaseModel):
@@ -85,12 +86,24 @@ def create_app(
         env_factory=env_factory, tools=tools or [], contracts=contracts or {},
         root=root,
     )
-    app = FastAPI(title="VastaCore Service", version=__version__)
+    # 评审修复：docs/openapi 匿名面关闭（纯 API 服务）；
+    # token 比较改常数时间（原先普通 != 有时序侧信道）
+    app = FastAPI(title="VastaCore Service", version=__version__,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service = service
 
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        yield
+        service.close()  # 评审修复：shutdown 关闭全部会话与服务 store
+
+    app.router.lifespan_context = _lifespan
+
     def require_token(request: Request) -> None:
+        import hmac as _hmac
+
         auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {token}":
+        if not _hmac.compare_digest(auth, f"Bearer {token}"):
             raise HTTPException(status_code=401, detail="invalid token")
 
     def _session(run_id: str) -> AgentSession:
@@ -116,23 +129,29 @@ def create_app(
     @app.post("/runs/{run_id}/start", dependencies=[Depends(require_token)])
     async def start_run(run_id: str) -> dict[str, bool]:
         async with service.lock:
+            from vasta_protocols.errors import VastaError
+
             try:
                 await _session(run_id).start()
             except HTTPException:
                 raise
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except VastaError as exc:
+                raise HTTPException(status_code=400, detail=exc.message) from exc
+            # 其余异常放行为 500（评审修复：服务端缺陷不再伪装成客户端 400）
         return {"ok": True}
 
     @app.post("/runs/{run_id}/reset", dependencies=[Depends(require_token)])
     async def reset_run(run_id: str, body: ResetBody | None = None) -> dict[str, Any]:
         async with service.lock:
+            from vasta_protocols.errors import VastaError
+
             try:
                 obs = await _session(run_id).reset(seed=body.seed if body else None)
             except HTTPException:
                 raise
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except VastaError as exc:
+                raise HTTPException(status_code=400, detail=exc.message) from exc
+            # 其余异常放行为 500（评审修复：服务端缺陷不再伪装成客户端 400）
         return {"kind": obs.kind, "detail": obs.detail}
 
     @app.post("/runs/{run_id}/act", dependencies=[Depends(require_token)])
@@ -155,12 +174,19 @@ def create_app(
     @app.post("/runs/{run_id}/complete", dependencies=[Depends(require_token)])
     async def complete_run(run_id: str) -> dict[str, bool]:
         async with service.lock:
+            from vasta_protocols.errors import VastaError
+
+            session = _session(run_id)
             try:
-                await _session(run_id).complete()
+                await session.complete()
             except HTTPException:
                 raise
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except VastaError as exc:
+                raise HTTPException(status_code=400, detail=exc.message) from exc
+            # 其余异常放行为 500（评审修复：服务端缺陷不再伪装成客户端 400）
+            # 会话回收（评审修复：句柄/连接无界累积）——summary 走事件推导
+            session.close()
+            service.sessions.pop(run_id, None)
         return {"ok": True}
 
     @app.get("/runs/{run_id}/summary", dependencies=[Depends(require_token)])
@@ -176,9 +202,11 @@ def create_app(
         last_run = next(
             (e.type for e in reversed(events) if e.type.startswith("run.")), None
         )
-        state = {"run.completed": "completed", "run.failed": "failed"}.get(
-            last_run or "", "started"
-        )
+        state = {
+            "run.created": "created", "run.started": "started",
+            "run.paused": "paused", "run.cancelled": "cancelled",
+            "run.completed": "completed", "run.failed": "failed",
+        }.get(last_run or "", "unknown")
         return {
             "run_id": run_id, "state": state, "events": len(events),
             "artifacts": 0, "goal_reached": False, "vastacore_version": __version__,

@@ -47,7 +47,9 @@ class ProxyToolAdapter:
         self.calls = 0  # 底层函数执行计数（测试/审计用）
 
     async def execute(self, action: Action, idempotency_key=None) -> ToolResult:
-        if idempotency_key in self._results:
+        # 评审修复：key=None 不入缓存——原先 None 键全适配器共享一个槽，
+        # 绕过网关的直接调用会静默拿到上一次的无关结果
+        if idempotency_key is not None and idempotency_key in self._results:
             return self._results[idempotency_key].model_copy(
                 update={"replayed": True}
             )
@@ -60,7 +62,8 @@ class ProxyToolAdapter:
             detail=dict(detail) if isinstance(detail, dict)
             else {"value": detail},
         )
-        self._results[idempotency_key] = result
+        if idempotency_key is not None:
+            self._results[idempotency_key] = result
         return result
 
     async def dry_run(self, action: Action) -> DryRunResult:

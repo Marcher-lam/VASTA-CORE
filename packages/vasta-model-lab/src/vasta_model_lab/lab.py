@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from .bridge import WorldModelBridge
 from .dsl import DSLWorldModel, RuleSet
-from .manifest import Observation_, WorldModelManifest
+from .manifest import (  # noqa: F401（属性面保持）
+    Observation_,
+    WorldModelManifest,
+)
 from .meta import MetaDecision, MetaSignals, decide_meta, emit_meta_decision
 from .planner import PlanCaps, plan_bfs
 from .python_model import ALLOWED_IMPORTS, PythonWorldModel

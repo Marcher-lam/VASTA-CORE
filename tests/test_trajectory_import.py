@@ -180,3 +180,58 @@ class TestConsumability:
             streams.append(json.dumps(rows, sort_keys=True, ensure_ascii=False))
             s.close()
         assert streams[0] == streams[1]
+
+
+class TestReviewGuards:
+    """Epic 8 code-review 修复的守卫。"""
+
+    async def test_file_path_form_import(self, tmp_path) -> None:
+        """评审修复：文件路径形态此前零测试覆盖（story 声称端到端实跑）。"""
+        from pathlib import Path
+
+        store = SqliteStorage(tmp_path / "s")
+        sample = Path("examples/onboarding/trajectory-sample.jsonl")
+        summary = await import_trajectory(
+            store, sample, run_id="imp-file", source_format="openai"
+        )
+        assert summary.records == 4
+        assert summary.events == 6
+        assert summary.artifacts == 3
+        store.close()
+
+    async def test_bad_kind_rejected_zero_write(self, tmp_path) -> None:
+        """all-or-nothing：非法 kind（大写/数字开头/CJK）零写入被拒。"""
+        store = SqliteStorage(tmp_path / "s")
+        for bad in ("External", "9x", "观察"):
+            with pytest.raises(VastaError) as excinfo:
+                await import_trajectory(
+                    store, [{"type": "observation", "kind": bad}],
+                    run_id=f"bad-{bad}", source_format="generic",
+                )
+            assert excinfo.value.code == "trajectory.invalid_record"
+            assert list(store.iter_run_events(f"bad-{bad}")) == []
+        store.close()
+
+    async def test_file_with_bad_line_reports_index(self, tmp_path) -> None:
+        """文件逐行解析错误含序号（原先裸 JSONDecodeError）。"""
+        bad = tmp_path / "bad.jsonl"
+        bad.write_text(
+            '{"type": "note", "text": "ok"}\n{not json}\n', encoding="utf-8"
+        )
+        store = SqliteStorage(tmp_path / "s2")
+        with pytest.raises(VastaError) as excinfo:
+            await import_trajectory(store, bad, run_id="x",
+                                    source_format="generic")
+        assert "记录 #1" in excinfo.value.message
+        store.close()
+
+    async def test_bom_file_tolerated(self, tmp_path) -> None:
+        bom = tmp_path / "bom.jsonl"
+        bom.write_bytes(
+            '\ufeff{"type": "note", "text": "bom"}\n'.encode("utf-8")
+        )
+        store = SqliteStorage(tmp_path / "s3")
+        summary = await import_trajectory(store, bom, run_id="bom",
+                                          source_format="generic")
+        assert summary.records == 1
+        store.close()

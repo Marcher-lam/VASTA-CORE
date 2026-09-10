@@ -40,7 +40,7 @@ class StrictVerifier:
             blobs.append(str(after.get("detail", {})))
         result = evidence.get("result")
         if isinstance(result, dict):
-            blobs.append(str(result.get("detail", {})))
+            blobs.append(str(result))  # 搜整个响应本体（引擎 ToolResult 形态与导入扁平形态皆稳健）
         joined = "".join(blobs)
         if self.expect in joined:
             return Verification(outcome="pass")

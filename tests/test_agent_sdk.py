@@ -167,7 +167,7 @@ class TestAgentSession:
                 await session.reset()
                 await session.act(Action(tool="set_status", args={"status": "done"}))
                 run_ids.append((session.run_id, session.normalized_stream()))
-        assert run_ids[0][1] == run_ids[0][1]  # 自身稳定
+        assert run_ids[0][1]  # 非空流
         assert run_ids[0][1] == run_ids[1][1]  # 两根目录逐字节一致
 
     async def test_session_closes_store_exactly_once(self, tmp_path) -> None:

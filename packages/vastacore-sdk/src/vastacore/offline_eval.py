@@ -72,13 +72,51 @@ def _conflict(old: str, new_outcomes: dict[str, str]) -> bool:
     """冲突判定：旧有记录且与新判定不一致；或新判 deviation 而旧非 deviation。
 
     none-recorded（导入轨迹无核验历史）+ 新 pass → 不算冲突（切换无影响）；
-    none-recorded + 新 deviation → 冲突（新核验器会拦下这批历史动作）。"""
-    has_new_deviation = any(v == "deviation" for v in new_outcomes.values())
+    none-recorded + 新 deviation → 冲突（新核验器会拦下这批历史动作）。
+    评审修复：最坏判定按严重度排序取（deviation > system_error >
+    inconclusive > pass），不再取 dict 首值——多核验器时 system_error
+    不再被 pass 掩盖。"""
+    worst_rank = {"deviation": 3, "system_error": 2, "inconclusive": 1,
+                  "pass": 0}
+    new_worst = max(
+        (worst_rank.get(v, 1) for v in new_outcomes.values()), default=0
+    )
     if old == "none-recorded":
-        return has_new_deviation
-    new_worst = ("deviation" if has_new_deviation
-                 else next(iter(new_outcomes.values()), "pass"))
-    return old != new_worst
+        return new_worst >= 3  # 仅新 deviation 构成冲突
+    return worst_rank.get(old, 1) != new_worst
+
+
+def _pair_args(events: list[Any]) -> dict[int, dict[str, Any]]:
+    """executed 事件 seq → 其 contracted args（评审修复：FIFO 配对）。
+
+    原实现「向前找最近的同工具 contracted」在并行同工具调用（c1/c2 相邻
+    声明、相邻执行）时把两个 executed 都配到最后一个声明——args 错配使
+    expected_changes 证据不可信。改为按事件序 FIFO：每工具维护待配对
+    队列，contracted 入队、executed 出队；有 call_id 时优先精确匹配。"""
+    pending: dict[str, list[tuple[str | None, dict[str, Any], int]]] = {}
+    pairing: dict[int, dict[str, Any]] = {}
+    for event in events:
+        p = event.payload
+        if event.type == "action.contracted":
+            tool = str(p.get("tool", ""))
+            pending.setdefault(tool, []).append(
+                (p.get("call_id"), dict(p.get("args", {})), event.seq)
+            )
+        elif event.type == "action.executed":
+            tool = str(p.get("tool", ""))
+            call_id = p.get("call_id")
+            queue = pending.get(tool)
+            if not queue:
+                continue
+            # call_id 精确匹配优先；否则 FIFO 队首
+            match_index = next(
+                (i for i, (cid, _a, _s) in enumerate(queue) if cid == call_id
+                 and call_id is not None),
+                0,
+            )
+            _cid, args, _seq = queue.pop(match_index)
+            pairing[event.seq] = args
+    return pairing
 
 
 async def offline_evaluate(
@@ -99,6 +137,7 @@ async def offline_evaluate(
             code="offline_eval.run_not_found",
             message=f"未找到 Run {run_id!r}（无可评估事件）",
         )
+    args_pairing = _pair_args(events)
     results: list[ActionComparison] = []
     changed: list[ActionComparison] = []
 
@@ -106,13 +145,7 @@ async def offline_evaluate(
         if event.type != "action.executed":
             continue
         tool = str(event.payload.get("tool", ""))
-        # 前置 contracted 取 args
-        args: dict[str, Any] = {}
-        for prior in reversed(events[:index]):
-            if prior.type == "action.contracted" and \
-                    prior.payload.get("tool") == tool:
-                args = dict(prior.payload.get("args", {}))
-                break
+        args: dict[str, Any] = args_pairing.get(event.seq, {})
         # 证据：后续第一条观察 + CAS 结果
         after_detail: dict[str, Any] | None = None
         for following in events[index + 1:]:
@@ -127,25 +160,37 @@ async def offline_evaluate(
             blob = await store.get_artifact(
                 str(result_ref), tenant_id=tenant_id, project_id=project_id
             )
-            result_dict = json.loads(blob.decode("utf-8"))
+            try:
+                result_dict = json.loads(blob.decode("utf-8", errors="replace"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # 非 JSON 结果（8.2 允许 bytes output 直接入 CAS）——
+                # 评审修复：降级为 None 继续，不毁整份报告
+                result_dict = None
 
         expected = (
             expected_changes_provider(tool, args)
             if expected_changes_provider else []
         )
+        # 评审修复：与引擎核验证据同构——result 直接传解析后的响应本体
+        # （引擎侧 evidence["result"] = json.loads(blob)，无二次包裹）
         evidence: dict[str, Any] = {
             "after_observation": ({"detail": after_detail}
                                   if after_detail is not None else None),
-            "result": ({"detail": result_dict} if result_dict is not None
-                       else None),
+            "result": result_dict,
             "expected_changes": expected,
         }
         new_outcomes: dict[str, str] = {}
         deviation_notes: list[str] = []
         for name, verifier in verifiers.items():
-            verification = await verifier.verify(str(result_ref or tool),
-                                                 evidence)
-            new_outcomes[name] = str(verification.outcome)
+            try:
+                verification = await verifier.verify(str(result_ref or tool),
+                                                     evidence)
+                new_outcomes[name] = str(verification.outcome)
+            except Exception as exc:  # noqa: BLE001——单核验器异常隔离
+                # 评审修复：不毁整份报告，记 errored（与引擎词表一致）
+                new_outcomes[name] = "system_error"
+                deviation_notes.append(f"{name}: verifier crashed: {exc}")
+                continue
             if str(verification.outcome) == "deviation":
                 deviation_notes.append(f"{name}: {verification.detail}")
 

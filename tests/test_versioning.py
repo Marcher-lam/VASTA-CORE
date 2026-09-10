@@ -156,3 +156,32 @@ class TestErrorsAndSideEffects:
         types = [e.type for e in store.iter_run_events("registry")]
         assert "world_model.published" in types
         assert "artifact.published" in types
+
+
+class TestRunReferencesVersion:
+    """评审补齐（验收审计保留项 8.8）：历史 Run 事件引用当时版本——
+    v2 发布后按 run 时点解析 = v1（回放不串版的 run 侧演示）。"""
+
+    async def test_run_event_references_version_at_time(self, store) -> None:
+        from vastacore.versioning import _emit_registry  # noqa: PLC2701
+
+        await publish_model_version(
+            store, "grid", "1.0.0", ruleset=RULESET_V1, manifest=MANIFEST,
+        )
+        v1 = await version_as_of(store, "model", "grid")
+        # 模拟一次 Run 使用 v1：run 事件携带版本 sha 引用（模型资产引用）
+        await _emit_registry(store, "run.created",
+                             {"model": "grid", "version": "1.0.0",
+                              "sha256": v1.sha256, "note": "run-side ref demo"})
+        run_seq = max(e.seq for e in store.iter_run_events("registry"))
+        await publish_model_version(
+            store, "grid", "2.0.0", ruleset=RULESET_V2, manifest=MANIFEST,
+        )
+        # run 时点之后解析：run 引用仍指 v1（内容寻址不可变）
+        run_event = [e for e in store.iter_run_events("registry")
+                     if e.seq == run_seq][0]
+        assert run_event.payload["sha256"] == v1.sha256
+        record = await version_as_of(store, "model", "grid",
+                                     as_of_seq=run_seq)
+        assert record.version == "1.0.0"  # 回放不串版
+        assert record.rebuild_dsl().ruleset.rules["right"]["add"]["col"] == 1

@@ -111,10 +111,16 @@ async def derive_on_demand(
 
 # ---- 零依赖 deriver ----
 
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise VastaError(code="derive.bad_params", message=message)
+
+
 async def _text_summary(payload: bytes, params: dict[str, Any]) -> bytes:
     """抽取式摘要：按句切分取前 N 句（确定性）。"""
     text = payload.decode("utf-8", errors="replace")
     max_sentences = int(params.get("max_sentences", 2))
+    _require(max_sentences >= 1, f"max_sentences 须 ≥1，得到 {max_sentences}")
     sentences = [s.strip() for s in re.split(r"(?<=[。！？.!?\n])", text) if s.strip()]
     picked = sentences[:max_sentences]
     return "".join(picked).encode("utf-8")
@@ -123,6 +129,7 @@ async def _text_summary(payload: bytes, params: dict[str, Any]) -> bytes:
 async def _text_embedding(payload: bytes, params: dict[str, Any]) -> bytes:
     """确定性哈希词袋向量（演示级——非语义模型；同输入同输出）。"""
     dim = int(params.get("dim", 64))
+    _require(dim >= 1, f"dim 须 ≥1，得到 {dim}")
     tokens = payload.decode("utf-8", errors="replace").split()
     vector = [0] * dim
     for token in tokens:
@@ -141,7 +148,14 @@ async def _text_extract(payload: bytes, params: dict[str, Any]) -> bytes:
     fields: dict[str, str] = dict(params.get("fields", {}))
     extracted: dict[str, str | None] = {}
     for name, pattern in fields.items():
-        match = re.search(pattern, text)
+        try:
+            matcher = re.compile(pattern)
+        except re.error as exc:
+            raise VastaError(
+                code="derive.bad_params",
+                message=f"字段 {name!r} 的正则非法: {exc}",
+            ) from exc
+        match = matcher.search(text)
         extracted[name] = match.group(0) if match else None
     return json.dumps(extracted, ensure_ascii=False,
                       sort_keys=True).encode("utf-8")
@@ -149,9 +163,16 @@ async def _text_extract(payload: bytes, params: dict[str, Any]) -> bytes:
 
 async def _media_window(payload: bytes, params: dict[str, Any]) -> bytes:
     """媒体清单时间窗切片：相交即入窗、边界裁剪、对齐键保留。"""
-    manifest = json.loads(payload.decode("utf-8"))
+    try:
+        manifest = json.loads(payload.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise VastaError(
+            code="derive.bad_params",
+            message=f"源不是合法媒体清单 JSON: {exc}",
+        ) from exc
     from_s = float(params.get("from_s", 0))
     to_s = float(params.get("to_s", manifest.get("duration_s", 0)))
+    _require(from_s < to_s, f"时间窗倒置: from_s={from_s} ≥ to_s={to_s}")
     segments = []
     for segment in manifest.get("segments", []):
         start, end = float(segment["start"]), float(segment["end"])

@@ -88,8 +88,14 @@ def _failed(capability: str, method: str, error: BaseException) -> ProbeOutcome:
     )
 
 
-async def _ask(adapter: Any, prompt: str, context: dict[str, Any]) -> ModelResponse:
-    return await adapter.generate(ModelRequest(prompt=prompt, context=context))
+async def _ask(adapter: Any, prompt: str, context: dict[str, Any],
+               timeout_s: float = 10.0) -> ModelResponse:
+    import asyncio
+
+    return await asyncio.wait_for(
+        adapter.generate(ModelRequest(prompt=prompt, context=context)),
+        timeout=timeout_s,
+    )
 
 
 async def _probe_vision(adapter: Any, declared: bool) -> ProbeOutcome:
@@ -157,10 +163,15 @@ async def _probe_streaming(adapter: Any, declared: bool) -> ProbeOutcome:
             "适配器未提供可选方法 generate_stream（协议 v0.1 无流式面）",
         )
     chunks = 0
-    async for _chunk in stream(ModelRequest(prompt="stream probe", context={})):
-        chunks += 1
-        if chunks >= 2:
-            break
+    try:
+        async for _chunk in stream(
+            ModelRequest(prompt="stream probe", context={})
+        ):
+            chunks += 1
+            if chunks >= 2:
+                break
+    except Exception as exc:  # noqa: BLE001——中途损坏不是"支持流式"
+        return _failed("streaming", "optional-generate_stream", exc)
     return (
         _detected("streaming", "optional-generate_stream",
                   "chunks>=2", declared)
@@ -196,9 +207,26 @@ _PROBES = {
 }
 
 
-async def probe_capabilities(adapter: Any) -> CapabilityReport:
-    """五维行为探测（fail-closed；不信任自声明）。"""
-    declared: ModelCapabilities = adapter.capabilities
+async def probe_capabilities(
+    adapter: Any, *, probe_timeout_s: float = 10.0
+) -> CapabilityReport:
+    """五维行为探测（fail-closed；不信任自声明）。
+
+    评审修复：每维探测经 wait_for 超时（原先挂起的 provider 会永久阻塞）；
+    capabilities 属性缺失/形态异常 → 全维 fail-closed（原先裸 AttributeError）。
+    诚实边界：vision 探测载荷为合成形态（非真实图像）——真实视觉适配器
+    可能拒绝作答而判 probe_failed（偏保守的假阴性方向）；context 维无布尔
+    声明可交叉，置信度固定 0.9 为单侧口径。"""
+    try:
+        declared: ModelCapabilities = adapter.capabilities
+    except Exception as exc:  # noqa: BLE001——适配器自声明面异常也 fail-closed
+        all_failed = {
+            name: _failed(name, "adapter-declared", exc) for name in _PROBE_NAMES
+        }
+        return CapabilityReport(
+            declared=ModelCapabilities(), probes=all_failed,
+            discrepancies=["declared: 适配器 capabilities 属性不可读"],
+        )
     declared_map = {
         "vision": declared.vision,
         "structured_output": declared.structured_output,
@@ -206,13 +234,16 @@ async def probe_capabilities(adapter: Any) -> CapabilityReport:
         "streaming": declared.streaming,
     }
     probes: dict[str, ProbeOutcome] = {}
+    import asyncio
+
     for name, (fn, declared_key) in _PROBES.items():
         try:
-            probes[name] = await fn(
-                adapter,
-                declared_map[declared_key] if declared_key else True,
+            probes[name] = await asyncio.wait_for(
+                fn(adapter,
+                   declared_map[declared_key] if declared_key else True),
+                timeout=probe_timeout_s,
             )
-        except Exception as exc:  # noqa: BLE001——fail-closed：异常=无能力
+        except Exception as exc:  # noqa: BLE001——fail-closed：异常/超时=无能力
             probes[name] = _failed(name, _method_of(fn), exc)
 
     discrepancies: list[str] = []

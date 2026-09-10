@@ -20,6 +20,7 @@ fail-closed（all-or-nothing）：任一记录非法 → 整体拒入（零事�
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -57,14 +58,29 @@ def _invalid(index: int, reason: str) -> VastaError:
 
 
 def _load_records(source: Any) -> list[dict[str, Any]]:
-    """输入形态归一：list[str | dict] / JSONL 文本 / 文件路径。"""
+    """输入形态归一：list[str | dict] / JSONL 文本（bytes）/ 文件路径。
+
+    评审修复：文件逐行解析错误同样包装为含序号的 trajectory.invalid_record
+    （原先裸 JSONDecodeError 无序号）；文件读取容 BOM（utf-8-sig）。"""
+    records: list[Any]
     if isinstance(source, (str, Path)):
-        text = Path(source).read_text(encoding="utf-8")
+        text = Path(source).read_text(encoding="utf-8-sig")
         lines = [ln for ln in text.splitlines() if ln.strip()]
-        records: list[Any] = [json.loads(ln) for ln in lines]
+        records = []
+        for i, ln in enumerate(lines):
+            try:
+                records.append(json.loads(ln))
+            except json.JSONDecodeError as exc:
+                raise _invalid(i, f"不是合法 JSON: {exc}") from exc
     elif isinstance(source, bytes):
-        lines = [ln for ln in source.decode("utf-8").splitlines() if ln.strip()]
-        records = [json.loads(ln) for ln in lines]
+        decoded = source.decode("utf-8-sig")
+        lines = [ln for ln in decoded.splitlines() if ln.strip()]
+        records = []
+        for i, ln in enumerate(lines):
+            try:
+                records.append(json.loads(ln))
+            except json.JSONDecodeError as exc:
+                raise _invalid(i, f"不是合法 JSON: {exc}") from exc
     else:
         records = list(source)
     out: list[dict[str, Any]] = []
@@ -78,6 +94,22 @@ def _load_records(source: Any) -> list[dict[str, Any]]:
             raise _invalid(i, f"记录必须是 JSON 对象，得到 {type(rec).__name__}")
         out.append(rec)
     return out
+
+
+#: 合成事件 type 的 kind 段合法词形（与 EventEnvelope 的 _EVENT_TYPE_RE 对齐：
+#: 全小写、字母开头——评审修复：原 isalnum 校验放行大写/数字开头/CJK，
+#: 导致非法 kind 在写入阶段才被信封拒绝，击穿 all-or-nothing）。
+_KIND_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _check_kind(index: int, kind: str) -> str:
+    if not _KIND_RE.match(kind):
+        raise _invalid(
+            index,
+            f"observation.kind {kind!r} 非法（须全小写字母开头，"
+            "与事件信封词形一致）",
+        )
+    return kind
 
 
 # ---- 记录 → 「待发事件」中间表示（先全量校验后写入）----
@@ -149,9 +181,7 @@ async def _plan_records(
                 raise _invalid(i, f"openai 格式不支持 type={rtype!r}")
         elif source_format == "generic":
             if rtype == "observation":
-                kind = rec.get("kind") or "decision"
-                if "." in str(kind) or not str(kind).replace("_", "").isalnum():
-                    raise _invalid(i, f"observation.kind 非法: {kind!r}")
+                kind = _check_kind(i, str(rec.get("kind") or "decision"))
                 plan.append({
                     "type": f"observation.{kind}",
                     "payload": {"kind": kind, "imported": True,

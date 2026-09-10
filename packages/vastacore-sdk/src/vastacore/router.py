@@ -80,7 +80,7 @@ class CostEntry(BaseModel):
 
     calls: int = 0
     estimated_cost: float = 0.0
-    basis: str = "usage"  # usage | chars-estimated
+    basis: str = ""  # usage | chars-estimated | mixed（首调用定基，异口径并存转 mixed）
 
 
 class ModelRouter:
@@ -101,9 +101,22 @@ class ModelRouter:
         emitter: Callable[[str, dict[str, Any]], Any] | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
+        if strategy not in ("cheapest-capable", "chain"):
+            raise RouterError(
+                f"未知 strategy {strategy!r}（支持: cheapest-capable/chain）"
+                "——评审修复：拼错原先静默退化为成本排序"
+            )
         self.models = dict(models)
         self.strategy = strategy
         self.chain = list(chain or [])
+        unknown = [n for n in self.chain if n not in self.models]
+        if unknown:
+            raise RouterError(
+                f"chain 含未注册模型 {unknown}"
+                "（评审修复：原先静默丢弃拼错项）"
+            )
+        if retries < 0:
+            raise RouterError(f"retries 须 ≥0，得到 {retries}")
         self.timeout_ms = timeout_ms
         self.retries = retries
         monotonic = clock or time.monotonic  # 安全机制真实钟（AD-15）
@@ -181,14 +194,20 @@ class ModelRouter:
                 attempts.append({"model": name, "skipped": "circuit_open"})
                 continue
             for attempt in range(self.retries + 1):
+                if attempt > 0 and not breaker.can_attempt():
+                    # 评审修复：首败即达阈值开闸后，剩余重试不再打死适配器
+                    attempts.append({"model": name, "attempt": attempt,
+                                     "skipped": "circuit_open"})
+                    break
                 try:
                     resp = await asyncio.wait_for(
                         self.models[name][0].generate(request),
                         timeout=self.timeout_ms / 1000,
                     )
                 except Exception as exc:  # noqa: BLE001——统一记失败
+                    was_open = breaker.state == "open"
                     breaker.record_failure()
-                    await self._maybe_emit_open(name)
+                    await self._maybe_emit_open(name, already_open=was_open)
                     attempts.append({
                         "model": name, "attempt": attempt,
                         "error": f"{type(exc).__name__}: {exc}"[:120],
@@ -218,9 +237,13 @@ class ModelRouter:
                           f"{[a for a in attempts if a.get('error')]}")
 
     # ---- 内部 ----
-    async def _maybe_emit_open(self, name: str) -> None:
+    async def _maybe_emit_open(self, name: str,
+                               *, already_open: bool = False) -> None:
+        """熔断开闸留痕——仅在「跃迁为 open」时发射（评审修复：原先
+        每次失败都重发 incident.opened，同一开闸事件重复留痕）。"""
         breaker = self.breakers[name]
-        if breaker.state == "open" and self.emitter is not None:
+        emitter_ready = self.emitter is not None
+        if breaker.state == "open" and not already_open and emitter_ready:
             with contextlib.suppress(Exception):  # 留痕失败不掩盖调用本体
                 maybe = self.emitter(
                     "incident.opened",
@@ -235,15 +258,22 @@ class ModelRouter:
         entry = self._costs.setdefault(name, CostEntry())
         entry.calls += 1
         per_1k = self.models[name][1]
-        usage = (resp.detail or {}).get("usage") or {}
+        usage = (resp.detail or {}).get("usage")
+        if not isinstance(usage, dict):
+            usage = {}  # 评审修复：usage 非法形态降级估算，不炸好响应
         tokens = usage.get("total_tokens")
-        if isinstance(tokens, (int, float)) and tokens >= 0:
+        tokens_ok = isinstance(tokens, (int, float)) and tokens >= 0
+        this_basis = "usage" if tokens_ok else "chars-estimated"
+        if this_basis == "usage":
             entry.estimated_cost += tokens / 1000 * per_1k
-            entry.basis = "usage"
         else:
             chars = len(request.prompt) + len(resp.content)
             entry.estimated_cost += chars / 1000 * per_1k
-            entry.basis = "chars-estimated"
+        # 混合口径显式标注（NFR-015 basis 语义：单值不再被末次调用覆盖）
+        if entry.basis == "":
+            entry.basis = this_basis
+        elif entry.basis != this_basis:
+            entry.basis = "mixed"
 
     async def _save_trace(self, trace: dict[str, Any]) -> None:
         self._last_trace = trace

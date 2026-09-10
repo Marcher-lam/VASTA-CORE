@@ -104,8 +104,11 @@ async def claim_as_of(
                 claim.counterevidence.extend(payload.get("counterevidence", []))
             elif event.type == "claim.retired":
                 claim.status = "retired"
-            if event.type != "claim.proposed":
-                claim.version += 1
+            if event.type in (
+                "claim.supported", "claim.accepted", "claim.disputed",
+                "claim.refuted", "claim.retired",
+            ):
+                claim.version += 1  # 与 CognitionService 投影同构（评审修复）
     if claim is None:  # pragma: no cover——_claim_events_up_to 已保证非空
         raise VastaError(code="claim.not_found_at", message=claim_id)
     return claim

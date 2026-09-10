@@ -9,7 +9,7 @@
 ```bash
 uv sync --all-packages              # 注意：必须带 --all-packages（根项目无依赖声明，默认 sync 不装工作区成员）
 uv run python examples/quickstart.py   # GridWorld → SQLite 证据库 → L0 全量记录
-uv run pytest -q                        # 387+ 测试
+uv run pytest -q                        # 490+ 测试
 ```
 
 详见 [docs/quickstart.md](docs/quickstart.md)。

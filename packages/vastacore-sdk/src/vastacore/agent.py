@@ -218,7 +218,15 @@ class AgentSession:
 
     # ---- 查询与证据 ----
     def events(self) -> list[Any]:
-        """本 Run 全部事件（同步迭代副本）。"""
+        """本 Run 全部事件（同步迭代副本）。
+
+        评审修复：句柄已关闭时给明确错误（原先裸 sqlite ProgrammingError）。"""
+        if self._closed:
+            raise VastaError(
+                code="sdk.session_closed",
+                message="会话已关闭——events/summary 需在 close 前（或 "
+                "async-with 块内）调用",
+            )
         return list(self._store.iter_run_events(self._run_id))
 
     def normalized_stream(self) -> str:
@@ -234,19 +242,27 @@ class AgentSession:
             )
         return json.dumps(rows, ensure_ascii=False, sort_keys=True)
 
+    def _run_artifact_count(self) -> int:
+        """本 Run 的工件数（评审修复：按事件引用去重计数——原先
+        list_artifacts 是全库计数，多 run 共享 root 时互相污染指标）。"""
+        shas: set[str] = set()
+        for e in self.events():
+            refs = e.payload.get("artifact_refs")
+            if isinstance(refs, list):
+                shas.update(str(r) for r in refs)
+            for key in ("result_ref", "contract_ref"):
+                ref = e.payload.get(key)
+                if ref:
+                    shas.add(str(ref))
+        return len(shas)
+
     async def summary(self) -> SessionSummary:
-        events = self.events()
-        artifacts = 0 if self._closed else len(
-            await self._store.list_artifacts(
-                self._engine.context.tenant_id,
-                self._engine.context.project_id,
-            )
-        )
+        events = self.events()  # 已关闭时在此抛 sdk.session_closed（诚实报错）
         return SessionSummary(
             run_id=self._run_id,
             state=self.state,
             events=len(events),
-            artifacts=artifacts,
+            artifacts=self._run_artifact_count(),
             goal_reached=self.episode_ended,
         )
 

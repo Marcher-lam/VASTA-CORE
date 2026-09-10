@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -125,10 +126,37 @@ async def run_tasks_as_runs(
     tenant_id: str = "t-default",
     project_id: str = "p-default",
 ) -> BatchRunSummary:
-    """批量：每任务一个完整 RunEngine Run（评测任务与真实 Run 同构）。"""
+    """批量：每任务一个完整 RunEngine Run（评测任务与真实 Run 同构）。
+
+    评审修复：任务间故障隔离（预算耗尽/升级只记该任务失败，不毁整批）；
+    run_id 预检（重复 task_id 或已存在 run 全量先拒，all-or-nothing）；
+    空解路径（start==goal）判成功；驱动循环真正经 policy.generate()
+    ——「换 policy 即可」的模型在环形态（原实现直接迭代 .plan 列表）。"""
+    from vasta_protocols.errors import VastaError
+    from vasta_runtime.budget import BudgetExceededError
+    from vasta_runtime.supervisor import SupervisorEscalationError
+
+    # 预检：批内 task_id 唯一 + store 中无同名 run（零写入阶段全拒）
+    seen: set[str] = set()
+    for task in tasks:
+        if task.task_id in seen:
+            raise VastaError(
+                code="batch.duplicate_task",
+                message=f"批内重复 task_id {task.task_id!r}（run_id 将撞键）",
+            )
+        seen.add(task.task_id)
     store = SqliteStorage(Path(root) / "store")
-    results: list[TaskRunResult] = []
     try:
+        clashes = [
+            t.task_id for t in tasks
+            if list(store.iter_run_events(f"vlrun-{t.task_id}"))
+        ]
+        if clashes:
+            raise VastaError(
+                code="batch.run_exists",
+                message=f"以下 run 已存在于 store（重跑请换 root）：{clashes}",
+            )
+        results: list[TaskRunResult] = []
         for index, task in enumerate(tasks):
             run_id = f"vlrun-{task.task_id}"
             env = VastaLabEnv(task)
@@ -139,29 +167,43 @@ async def run_tasks_as_runs(
                 budget=Budget(max_actions=max_actions_per_task),
                 run_context=context, capture_observations=True,
             )
-            await engine.start()
-            await engine.reset(seed=seed + index)
             steps = 0
-            for move in policy.plan:
-                # 模型交换先落盘（AD-5）再行动
-                await engine.record_model_exchange(
-                    ModelRequest(
+            failure: str | None = None
+            try:
+                await engine.start()
+                await engine.reset(seed=seed + index)
+                # 模型在环：每步经 policy.generate() 取动作（换真实适配器
+                # 只需替换 policy，驱动循环零改动）
+                while not engine.episode_ended and steps < len(policy.plan):
+                    request = ModelRequest(
                         prompt=f"vastalab:{task.task_id} step {steps}",
                         context={"pos": list(env.pos),
                                  "goal": list(task.goal)},
-                    ),
-                    ModelResponse(content=move, detail={"step": steps}),
-                )
-                await engine.step(Action(tool=move))
-                steps += 1
-                if engine.episode_ended:
-                    break
-            if engine.state.value == "started":
-                await engine.complete()
+                    )
+                    move = (await policy.generate(request)).content
+                    if move == "stop":
+                        break
+                    # 模型交换先落盘（AD-5）再行动
+                    await engine.record_model_exchange(
+                        request,
+                        ModelResponse(content=move, detail={"step": steps}),
+                    )
+                    await engine.step(Action(tool=move))
+                    steps += 1
+                if engine.state.value == "started":
+                    await engine.complete()
+            except (BudgetExceededError, SupervisorEscalationError) as exc:
+                # 预算/升级安全停止：该任务失败，整批继续（评审修复）
+                failure = f"{type(exc).__name__}"
+                if engine.state.value == "started":
+                    with contextlib.suppress(Exception):  # 尽力收口终态
+                        await engine.complete()
+            # 空解（start==goal）即成功；终局观察到达亦成功
+            success = engine.episode_ended or (not policy.plan and failure is None)
             events = list(store.iter_run_events(run_id))
             results.append(TaskRunResult(
                 task_id=task.task_id, run_id=run_id,
-                success=engine.episode_ended, steps=steps, events=len(events),
+                success=success, steps=steps, events=len(events),
             ))
     finally:
         store.close()

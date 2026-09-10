@@ -113,3 +113,38 @@ class TestBatchRun:
             assert len(exchanges) >= total_steps
         finally:
             store.close()
+
+
+class TestReviewGuards:
+    """Epic 8 code-review 修复的守卫（batch 边界）。"""
+
+    async def test_start_equals_goal_succeeds(self, tmp_path) -> None:
+        from vasta_eval import VastaLabTask
+
+        t = VastaLabTask(task_id="trivial", start=(2, 2), goal=(2, 2))
+        summary = await run_tasks_as_runs([t], root=tmp_path, seed=1)
+        assert summary.results[0].success is True
+
+    async def test_budget_exhaustion_isolated_per_task(self, tmp_path) -> None:
+        """预算耗尽只记该任务失败，整批返回（原先穿透毁整批）。"""
+        from vasta_eval import VastaLabTask
+
+        tasks = [VastaLabTask(task_id=f"b{i}", start=(0, 0), goal=(3, 3),
+                              grid_size=4) for i in range(3)]
+        summary = await run_tasks_as_runs(
+            tasks, root=tmp_path, seed=1, max_actions_per_task=2
+        )
+        assert summary.runs == 3  # 整批存活
+        assert all(not r.success for r in summary.results)
+
+    async def test_rerun_same_root_rejected(self, tmp_path) -> None:
+        from vasta_eval import VastaLabTask
+
+        tasks = [VastaLabTask(task_id="r1", start=(0, 0), goal=(3, 3),
+                              grid_size=4)]
+        await run_tasks_as_runs(tasks, root=tmp_path, seed=1)
+        from vasta_protocols.errors import VastaError
+
+        with pytest.raises(VastaError) as excinfo:
+            await run_tasks_as_runs(tasks, root=tmp_path, seed=1)
+        assert excinfo.value.code == "batch.run_exists"
