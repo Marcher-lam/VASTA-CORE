@@ -25,6 +25,17 @@ from .offline_eval import (
 )
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
+from .release import (
+    ReleaseResult,
+    ReleaseStatus,
+    RollbackResult,
+    compare_shadow,
+    get_canary_percent,
+    get_release_status,
+    promote_release,
+    rollback_release,
+    set_canary_percent,
+)
 from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
 from .service import VastaService, create_app, serve
@@ -55,6 +66,15 @@ __all__ = [
     "CapabilityReport",
     "ProbeOutcome",
     "ProxyToolAdapter",
+    "ReleaseResult",
+    "ReleaseStatus",
+    "RollbackResult",
+    "compare_shadow",
+    "get_canary_percent",
+    "get_release_status",
+    "promote_release",
+    "rollback_release",
+    "set_canary_percent",
     "browser_action_proxy",
     "browser_read_proxy",
     "proxy_tool",
