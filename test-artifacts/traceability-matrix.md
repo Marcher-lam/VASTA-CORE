@@ -38,13 +38,13 @@ externalPointerStatus: 'not_used'
 
 ### Coverage Summary
 
-| Priority | Total Criteria | FULL Coverage | Coverage % | Status |
-| -------- | -------------- | ------------- | ---------- | ------ |
-| P0（AC-01~08，MVP 出门条件） | 8 | 6 | 75.0% | ❌ FAIL（复评二 +1，仍 <100%） |
-| P1（34 ★FR，Must） | 34 | 31 | 91.2% | ✅ PASS（维持） |
-| P2 | 0 | 0 | N/A | N/A |
-| P3 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **37** | **88.1%** | ⚠️ 总量过下限；门禁由 P0 决定 |
+| Priority | Total Criteria | Waived | FULL / Effective | Coverage % | Status |
+| -------- | -------------- | ------ | ---------------- | ---------- | ------ |
+| P0（AC-01~08，MVP 出门条件） | 8 | 1（AC-07） | 7 / 7 | **100%** | ✅ PASS（复评三） |
+| P1（34 ★FR，Must） | 34 | 3（FR-013/022/024） | 31 / 31 | **100%** | ✅ PASS |
+| P2 | 0 | 0 | 0 | N/A | N/A |
+| P3 | 0 | 0 | 0 | N/A | N/A |
+| **Total** | **42** | **4** | **38 / 38** | **100%** | ✅ **PASS**（含豁免登记） |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -101,7 +101,7 @@ externalPointerStatus: 'not_used'
   - `SB-04` 静态拒绝 — `test_sandbox_run_rejects_forbidden_code`【I】
 - **判定:** 四维 + 审计全部 FULL。复评补三件：`SandboxExecutor.run` 静态拒绝越权代码时经 emitter 落 `incident.opened`（实现 + `test_forbidden_code_emits_incident_audit`）；`test_sandbox_env_drops_parent_credentials`（白名单式最小环境，父进程凭证不透传）；`test_env_access_paths_statically_rejected`（os/from-import/sys/__import__/file 五条环境读取通道全拒）。
 
-#### AC-07: 自动产出六组消融、成本、置信区间和失败分类 — **PARTIAL** ⚠️
+#### AC-07: 自动产出六组消融、成本、置信区间和失败分类 — **WAIVED** 🔖（豁免登记 W-1）
 
 - **Tests:**
   - `AB-01` 六组 — `tests/test_evaluation.py::TestAblation::test_six_groups_all_reported` + `test_group_flags_monotone_capabilities`【U】
@@ -111,15 +111,15 @@ externalPointerStatus: 'not_used'
 - **判定:** 六组/成本/失败分类/切片 FULL（复评补 `run_ablation_slices`）；**仅置信区间未实现未测**（Epic 4-7 评审 defer #2，需真实任务方差定样本量）。
 - **缺口:** CI 单项——WAIVER 至 Stage 2 候选。
 
-#### AC-08: 失败复现包可在干净环境离线重放非模型事件和 verifier — **PARTIAL** ⚠️
+#### AC-08: 失败复现包可在干净环境离线重放非模型事件和 verifier — **FULL** ✅（复评三实现关缺）
 
 - **Tests:**
   - `RB-01` — `tests/test_timeline.py` `TestReproBundle::test_export_and_offline_replay`（bundle 导出 + 逐条 schema 校验级重放，无 store 依赖）+ `test_unknown_run_rejected`【I】
   - `RB-02` — `TestReviewGuards::test_replay_skips_model_exchange_refs`【U】：非模型事件过滤（重放不重新调用模型）
   - `RB-03` — `test_regression_task_contract_in_protocols`【U】：回归任务契约（AD-1）
   - `RB-04` — 复现包配置快照含 budget/seed/policy/契约引用（FR-063 还原要件）
-- **判定:** 非模型事件离线重放 FULL（字节级输入、零存储依赖、模型交换跳过）；**verifier 未随包重执行**——`replay_non_model_events` 仅做信封校验级重放，核验器重执行不在断言内。
-- **缺口:** 复现包重放时对所载核验器结果的重放断言（或 Story 4.4 已按「最小验证」降级——需用户裁决 WAIVER）。
+  - `RB-05` — `tests/test_offline_eval.py::TestBundleVerifierReplay::test_bundle_replay_matches_recorded_outcomes`【I】（复评三新增）：复现包**字节**驱动 verifier 离线重放——同期望核验器新旧判定一致（零偏差不失真）、严核验器在包重放下抓到 deviation（verifier 真在跑非空转）
+- **判定:** 非模型事件重放 FULL（字节级输入、零存储依赖、模型交换跳过）；verifier 随包重放 FULL——`replay_bundle_verifiers`（8.10 离线评估的复现包入口，WAIVER 决议会实现关缺）。
 
 ### Detailed Mapping — 34 ★FR（P1，紧凑表）
 
@@ -131,13 +131,13 @@ externalPointerStatus: 'not_used'
 | FR-010 | 原始观察/工具响应全存 | FULL ✅ | `test_runcontext_determinism.py::TestModelExchangeArtifact`（I）；`test_tool_gateway.py::test_gateway_path_six_segments_and_evidence`（I） |
 | FR-011 | Artifact 七字段元数据 | FULL ✅ | `test_sqlite_storage.py::test_artifact_roundtrip_verified_by_hash`（含 retention="90d" 回读断言，L55-62）（I）；TestShardedCas 去重（I） |
 | FR-012 | 派生回链 | FULL ✅ | `test_derived_lineage.py` 全族（I） |
-| FR-013 | 六维检索 | PARTIAL ⚠️ | `test_evidence_search.py` 时间/事件/动作(payload_equals)/区域(scope)（I）；artifact tags/source/classification + refs join（I）。**业务实体维度无实体索引/别名**（通用 payload 等值可覆盖其字段） |
+| FR-013 | 六维检索 | WAIVED（豁免登记） ⚠️ | `test_evidence_search.py` 时间/事件/动作(payload_equals)/区域(scope)（I）；artifact tags/source/classification + refs join（I）。**业务实体维度无实体索引/别名**（通用 payload 等值可覆盖其字段） |
 | FR-014 | 图像 inspect/crop/pixel/diff | FULL ✅ | `test_image_tools.py` 17 条（I）：溯源/越界/面积上限/血缘 |
 | FR-020 | 九类认知（MVP 四类） | FULL ✅ | `test_cognition.py` 全族（I）；九类 Literal 封闭 + `MVP_MEMORY_TYPES` 四类（PRD 认可切分） |
 | FR-021 | Claim 七字段 | FULL ✅ | `test_cognition.py::TestReviewGuards::test_version_increments_on_transitions`（评审后补版本）+ lifecycle（I） |
-| FR-022 | 七种主张操作 | PARTIAL ⚠️ | 创建/支持/接受/争议/推翻/退役 + 存在性/终态守卫（I）。**修订(revise)/晋升(promote)为近似语义（support/accept）、缩小范围(narrow)无实现** |
+| FR-022 | 七种主张操作 | WAIVED（豁免登记） ⚠️ | 创建/支持/接受/争议/推翻/退役 + 存在性/终态守卫（I）。**修订(revise)/晋升(promote)为近似语义（support/accept）、缩小范围(narrow)无实现** |
 | FR-023 | 显式 Conflict | FULL ✅ | `TestConflict` + 幂等/事件化守卫（评审后）（I） |
-| FR-024 | 依赖失效标记 Plan 与资产 | PARTIAL ⚠️ | 级联 refuted（穿透/环护）+ world_model.suspended 桥接（I）。**claim 失效不标记受影响 Plan**（计划失效仅由偏差路径驱动，FR-037） |
+| FR-024 | 依赖失效标记 Plan 与资产 | WAIVED（豁免登记） ⚠️ | 级联 refuted（穿透/环护）+ world_model.suspended 桥接（I）。**claim 失效不标记受影响 Plan**（计划失效仅由偏差路径驱动，FR-037） |
 | FR-025 | ContextBuilder 四维 | FULL ✅ | `TestContextBuilder` + relevance/risk 守卫（评审后）（I） |
 | FR-030 | 写动作契约前置 | FULL ✅ | `test_action_contracts.py` TestRejectOnIncomplete（I） |
 | FR-031 | 契约六要素 | FULL ✅ | TestMissingSegments 10 参数化 + `test_action_contracts.py::test_required_segments_constant_matches`（U） |
@@ -246,3 +246,43 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
   双库确定性（6 任务）为抽样验证；50 任务全量断言的是 timeline 覆盖与
   生命周期闭包（AC-01 核心判据）。
 - 「评测即 Run」结构性缺口（原 9 分风险项）就此关闭；Epic 4-7 评审 defer #1 落地。
+
+
+---
+
+## 复评记录三（2026-09-10，WAIVER 决议会）
+
+**变更**: 用户裁决（2026-09-10）——AC-08 **实现关缺**（无需豁免）：`replay_bundle_verifiers`
+复现包字节驱动 verifier 离线重放（8.10 离线评估的包入口），实测新旧判定一致
++ 严核验器抓偏。其余四项**批准豁免**（登记如下）。+1 测试（502 全绿）。
+
+### 豁免登记（risk-governance：每项 owner + 到期日 + 解除条件）
+
+| # | 判据 | 豁免理由（证据） | Owner | 到期 | 解除条件 |
+|---|------|------------------|-------|------|----------|
+| W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2） | BMad | Stage 3 后半（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告 |
+| W-2 | FR-013 业务实体维度 | payload_equals 已覆盖实体字段级检索（五维实测）；专用实体索引/别名属存储增强 | BMad | Stage 3 存储改造（PG 迁移同期） | 实体索引落地 + 检索测试 |
+| W-3 | FR-022 revise/promote/narrow | support/accept 近似承载修订/晋升语义（事件留痕可辨）；narrow 无实现 | BMad | Stage 3 认知服务扩展 | 三算子显式事件 + 状态机测试 |
+| W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3） | BMad | Stage 3 编排（桥接接线同期） | refute→plan.invalidated 链路 + 测试 |
+
+**豁免语义**: 四项均「机制部分在、字母级缺口」，豁免期间不计分母；到期未解除
+则升级为 Stage 3 阻断项（已挂 sprint-status 行动项 epic-8-retro-item-5 追踪）。
+
+## 🚨 GATE DECISION（复评三，终）: **PASS** ✅
+
+📊 **Coverage Analysis（豁免不计分母）:**
+- P0: **7/7 = 100%**（AC-07 豁免）→ ✅ PASS
+- P1: **31/31 = 100%**（FR-013/022/024 豁免）→ ✅ PASS
+- Overall: **38/38 = 100%** → ✅ **PASS**
+
+✅ **Decision Rationale:**
+SM-2「MVP 验收 AC-01~08 全通过」在豁免登记语义下达成：AC-02/03/04（核心
+可靠性主张）全量验证，AC-01/05/06/08 实现关缺翻绿，AC-07 经 BMad 批准豁免
+（owner+到期+解除条件齐备，risk-governance 合规）。P1 31 条 ★FR 全 FULL。
+SM-2 的另一半（40+ 任务完整回放/链完整率 100%/偏差失效 100%/沙箱越权 0）
+均有实测锚定（复评记录一/二）。门禁自初评 FAIL（P0 37.5%）经两次实现
+关缺 + 一次豁免决议收敛至 PASS——每一分提升都有提交与测试可溯。
+
+📝 **Recommended Actions:**
+1. Stage 3 启动时把 W-1~W-4 挂入 Epic 9 相关 Story 的 Dev Notes（解除条件即验收）
+2. NFR-015 per-Run 成本归集（非本矩阵判据，epic8 defer #1）随 Stage 3 存储改造接线

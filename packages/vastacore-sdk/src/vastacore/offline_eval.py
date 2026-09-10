@@ -137,6 +137,56 @@ async def offline_evaluate(
             code="offline_eval.run_not_found",
             message=f"未找到 Run {run_id!r}（无可评估事件）",
         )
+    return await _evaluate_events(
+        events,
+        artifact_fetch=lambda sha: store.get_artifact(
+            sha, tenant_id=tenant_id, project_id=project_id
+        ),
+        verifiers=verifiers,
+        expected_changes_provider=expected_changes_provider,
+        run_id=run_id,
+    )
+
+
+async def replay_bundle_verifiers(
+    bundle_event_bytes: bytes,
+    artifact_fetch: Callable[[str], Awaitable[bytes]],
+    *,
+    verifiers: Mapping[str, Verifier],
+    expected_changes_provider: ExpectedChangesProvider | None = None,
+) -> OfflineEvalReport:
+    """复现包驱动的 verifier 离线重放（AC-08 关缺实现）。
+
+    bundle_event_bytes：export_repro_bundle 的 events JSON Lines；
+    artifact_fetch：result_ref→blob 取回（随包对象目录；MVP 以同根
+    store 模拟——复现包清单携带全部 artifact_refs）。"""
+    from vasta_protocols.envelope import EventEnvelope
+
+    events = [
+        EventEnvelope.model_validate_json(line)
+        for line in bundle_event_bytes.decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    if not events:
+        raise VastaError(
+            code="offline_eval.empty_bundle",
+            message="复现包事件流为空",
+        )
+    return await _evaluate_events(
+        events, artifact_fetch=artifact_fetch, verifiers=verifiers,
+        expected_changes_provider=expected_changes_provider,
+        run_id=events[0].run_id,
+    )
+
+
+async def _evaluate_events(
+    events: list[Any],
+    *,
+    artifact_fetch: Callable[[str], Awaitable[bytes]],
+    verifiers: Mapping[str, Verifier],
+    expected_changes_provider: ExpectedChangesProvider | None,
+    run_id: str,
+) -> OfflineEvalReport:
     args_pairing = _pair_args(events)
     results: list[ActionComparison] = []
     changed: list[ActionComparison] = []
@@ -157,9 +207,7 @@ async def offline_evaluate(
         result_dict: dict[str, Any] | None = None
         result_ref = event.payload.get("result_ref")
         if result_ref:
-            blob = await store.get_artifact(
-                str(result_ref), tenant_id=tenant_id, project_id=project_id
-            )
+            blob = await artifact_fetch(str(result_ref))
             try:
                 result_dict = json.loads(blob.decode("utf-8", errors="replace"))
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -216,4 +264,5 @@ async def offline_evaluate(
     )
 
 
-__all__ = ["ActionComparison", "OfflineEvalReport", "offline_evaluate"]
+__all__ = ["ActionComparison", "OfflineEvalReport", "offline_evaluate",
+           "replay_bundle_verifiers"]

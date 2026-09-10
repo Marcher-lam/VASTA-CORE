@@ -169,3 +169,51 @@ class TestOfflineEval:
         with pytest.raises(VastaError):
             await offline_evaluate(imported_store, "ghost",
                                    verifiers={"s": AlwaysPass()})
+
+
+class TestBundleVerifierReplay:
+    """AC-08 关缺（WAIVER 决议会）：复现包驱动的 verifier 离线重放。"""
+
+    async def test_bundle_replay_matches_recorded_outcomes(self, tmp_path) -> None:
+        """复现包字节 → verifier 离线重放：新旧判定与原流一致（零偏差）。"""
+        from vasta_protocols.protocols import Action
+        from vasta_storage import export_repro_bundle
+        from vastacore import AgentSession
+        from vastacore.offline_eval import replay_bundle_verifiers
+
+        from .test_agent_sdk import STATUS_CONTRACT, SetStatusTool, TodoEnv
+
+        session = await AgentSession.create(
+            env=TodoEnv(), tools=[SetStatusTool()],
+            contracts={"set_status": STATUS_CONTRACT},
+            root=tmp_path, seed=1,
+        )
+        async with session:
+            await session.start()
+            await session.reset()
+            await session.act(Action(tool="set_status",
+                                     args={"status": "done"}))
+            await session.complete()
+            run_id = session.run_id
+
+        store = SqliteStorage(tmp_path / "store")
+        try:
+            bundle, event_bytes = await export_repro_bundle(store, run_id)
+            report = await replay_bundle_verifiers(
+                event_bytes,
+                artifact_fetch=lambda sha: store.get_artifact(sha),
+                verifiers={"same": StrictVerifier(expect="done")},
+            )
+            assert report.actions_evaluated == 1
+            assert report.changed == []  # 与原流判定一致——重放不失真
+            assert report.results[0].old_outcome == "pass"
+            # 严核验器（错期望）在包重放下同样抓到偏差——verifier 真在跑
+            harsh = await replay_bundle_verifiers(
+                event_bytes,
+                artifact_fetch=lambda sha: store.get_artifact(sha),
+                verifiers={"harsh": StrictVerifier(expect="archived")},
+            )
+            assert len(harsh.changed) == 1
+            assert harsh.changed[0].new_outcomes["harsh"] == "deviation"
+        finally:
+            store.close()

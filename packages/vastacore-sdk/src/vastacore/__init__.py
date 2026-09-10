@@ -10,7 +10,12 @@ from .batch import (
     run_tasks_as_runs,
 )
 from .derive import DerivedRef, DeriverRegistry, default_registry, derive_on_demand
-from .offline_eval import ActionComparison, OfflineEvalReport, offline_evaluate
+from .offline_eval import (
+    ActionComparison,
+    OfflineEvalReport,
+    offline_evaluate,
+    replay_bundle_verifiers,
+)
 from .probe import CapabilityReport, ProbeOutcome, probe_capabilities, save_capability_report
 from .quickstart import RunSummary, quickstart
 from .router import CostEntry, ModelRouter, RouterError
@@ -60,6 +65,7 @@ __all__ = [
     "ModelRouter",
     "OfflineEvalReport",
     "offline_evaluate",
+    "replay_bundle_verifiers",
     "RouterError",
     "ImportSummary",
     "ScaffoldResult",

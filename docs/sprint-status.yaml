@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-10-2026 10:31
+last_updated: 09-10-2026 10:47
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -147,7 +147,7 @@ action_items:
     epic: 7
     action: "6 项验收 WAIVER 决议（owner+到期日）后重跑 testarch-trace 复评门禁"
     owner: "用户"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-1-7-retro-item-6-story-docs"
     epic: 7
