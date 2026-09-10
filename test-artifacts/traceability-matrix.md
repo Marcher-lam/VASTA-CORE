@@ -137,7 +137,7 @@ externalPointerStatus: 'not_used'
 | FR-021 | Claim 七字段 | FULL ✅ | `test_cognition.py::TestReviewGuards::test_version_increments_on_transitions`（评审后补版本）+ lifecycle（I） |
 | FR-022 | 七种主张操作 | WAIVED（豁免登记） ⚠️ | 创建/支持/接受/争议/推翻/退役 + 存在性/终态守卫（I）。**修订(revise)/晋升(promote)为近似语义（support/accept）、缩小范围(narrow)无实现** |
 | FR-023 | 显式 Conflict | FULL ✅ | `TestConflict` + 幂等/事件化守卫（评审后）（I） |
-| FR-024 | 依赖失效标记 Plan 与资产 | WAIVED（豁免登记） ⚠️ | 级联 refuted（穿透/环护）+ world_model.suspended 桥接（I）。**claim 失效不标记受影响 Plan**（计划失效仅由偏差路径驱动，FR-037） |
+| FR-024 | 依赖失效标记 Plan 与资产 | FULL ✅（复评六解除 W-4） | 级联 refuted（穿透/环护）+ world_model.suspended 桥接（I）；**refute→plan.invalidated 自动链路**（Story 9.14 `refute_with_propagation`——级联下游模型挂起 + 关联计划失效，来源主张可溯）（I） |
 | FR-025 | ContextBuilder 四维 | FULL ✅ | `TestContextBuilder` + relevance/risk 守卫（评审后）（I） |
 | FR-030 | 写动作契约前置 | FULL ✅ | `test_action_contracts.py` TestRejectOnIncomplete（I） |
 | FR-031 | 契约六要素 | FULL ✅ | TestMissingSegments 10 参数化 + `test_action_contracts.py::test_required_segments_constant_matches`（U） |
@@ -263,7 +263,7 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
 | W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五（2026-09-10）**：CI 计算面已挂 Story 9.11（`seed_confidence_interval` 正态近似 + 数值测试）——剩真实适配器接入后并入评测报告 | BMad | Stage 3 后半（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪） |
 | W-2 | FR-013 业务实体维度 | payload_equals 已覆盖实体字段级检索（五维实测）；专用实体索引/别名属存储增强 | BMad | Stage 3 存储改造（PG 迁移同期） | 实体索引落地 + 检索测试 |
 | W-3 | FR-022 revise/promote/narrow | support/accept 近似承载修订/晋升语义（事件留痕可辨）；narrow 无实现 | BMad | Stage 3 认知服务扩展 | 三算子显式事件 + 状态机测试 |
-| W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3） | BMad | Stage 3 编排（桥接接线同期） | refute→plan.invalidated 链路 + 测试 |
+| W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3）。**复评六（2026-09-10）已解除**——Story 9.14 `refute_with_propagation`（refute→world_model.suspended→plan.invalidated 三跳链路 + `tests/test_bridge_wiring.py` 四项锚定） | BMad | ~~Stage 3 编排~~ 已解除 | ✅ 达成（`test_bridge_wiring.py`：全链三跳/无模型零传播/缺省 provider/传播不越界） |
 
 **豁免语义**: 四项均「机制部分在、字母级缺口」，豁免期间不计分母；到期未解除
 则升级为 Stage 3 阻断项（已挂 sprint-status 行动项 epic-8-retro-item-5 追踪）。
@@ -301,4 +301,25 @@ v3→v4（entity_index + entity_alias 表，旧库自动迁移）+ PG 等价 DDL
 |------|--------|--------|------|
 | FR-013 | WAIVED（W-2） | **FULL** | `tests/test_entity_index.py`：跨三类命中/别名/作用域/空结果/键区分/迁移 |
 
-**豁免状态**: W-1（AC-07 CI）/ W-3（FR-022）/ W-4（FR-024）维持——到期 Stage 3 后续 Story。
+**豁免状态**: W-2（FR-013）已解除（复评四）；**W-4（FR-024）已解除（复评六——首个
+Story 内达成解除条件并转正的豁免）**；W-1（AC-07 CI）/ W-3（FR-022）维持——
+W-1 计算面已挂 9.11（seed_confidence_interval），解除待真实适配器接入。
+
+---
+
+## 复评记录六（2026-09-10，Story 9.14 桥接自动接线）
+
+**变更**: WAIVER **W-4 解除**——`refute_with_propagation` 一体化链路：
+cognition.refute（既有级联）→ 依赖模型挂起（world_model.suspended，
+经 WorldModelBridge——AD-13）→ 关联计划失效（plan.invalidated，治理
+桥接流留痕，invalidated_by_claim 可溯）。模型/计划映射经 provider
+注入（映射是业务数据，桥接负责链路语义）。+4 测试锚定（全链三跳/
+无模型零传播/缺省 plans provider 仍挂起/传播不越界）。
+
+| 判据 | 复评前 | 复评六 | 依据 |
+|------|--------|--------|------|
+| FR-024 | WAIVED（W-4） | **FULL** | `tests/test_bridge_wiring.py`：三跳全事件断言（2 模型挂起 + 3 计划失效 + 来源主张可溯） |
+
+**门禁更新**: FR-024 由「豁免不计分母」转 FULL 计入——P0 7/7、
+P1 **32/32**、Overall **39/39 = 100% → PASS 维持**。剩余豁免 2 项
+（W-1 AC-07 CI / W-3 FR-022）维持，均在册。

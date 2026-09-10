@@ -16,6 +16,7 @@ from .batch import (
     VastaLabEnv,
     run_tasks_as_runs,
 )
+from .bridge_wiring import PropagationReport, refute_with_propagation
 from .derive import DerivedRef, DeriverRegistry, default_registry, derive_on_demand
 from .offline_eval import (
     ActionComparison,
@@ -80,6 +81,8 @@ from .versioning import (
 
 __all__ = [
     "ActionComparison",
+    "PropagationReport",
+    "refute_with_propagation",
     "AgentSession",
     "ApprovalRecord",
     "is_approval_valid",
