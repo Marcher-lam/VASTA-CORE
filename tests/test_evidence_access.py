@@ -145,8 +145,6 @@ class TestRestrictEvidence:
         await restrict_evidence(store, src, reason="second",
                                  tenant_id="t-default", project_id="p-default")
         # 不炸、最新 reason 生效（审计事件中可见）
-        events = [e for e in store.iter_run_events("access")
-                  if e.type == "artifact.access_denied"]
         # restrict 本身不发事件——仅 deny 时发；幂等性体现在不抛异常
 
     async def test_check_access_without_fetch(self, store) -> None:

@@ -2,6 +2,13 @@
 
 from ._version import __version__
 from .agent import AgentSession, ContractTemplate, SessionSummary
+from .approvals import (
+    ApprovalRecord,
+    is_approval_valid,
+    record_approval,
+    revoke_approval,
+    search_approvals,
+)
 from .batch import (
     BatchRunSummary,
     SolvePolicyStandIn,
@@ -35,6 +42,11 @@ from .versioning import (
 __all__ = [
     "ActionComparison",
     "AgentSession",
+    "ApprovalRecord",
+    "is_approval_valid",
+    "record_approval",
+    "revoke_approval",
+    "search_approvals",
     "BatchRunSummary",
     "SolvePolicyStandIn",
     "TaskRunResult",

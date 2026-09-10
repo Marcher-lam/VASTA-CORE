@@ -110,7 +110,7 @@ development_status:
   9-2-entity-index: review
   9-3-lifecycle-deletion-proof: review
   9-4-raw-evidence-permissions: review
-  9-5-approval-records: backlog
+  9-5-approval-records: review
   9-6-release-canary: backlog
   9-7-transaction-batches: backlog
   9-8-quota-cost-rollup: backlog
