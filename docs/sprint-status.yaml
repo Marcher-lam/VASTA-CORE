@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-10-2026 10:47
+last_updated: 09-09-2026 18:00
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -105,22 +105,22 @@ development_status:
   8-13-lab-split: review
   epic-8-retrospective: done
 
-  epic-9: in-progress
-  9-1-storage-backends-sequencer: review
-  9-2-entity-index: review
-  9-3-lifecycle-deletion-proof: review
-  9-4-raw-evidence-permissions: review
-  9-5-approval-records: review
-  9-6-release-canary: review
-  9-7-transaction-batches: review
-  9-8-quota-cost-rollup: backlog
-  9-9-scheduled-batch-runs: backlog
-  9-10-cross-process-resume: backlog
-  9-11-batch-revalidation-decay: backlog
-  9-12-ops-baseline: backlog
-  9-13-domain-studio: backlog
-  9-14-sandbox-bridge-close: backlog
-  epic-9-retrospective: optional
+  epic-9: done
+  9-1-storage-backends-sequencer: done
+  9-2-entity-index: done
+  9-3-lifecycle-deletion-proof: done
+  9-4-raw-evidence-permissions: done
+  9-5-approval-records: done
+  9-6-release-canary: done
+  9-7-transaction-batches: done
+  9-8-quota-cost-rollup: done
+  9-9-scheduled-batch-runs: done
+  9-10-cross-process-resume: done
+  9-11-batch-revalidation-decay: done
+  9-12-ops-baseline: done
+  9-13-domain-studio: done
+  9-14-sandbox-bridge-close: done
+  epic-9-retrospective: done
 
   epic-10: backlog
   epic-10-retrospective: optional
@@ -206,3 +206,33 @@ action_items:
     owner: "架构"
     status: open
     ref: "docs/epic-8-retro-2026-09-10.md"
+  - id: "epic-9-retro-item-13-sprint-status-回写惯例-story-评审绿-提交后即置-done"
+    epic: 9
+    action: "sprint-status 回写惯例：Story 评审绿+提交后即置 done（或每轮评审边界批量同步）"
+    owner: "全体会话"
+    status: open
+    ref: "docs/epic-9-retro-2026-09-09.md"
+  - id: "epic-9-retro-item-14-sdk-子包化-26-模块-5762-行临界-stage-4-开工前执行"
+    epic: 9
+    action: "sdk 子包化（26 模块 5762 行临界）——Stage 4 开工前执行"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-9-retro-2026-09-09.md"
+  - id: "epic-9-retro-item-15-测试卫生三件套-子集-flaky-修复-fake-约束对齐惯例-常驻-seque"
+    epic: 9
+    action: "测试卫生三件套：子集 flaky 修复 / Fake 约束对齐惯例 / 常驻 Sequencer 评估"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-9-retro-2026-09-09.md"
+  - id: "epic-9-retro-item-16-9-11-模型级重验证-9-12-pg-档备份排期-defer-项"
+    epic: 9
+    action: "9.11 模型级重验证 + 9.12 PG 档备份排期（defer 项）"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-9-retro-2026-09-09.md"
+  - id: "epic-9-retro-item-17-w-3-fr-022-三算子-解除或续豁-stage-4-规划裁决"
+    epic: 9
+    action: "W-3（FR-022 三算子）解除或续豁——Stage 4 规划裁决"
+    owner: "用户"
+    status: open
+    ref: "docs/epic-9-retro-2026-09-09.md"
