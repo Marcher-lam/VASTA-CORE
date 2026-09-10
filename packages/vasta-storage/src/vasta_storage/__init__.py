@@ -1,6 +1,15 @@
 """vasta-storage：Evidence Store（CAS、事件库、派生索引、生命周期，Epic 1/2）。"""
 
 from .images import Box, DiffResult, EvidenceImages, ImageInfo, InspectResult, PixelReading
+from .lifecycle import (
+    DeletionBlocker,
+    DeletionResult,
+    LifecyclePolicy,
+    classify_artifacts,
+    place_legal_hold,
+    release_legal_hold,
+    request_deletion,
+)
 from .lineage import DerivationRecord, LineageVerification, RecordVerification
 from .pg_store import PostgresEventStore
 from .replay import (
@@ -29,8 +38,15 @@ from .sqlite_store import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "DeletionBlocker",
+    "DeletionResult",
+    "LifecyclePolicy",
     "PostgresEventStore",
     "S3BlobStore",
+    "classify_artifacts",
+    "place_legal_hold",
+    "release_legal_hold",
+    "request_deletion",
     "DeviationHit",
     "RegressionTask",
     "ReproBundle",
