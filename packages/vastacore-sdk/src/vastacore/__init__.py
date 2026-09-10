@@ -16,6 +16,7 @@ from .router import CostEntry, ModelRouter, RouterError
 from .scaffold import ScaffoldResult, generate_tool_project, run_tool_protocol_checks
 from .service import VastaService, create_app, serve
 from .timetravel import DerivedRecall, claim_as_of, derived_recall
+from .toolproxy import ProxyToolAdapter, browser_action_proxy, browser_read_proxy, proxy_tool
 from .trajectory import ImportSummary, import_trajectory
 from .versioning import (
     PublishedRef,
@@ -35,6 +36,10 @@ __all__ = [
     "run_tasks_as_runs",
     "CapabilityReport",
     "ProbeOutcome",
+    "ProxyToolAdapter",
+    "browser_action_proxy",
+    "browser_read_proxy",
+    "proxy_tool",
     "probe_capabilities",
     "publish_model_version",
     "publish_policy_snapshot",
