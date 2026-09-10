@@ -41,10 +41,10 @@ externalPointerStatus: 'not_used'
 | Priority | Total Criteria | Waived | FULL / Effective | Coverage % | Status |
 | -------- | -------------- | ------ | ---------------- | ---------- | ------ |
 | P0（AC-01~08，MVP 出门条件） | 8 | 1（AC-07） | 7 / 7 | **100%** | ✅ PASS（复评三） |
-| P1（34 ★FR，Must） | 34 | 3（FR-013/022/024） | 31 / 31 | **100%** | ✅ PASS |
+| P1（34 ★FR，Must） | 34 | 2（FR-022/024） | 32 / 32 | **100%** | ✅ PASS |
 | P2 | 0 | 0 | 0 | N/A | N/A |
 | P3 | 0 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **4** | **38 / 38** | **100%** | ✅ **PASS**（含豁免登记） |
+| **Total** | **42** | **3** | **39 / 39** | **100%** | ✅ **PASS**（含豁免登记） |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -131,7 +131,7 @@ externalPointerStatus: 'not_used'
 | FR-010 | 原始观察/工具响应全存 | FULL ✅ | `test_runcontext_determinism.py::TestModelExchangeArtifact`（I）；`test_tool_gateway.py::test_gateway_path_six_segments_and_evidence`（I） |
 | FR-011 | Artifact 七字段元数据 | FULL ✅ | `test_sqlite_storage.py::test_artifact_roundtrip_verified_by_hash`（含 retention="90d" 回读断言，L55-62）（I）；TestShardedCas 去重（I） |
 | FR-012 | 派生回链 | FULL ✅ | `test_derived_lineage.py` 全族（I） |
-| FR-013 | 六维检索 | WAIVED（豁免登记） ⚠️ | `test_evidence_search.py` 时间/事件/动作(payload_equals)/区域(scope)（I）；artifact tags/source/classification + refs join（I）。**业务实体维度无实体索引/别名**（通用 payload 等值可覆盖其字段） |
+| FR-013 | 六维检索 | FULL ✅（复评四解除 W-2） | `test_evidence_search.py` 时间/事件/动作(payload_equals)/区域(scope)（I）；artifact tags/source/classification + refs join（I）。**业务实体维度无实体索引/别名**（通用 payload 等值可覆盖其字段） |
 | FR-014 | 图像 inspect/crop/pixel/diff | FULL ✅ | `test_image_tools.py` 17 条（I）：溯源/越界/面积上限/血缘 |
 | FR-020 | 九类认知（MVP 四类） | FULL ✅ | `test_cognition.py` 全族（I）；九类 Literal 封闭 + `MVP_MEMORY_TYPES` 四类（PRD 认可切分） |
 | FR-021 | Claim 七字段 | FULL ✅ | `test_cognition.py::TestReviewGuards::test_version_increments_on_transitions`（评审后补版本）+ lifecycle（I） |
@@ -286,3 +286,19 @@ SM-2 的另一半（40+ 任务完整回放/链完整率 100%/偏差失效 100%/�
 📝 **Recommended Actions:**
 1. Stage 3 启动时把 W-1~W-4 挂入 Epic 9 相关 Story 的 Dev Notes（解除条件即验收）
 2. NFR-015 per-Run 成本归集（非本矩阵判据，epic8 defer #1）随 Stage 3 存储改造接线
+
+
+---
+
+## 复评记录四（2026-09-10，Story 9.2 实体索引落地）
+
+**变更**: WAIVER **W-2 解除**——`search_by_entity` 跨事件/工件/派生物（血缘一跳）
+命中 + 别名解析 + 作用域隔离 + 未知实体空结果（7 测试锚定）；SQLite schema
+v3→v4（entity_index + entity_alias 表，旧库自动迁移）+ PG 等价 DDL。
++7 测试（524 全绿）。
+
+| 判据 | 复评三 | 复评四 | 依据 |
+|------|--------|--------|------|
+| FR-013 | WAIVED（W-2） | **FULL** | `tests/test_entity_index.py`：跨三类命中/别名/作用域/空结果/键区分/迁移 |
+
+**豁免状态**: W-1（AC-07 CI）/ W-3（FR-022）/ W-4（FR-024）维持——到期 Stage 3 后续 Story。

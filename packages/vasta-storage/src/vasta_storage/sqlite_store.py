@@ -31,7 +31,7 @@ from .search import EvidenceSearchMixin
 DEFAULT_TENANT = "t-default"
 DEFAULT_PROJECT = "p-default"
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -76,6 +76,26 @@ CREATE TABLE IF NOT EXISTS derived_assets (
     transformer_version TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (tenant_id, project_id, derived_sha256, source_sha256, transform)
+);
+CREATE TABLE IF NOT EXISTS entity_index (
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    entity_value TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, project_id, entity_key, entity_value, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_lookup
+    ON entity_index (tenant_id, project_id, entity_key, entity_value);
+CREATE TABLE IF NOT EXISTS entity_alias (
+    tenant_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    alias_value TEXT NOT NULL,
+    canonical_value TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, project_id, entity_key, alias_value)
 );
 """
 
@@ -134,6 +154,108 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                 )
             self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
 
+    # ---- 实体索引（Story 9.2，FR-013 字母级收口）----
+
+    async def search_by_entity(
+        self,
+        entity_key: str,
+        entity_value: str,
+        *,
+        tenant_id: str,
+        project_id: str,
+        include_derived: bool = True,
+    ) -> list[dict[str, object]]:
+        """按业务实体键检索——命中跨事件/工件/派生物（血缘一跳）。
+
+        别名先解析为 canonical（同键别名表命中即替换）；
+        作用域 fail-closed（空/空白对拒）。"""
+        from ._scope import validate_scope_pair
+
+        validate_scope_pair(tenant_id, project_id)
+        return await asyncio.to_thread(
+            self._search_by_entity_sync,
+            entity_key, entity_value, tenant_id, project_id, include_derived,
+        )
+
+    def _search_by_entity_sync(
+        self,
+        entity_key: str,
+        entity_value: str,
+        tenant_id: str,
+        project_id: str,
+        include_derived: bool,
+    ) -> list[dict[str, object]]:
+        # 别名解析（同键）——命中别名替换为 canonical
+        alias_row = self._conn.execute(
+            "SELECT canonical_value FROM entity_alias"
+            " WHERE tenant_id=? AND project_id=? AND entity_key=? AND alias_value=?",
+            (tenant_id, project_id, entity_key, entity_value),
+        ).fetchone()
+        if alias_row is not None:
+            entity_value = alias_row[0]
+        hits: list[dict[str, object]] = []
+        with self._lock:
+            for key, value, kind, ref in self._conn.execute(
+                "SELECT entity_key, entity_value, kind, ref FROM entity_index"
+                " WHERE tenant_id=? AND project_id=? AND entity_key=?"
+                " AND entity_value=? ORDER BY created_at",
+                (tenant_id, project_id, entity_key, entity_value),
+            ):
+                hits.append({
+                    "entity_key": key, "entity_value": value,
+                    "kind": kind, "ref": ref,
+                })
+            if include_derived and hits:
+                # 血缘一跳：源工件命中的派生物并入（derived kind）
+                shas = [h["ref"] for h in hits if h["kind"] == "artifact"]
+                for sha in shas:
+                    for row in self._conn.execute(
+                        "SELECT derived_sha256 FROM derived_assets"
+                        " WHERE tenant_id=? AND project_id=? AND source_sha256=?",
+                        (tenant_id, project_id, sha),
+                    ):
+                        hits.append({
+                            "entity_key": entity_key,
+                            "entity_value": entity_value,
+                            "kind": "derived", "ref": row[0],
+                        })
+        return hits
+
+    async def register_entity_alias(
+        self,
+        entity_key: str,
+        alias_value: str,
+        canonical_value: str,
+        *,
+        tenant_id: str,
+        project_id: str,
+    ) -> None:
+        """登记实体别名（alias → canonical；检索时自动解析）。"""
+        from ._scope import validate_scope_pair
+
+        validate_scope_pair(tenant_id, project_id)
+        await asyncio.to_thread(
+            self._register_alias_sync,
+            entity_key, alias_value, canonical_value, tenant_id, project_id,
+        )
+
+    def _register_alias_sync(
+        self,
+        entity_key: str,
+        alias_value: str,
+        canonical_value: str,
+        tenant_id: str,
+        project_id: str,
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO entity_alias"
+                " (tenant_id, project_id, entity_key, alias_value,"
+                "  canonical_value) VALUES (?, ?, ?, ?, ?)",
+                (tenant_id, project_id, entity_key,
+                 alias_value, canonical_value),
+            )
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()
@@ -143,6 +265,9 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
         return await asyncio.to_thread(self._append_event_sync, envelope)
 
     def _append_event_sync(self, envelope: EventEnvelope) -> EventEnvelope:
+        entity_refs = envelope.payload.get("entity_refs")
+        if not isinstance(entity_refs, dict):
+            entity_refs = None
         with self._lock, self._conn:
             try:
                 self._conn.execute(
@@ -169,6 +294,16 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                         message=f"event_id {envelope.event_id} already stored",
                     ) from exc
                 raise DuplicateEventError(envelope.run_id, envelope.seq) from exc
+            if entity_refs is not None:
+                event_ref = f"{envelope.run_id}:{envelope.seq}"
+                for key, value in entity_refs.items():
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO entity_index"
+                        " (tenant_id, project_id, entity_key, entity_value,"
+                        "  kind, ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (envelope.tenant_id, envelope.project_id,
+                         str(key), str(value), "event", event_ref, _utcnow_iso()),
+                    )
         return envelope
 
     async def get_event(
@@ -236,6 +371,7 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
         classification: str | None = None,
         retention: str | None = None,
         tags: dict[str, str] | None = None,
+        entities: dict[str, str] | None = None,
         tenant_id: str = DEFAULT_TENANT,
         project_id: str = DEFAULT_PROJECT,
     ) -> str:
@@ -247,6 +383,7 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
             classification,
             retention,
             tags,
+            entities,
             tenant_id,
             project_id,
         )
@@ -259,6 +396,7 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
         classification: str | None,
         retention: str | None,
         tags: dict[str, str] | None,
+        entities: dict[str, str] | None,
         tenant_id: str,
         project_id: str,
     ) -> str:
@@ -311,6 +449,14 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                 " (tenant_id, project_id, sha256, referenced_at) VALUES (?, ?, ?, ?)",
                 (tenant_id, project_id, sha, _utcnow_iso()),
             )
+            for key, value in (entities or {}).items():
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO entity_index"
+                    " (tenant_id, project_id, entity_key, entity_value,"
+                    "  kind, ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (tenant_id, project_id, key, str(value),
+                     "artifact", sha, _utcnow_iso()),
+                )
         return sha
 
     async def get_artifact(

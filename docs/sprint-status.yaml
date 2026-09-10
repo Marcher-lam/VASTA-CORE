@@ -107,7 +107,7 @@ development_status:
 
   epic-9: in-progress
   9-1-storage-backends-sequencer: review
-  9-2-entity-index: backlog
+  9-2-entity-index: review
   9-3-lifecycle-deletion-proof: backlog
   9-4-raw-evidence-permissions: backlog
   9-5-approval-records: backlog

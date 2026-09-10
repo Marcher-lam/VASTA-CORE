@@ -55,6 +55,26 @@ CREATE TABLE IF NOT EXISTS artifact_scope (
     project_id TEXT NOT NULL,
     PRIMARY KEY (sha256, tenant_id, project_id)
 );
+CREATE TABLE IF NOT EXISTS entity_index (
+    tenant_id   TEXT NOT NULL,
+    project_id  TEXT NOT NULL,
+    entity_key  TEXT NOT NULL,
+    entity_value TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    ref         TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, project_id, entity_key, entity_value, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_lookup
+    ON entity_index (tenant_id, project_id, entity_key, entity_value);
+CREATE TABLE IF NOT EXISTS entity_alias (
+    tenant_id  TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    alias_value TEXT NOT NULL,
+    canonical_value TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, project_id, entity_key, alias_value)
+);
 """
 
 
@@ -213,6 +233,7 @@ class PostgresEventStore:
         source: str | None = None,
         classification: str | None = None,
         retention: str | None = None,
+        entities: dict[str, str] | None = None,
         tenant_id: str = "t-default",
         project_id: str = "p-default",
     ) -> str:
@@ -242,6 +263,17 @@ class PostgresEventStore:
                 """,
                 sha, tenant_id, project_id,
             )
+            for key, value in (entities or {}).items():
+                await conn.execute(
+                    """
+                    INSERT INTO entity_index
+                        (tenant_id, project_id, entity_key, entity_value,
+                         kind, ref)
+                    VALUES ($1, $2, $3, $4, 'artifact', $5)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    tenant_id, project_id, key, str(value), sha,
+                )
         return sha
 
     async def get_artifact(

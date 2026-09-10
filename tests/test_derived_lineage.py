@@ -148,7 +148,7 @@ class TestSchemaMigrationV3:
 
         store = SqliteStorage(root)  # v2→v3：新表 CREATE IF NOT EXISTS
         version = store._conn.execute("PRAGMA user_version").fetchone()[0]  # noqa: SLF001
-        assert version == 3
+        assert version == 4  # v3→v4：entity_index（Story 9.2）
         src = await store.save_artifact(b"s", tenant_id=T, project_id=P)
         d = await store.save_derived(
             b"d", source_sha256=src, transform="t", params={},
