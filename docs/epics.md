@@ -4,6 +4,9 @@ incrementalRuns:
   - date: 2026-09-09
     scope: 'Epic 8（Stage 2）增量展开：13 Story（G1-G5 + 并行技术债）；Party Mode 评审 + Assumption Audit 三项修正吸收'
     status: final-validation-passed
+  - date: 2026-09-10
+    scope: 'Epic 9（Stage 3）增量展开：14 Story（G1-G6）；带入复盘 B1/B5、WAIVER W-1/W-2/W-4 解除条件、NFR-015 接线'
+    status: final-validation-passed
 inputDocuments: ['docs/prds/prd-VastaCore-2026-09-08/prd.md', 'docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md', 'plan.md']
 ---
 
@@ -207,8 +210,8 @@ Working/Hypothesis/Guide/Counterexample 四类记忆；Claim 带证据/反例/�
 ### Epic 8: 开发者接入体验（Stage 2，已展开——2026-09-09 增量拆解）
 五种接入方式（轨迹导入升为一等形态）、模型能力探测与路由、插件脚手架与协议测试工具、GUI Pack（Playwright）与 Tool Proxy、按需派生、版本回溯、历史轨迹离线评估；评测即 Run（替身模型）与 lab.py 技术债并行。**FRs covered:** FR-002, FR-003, FR-006, FR-081, FR-015, FR-016, FR-061, FR-066（详见下文 Epic 8 详细节）
 
-### Epic 9: 团队协作与控制面（Stage 3，仅 Epic 级）
-集中存储（PG/S3）、数据生命周期与删除证明、审批记录、资产发布灰度、租户隔离、配额、版本化回滚、运维基线、定时/批量 Run、Domain Studio 初版。**FRs covered:** FR-007, FR-008, FR-017, FR-018, FR-026, FR-028, FR-034, FR-038, FR-065, FR-070, FR-072, FR-075, FR-076
+### Epic 9: 团队协作与控制面（Stage 3，已展开——2026-09-10 增量拆解）
+集中存储（PG/S3）与统一 Sequencer、数据生命周期与删除证明、原始证据权限独立、审批记录、资产发布灰度与版本回滚、配额与成本归集、定时/批量/跨进程 Run、批量重验证、运维基线、Domain Studio 初版、沙箱生产化与桥接收口。**FRs covered:** FR-007, FR-008, FR-017, FR-018, FR-026, FR-028, FR-034, FR-038, FR-065, FR-070, FR-072, FR-075, FR-076（详见下文 Epic 9 详细节）
 
 ### Epic 10: 企业保障（Stage 4，仅 Epic 级）
 模型全生命周期与影子、漂移告警、审计导出、RBAC/ABAC/SSO/SCIM、驻留/保留/法律保留、BYOK/air-gapped、计费、开放 Schema 迁移。**FRs covered:** FR-029, FR-045, FR-049, FR-055, FR-067, FR-068, FR-071, FR-073, FR-074, FR-078, FR-085
@@ -885,5 +888,229 @@ So that Epic 8 各接入扩展不再挤单文件。
 
 ---
 
-*Stage 3+ 的 Epic 9–12（团队协作控制面/企业保障/平台化多 Agent/开放生态）按 PRD 阶段标注记录于上文 Epic List，到各自 Stage 启动时再回到本工作流展开 Story。*
+## Epic 9: 团队协作与控制面（Stage 3 展开）
+
+**用户成果**：团队在共享的集中证据库上协作——多成员多服务安全并发、数据生命周期合规（删除有证明）、审批有记录、资产发布可灰度可回滚、长任务规模化编排（定时/批量/跨节点恢复）、成本配额透明，并有运维基线与 Domain Studio 首版供领域专家审核。
+
+### Epic 9 内部能力分组（2026-09-10 批准）
+
+| 组 | 用户价值 | FR | 带入项 |
+|---|---|---|---|
+| G1 团队数据面 | 全团队共享一个证据库：PG 事件库 + S3 CAS（Team 档）；统一 Sequencer（5 处构造点收敛）；实体索引 | FR-070（存储侧） | 复盘 B1 首项、WAIVER W-2 解除 |
+| G2 数据治理 | 删得掉、说得清：热/温/冷、法律保留、删除请求+不含内容的证明事件、删除前依赖检查；原始证据权限独立于派生物 | FR-017 + FR-018 | — |
+| G3 审批与发布 | 谁批的、批了什么、可回滚：批准绑定动作/参数/范围/时限/批准者；发布测试→影子→灰度→提升→回滚；四类资产版本化回滚 | FR-034 + FR-065 + FR-075 | 8.8 registry 为 FR-075 底座 |
+| G4 运行编排规模化 | 无人值守也可靠：定时/事件触发/批量 Run；跨进程恢复；配额/速率/并发/成本归集；批量重验证+认知衰减 | FR-007 + FR-008 + FR-072 + FR-026 | NFR-015 接线（epic8 defer #1）；W-1 挂重验证 Story |
+| G5 运维与 Studio | 出事知道、坏了能修：健康/告警/备份/恢复/事故管理；Domain Studio 初版（UJ-2） | FR-076 + FR-028 | — |
+| G6 沙箱与桥接收口 | 生产边界真到位：rootless 容器/microVM 沙箱池（AD-6 Stage 3 升级点）；cognition→lab 桥接接线 | —（架构带入） | 复盘 B5/A3、WAIVER W-4 解除 |
+
+### FR Coverage Map（Epic 9）
+
+```
+FR-007 → G4  跨进程/节点恢复
+FR-008 → G4  定时/事件触发/批量 Run
+FR-017 → G2  生命周期 + 删除证明
+FR-018 → G2  原始证据权限独立
+FR-026 → G4  批量重验证 + 认知衰减
+FR-028 → G5  Domain Studio 初版
+FR-034 → G3  批准记录（绑定五要素）
+FR-038 → G3  dry-run/幂等/补偿/事务批次（契约预留段激活）
+FR-065 → G3  发布灰度与回滚
+FR-070 → G1  身份隔离（存储侧强化；进程侧身份随 G4 服务化）
+FR-072 → G4  配额/速率/并发/成本归集
+FR-075 → G3  四类资产版本化回滚
+FR-076 → G5  运维基线
+```
+
+**依赖**：G1 为地基（存储抽象先行）；G2/G3 并行；G4 依赖 G1；G5/G6 独立可并行。组间无前向依赖。
+
+
+### Story 9.1: 存储抽象双后端与统一 Sequencer（G1）
+
+As a 平台维护者,
+I want StorageAdapter 的 PG/S3 双后端实现与全仓统一的 Sequencer/EnvelopeBuilder,
+So that 团队档存储切换不动业务代码，五个手工信封构造点收敛为一。
+
+**Acceptance Criteria:**
+
+**Given** 现有 SQLite 实现与 5 处 EventEnvelope 手工构造点
+**When** 实现 PostgresEventStore + S3BlobStore（StorageAdapter 同契约）与统一 Sequencer
+**Then** 契约套件（storage 七项）对双后端全绿；五处构造点全部改经 Sequencer（grep 零残留）
+**And** SQLite 路径行为不变（502 测试全绿）；Sequencer 并发分配无 seq 洞（测试锚定）（FR-070 存储侧；复盘 B1）
+
+### Story 9.2: 实体索引与检索维度补全（G1）
+
+As a 团队分析师,
+I want 业务实体维度的专用索引与别名检索,
+So that 按订单号/客户号等实体键秒级定位全部相关证据。
+
+**Acceptance Criteria:**
+
+**Given** G1 双后端与既有 payload_equals 检索
+**When** 工件/事件登记实体标签（entity_index 表或 PG 等价）
+**Then** search_by_entity 命中跨事件/工件/派生物三类；空/未知实体明确空结果
+**And** WAIVER W-2 解除（实体索引 + 检索测试入矩阵复评）（FR-013 字母级收口）
+
+### Story 9.3: 数据生命周期与删除证明（G2）
+
+As a 合规负责人,
+I want 热/温/冷分层、法律保留、删除请求与不含内容的删除证明,
+So that 「已删除」是可审计的事实而非口头承诺。
+
+**Acceptance Criteria:**
+
+**Given** 集中存储中的证据与认知/评测/法律保留依赖
+**When** 发起删除请求
+**Then** 删除前依赖检查（活跃认知/评测/法律保留阻止并说明）；执行后留不含内容的证明事件（deletion.proved）
+**And** 热/温/冷分层策略可配置；法律保留期间删除被拒且留痕（FR-017）
+
+### Story 9.4: 原始证据权限独立（G2）
+
+As a 数据管理者,
+I want 原始证据的访问权限独立于派生物与聚合指标,
+So that 共享分析结论不等于泄露原始截图/响应。
+
+**Acceptance Criteria:**
+
+**Given** 派生物（血缘可达）与原始 Artifact
+**When** 原始证据设为受限作用域
+**Then** 派生物/聚合指标仍可读；原始 blob 取回被拒（作用域检查）；血缘链不因权限断链（引用可见、内容不可达）
+**And** 权限判定落审计事件（FR-018）
+
+### Story 9.5: 批准记录五要素绑定（G3）
+
+As a 合规审计员,
+I want 每次批准绑定动作、参数、范围、时限与批准者,
+So that 「谁在何时批了什么」不可抵赖。
+
+**Acceptance Criteria:**
+
+**Given** Epic 3 的人工控制（approve_pending/revoke）
+**When** 批准发生
+**Then** approval 记录含五要素（action/args/scope/expires_at/approver）入事件流；超时批准自动失效（时限）
+**And** 与既有 approval 工作流集成零语义冲突；审计可按批准者检索（FR-034）
+
+### Story 9.6: 资产发布灰度与回滚（G3）
+
+As a 资产负责人,
+I want 模型/策略/工具/提示资产发布经测试→影子→灰度→提升→回滚,
+So that 坏版本影响面可控、可退。
+
+**Acceptance Criteria:**
+
+**Given** 8.8 版本化 registry
+**When** 发布新资产版本
+**Then** 状态机 candidate→testing→shadow→canary→active（+rolled_back）；各状态转换落事件；回滚恢复引用至前 active 版本
+**And** 影子期新旧版本并行对比产出差异报告；灰度比例可配（FR-065）
+
+### Story 9.7: 契约预留段激活——dry-run/幂等/补偿/事务批次（G3）
+
+As a 工具开发者,
+I want ActionContract 预留的幂等键与补偿字段真正激活，支持事务批次,
+So that 多步写操作要么全成、要么按逆序补偿。
+
+**Acceptance Criteria:**
+
+**Given** 契约预留字段（idempotency_key/compensation）与网关幂等缓存
+**When** 声明事务批次（步骤列表 + 整体补偿计划）
+**Then** 任一步失败按逆序执行已成功步的 compensate（各留痕）；批次整体一个事务事件（transaction.settled/aborted）
+**And** dry-run 门对批次整体先行；幂等键跨批次稳定（AD-11）（FR-038）
+
+### Story 9.8: 配额、速率与成本归集（G4）
+
+As a 平台运营者,
+I want 租户/项目级配额（速率/并发/预算）与 per-Run 成本归集,
+So that 资源滥用有闸、成本按 Run/项目/租户可记账。
+
+**Acceptance Criteria:**
+
+**Given** Budget（Run 级）与 8.6 路由器成本估算
+**When** 配置租户/项目配额
+**Then** 超速率/并发被限流（429 语义）；成本记录贯穿 Run→项目→租户三级汇总（NFR-015 全档接线，epic8 defer #1 解除）
+**And** 配额事件留痕；Router cost_summary 并入归集（FR-072）
+
+### Story 9.9: 定时、事件触发与批量 Run（G4）
+
+As a 运营负责人,
+I want 定时/事件触发的批量 Run 调度,
+So that 例行任务无人值守可靠执行。
+
+**Acceptance Criteria:**
+
+**Given** RunEngine 与 AgentSession
+**When** 定义调度（cron/事件源）与批量任务清单
+**Then** 到点触发批量执行；每次执行独立 Run（复用 8.9 批量语义）；调度本身是留痕事件（schedule.created/fired）
+**And** 触发失败重试有上限；并发受配额约束（复用 9.8）（FR-008）
+
+### Story 9.10: 长任务跨进程恢复（G4）
+
+As a 长任务负责人,
+I want Run 状态跨进程/节点可恢复,
+So that 进程重启/节点故障不丢任务进度。
+
+**Acceptance Criteria:**
+
+**Given** 事件溯源（AD-2）与 checkpoint（Epic 1）
+**When** 工作进程崩溃后新进程接管 Run
+**Then** 从事件流重建引擎状态（checkpoint + 重观察比对既有语义）；接管留痕（run.adopted）
+**And** 至少一次语义下的动作不重复执行（幂等键跨进程稳定）（FR-007）
+
+### Story 9.11: 环境升级批量重验证与认知衰减（G4）
+
+As a 平台负责人,
+I want 环境升级后对历史认知/模型批量重验证并标记置信衰减,
+So that 世界变了，旧结论的可信度跟着变。
+
+**Acceptance Criteria:**
+
+**Given** 8.10 离线评估与 Claim 依赖图
+**When** 环境版本升级事件到达
+**Then** 受影响主张/模型批量重验证（离线评估复用）；仍通过者保留、失败者按衰减规则降置信或推翻（事件留痕）
+**And** 影响面报告（受影响清单+处置结果）；W-1（AC-07 CI）解除条件挂此 Story（真实适配器方差）（FR-026）
+
+### Story 9.12: 运维基线——健康、告警、备份、恢复、事故（G5）
+
+As a 运维工程师,
+I want 服务健康检查、告警、备份恢复与事故管理基线,
+So that 出事知道、坏了能修。
+
+**Acceptance Criteria:**
+
+**Given** HTTP 服务与存储双后端
+**When** 部署运维基线
+**Then** /healthz（活性/就绪分离）；关键指标告警规则（错误率/队列深/配额触顶）；存储快照备份+恢复演练（恢复后事件流完整校验）
+**And** 事故（incident.*）可关联 Run 并复盘归档（FR-076）
+
+### Story 9.13: Domain Studio 初版（G5）
+
+As a 领域专家,
+I want 一个界面审核 Agent 的认知与批量影响分析,
+So that 不写代码就能参与治理（UJ-2）。
+
+**Acceptance Criteria:**
+
+**Given** 认知服务（Claim/冲突/上下文）与检索
+**When** 打开 Domain Studio 初版（Web，只读为主）
+**Then** 认知图浏览（主张/冲突/依赖）、证据下钻（时间线+复现包下载）、批量影响分析入口（环境升级→受影响清单预览）
+**And** 专家操作（审核/标注）经 HTTP 服务走事件留痕——UI 零旁路（AD-2）；写操作复用 9.5 批准流（FR-028）
+
+### Story 9.14: 沙箱生产化与桥接收口（G6）
+
+As a 平台架构师,
+I want rootless 容器/microVM 沙箱池替代受限子进程，cognition→lab 桥接自动接线,
+So that 生产边界与架构语义（AD-6/AD-13）都真到位。
+
+**Acceptance Criteria:**
+
+**Given** MVP 受限子进程（AD-6 明示非生产边界）与手动桥接
+**When** Stage 3 生产化
+**Then** 沙箱池（rootless 容器 Podman 类；Windows 开发档回退子进程并标注）；模型执行全经池（模块/系统调用 allowlist）
+**And** refute 后自动 world_model.suspended + 受影响 Plan 标记（plan.invalidated 链路）——**W-4 解除**（AD-6/AD-13；复盘 B5/A3）
+
+---
+
+*Epic 9 备注：进程侧身份（服务账号/用户身份传播）随 9.8 服务化与 9.13 Studio 落地；FR-038 幂等/补偿为契约预留段激活（Epic 3 已留位）。W-1/W-2/W-4 解除条件分别挂 9.11/9.2/9.14——解除时触发验收矩阵复评。*
+
+---
+
+*Stage 4+ 的 Epic 10–12（企业保障/平台化多 Agent/开放生态）按 PRD 阶段标注记录于上文 Epic List，到各自 Stage 启动时再回到本工作流展开 Story。*
 
