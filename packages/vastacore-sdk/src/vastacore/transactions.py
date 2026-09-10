@@ -48,6 +48,7 @@ class BatchResult(BaseModel):
     status: str  # settled | aborted | dry_run_rejected
     executed: list[str] = Field(default_factory=list)
     compensated: list[str] = Field(default_factory=list)
+    compensation_failed: list[str] = Field(default_factory=list)
     failed_step: str | None = None
 
 
@@ -68,14 +69,26 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
 
     from vasta_protocols.protocols import Action
 
-    # ---- dry-run 整体门 ----
+    # ---- dry-run 整体门（fail-closed——评审修复）----
     for step in batch.steps:
         gateway = session._gateway  # noqa: SLF001
         adapter = gateway._tools.get(step.tool)  # noqa: SLF001
         if adapter is None:
-            continue  # 未注册工具走 env 路径（无 dry_run）
+            # 未注册工具无 dry-run 面 → 拒整批（fail-closed：
+            # 无法预检的动作不得混入事务批次——曾为静默跳过）
+            return BatchResult(
+                batch_id=batch.batch_id, status="dry_run_rejected",
+                failed_step=step.tool,
+            )
         if adapter.manifest.supports_dry_run:
-            dry = await adapter.dry_run(Action(tool=step.tool, args=step.args))
+            try:
+                dry = await adapter.dry_run(
+                    Action(tool=step.tool, args=step.args))
+            except Exception:  # noqa: BLE001——dry_run 异常 = 拒（不裸逃）
+                return BatchResult(
+                    batch_id=batch.batch_id, status="dry_run_rejected",
+                    failed_step=step.tool,
+                )
             if not dry.allowed:
                 return BatchResult(
                     batch_id=batch.batch_id, status="dry_run_rejected",
@@ -129,6 +142,7 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
     if failed_step is not None:
         # 逆序补偿已成功步
         gateway = session._gateway  # noqa: SLF001
+        compensation_failed: list[str] = []
         for j in range(len(executed) - 1, -1, -1):
             step = batch.steps[j]
             step_id = executed[j]
@@ -144,16 +158,26 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
                         "batch_id": batch.batch_id, "step_index": j,
                         "tool": step.tool, "step_id": step_id,
                     })
-                except Exception:  # noqa: BLE001——补偿失败不中断其余补偿
-                    pass
+                except Exception as exc:  # noqa: BLE001——补偿失败不中断其余补偿
+                    # 留痕（评审修复：补偿失败不再静默吞——事件面可审计
+                    # 哪步悬空未回滚）
+                    compensation_failed.append(step_id)
+                    await sequencer.emit(
+                        "action.batch_step_compensation_failed", {
+                            "batch_id": batch.batch_id, "step_index": j,
+                            "tool": step.tool, "step_id": step_id,
+                            "error": f"{type(exc).__name__}: {exc}"[:200],
+                        })
         await sequencer.emit("action.batch_aborted", {
             "batch_id": batch.batch_id,
             "executed": executed, "compensated": compensated,
+            "compensation_failed": compensation_failed,
             "failed_step": failed_step,
         })
         return BatchResult(
             batch_id=batch.batch_id, status="aborted",
             executed=executed, compensated=compensated,
+            compensation_failed=compensation_failed,
             failed_step=failed_step,
         )
 

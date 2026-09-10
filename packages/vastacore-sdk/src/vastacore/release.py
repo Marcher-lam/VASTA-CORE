@@ -102,15 +102,16 @@ async def promote_release(
 ) -> ReleaseResult:
     """推进发布状态（逐级——跳级拒）。"""
     ReleaseStatus(to)  # 非法值即 ValueError（字面量校验）
-    # 版本必须已发布（registry 中存在）
+    # 版本必须已发布（registry 中存在**该版本**——幻影版本号拒）
     from .versioning import version_as_of
 
     try:
-        await version_as_of(store, kind, name)
+        await version_as_of(store, kind, name, version=version)
     except VastaError:
         raise VastaError(
             code="release.version_not_published",
-            message=f"{kind} {name!r} 尚无已发布版本（先 publish）",
+            message=(f"{kind} {name!r} v{version} 尚未发布"
+                     "（先 publish——幻影版本不可入状态机）"),
         ) from None
 
     state = _get_state_sync(store, kind, name)
@@ -179,13 +180,11 @@ async def compare_shadow(
     store: Any, kind: str, name: str, *,
     new_version: str, old_version: str,
 ) -> dict[str, Any]:
-    """影子期新旧版本并行对比——差异报告。"""
+    """影子期新旧版本并行对比——差异报告（两版本各自取回 bundle）。"""
     from .versioning import version_as_of
 
-    new_rec = await version_as_of(store, kind, name,
-                                  as_of_seq=10**9)  # latest
-    old_rec = await version_as_of(store, kind, name, as_of_seq=10**9)
-    # 简化：按版本号过滤（精确比较走 version_as_of 指定版本）
+    new_rec = await version_as_of(store, kind, name, version=new_version)
+    old_rec = await version_as_of(store, kind, name, version=old_version)
     differences: list[dict[str, Any]] = []
     new_bundle = new_rec.bundle
     old_bundle = old_rec.bundle

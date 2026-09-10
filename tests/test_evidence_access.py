@@ -166,3 +166,21 @@ class TestRestrictEvidence:
         assert await check_evidence_access(
             store, "0" * 64, tenant_id="t-default", project_id="p-default"
         ) == "not_found"
+
+    async def test_missing_scope_rejected_fail_closed(self, store) -> None:
+        """评审修复：作用域缺省即拒——限制不可被无作用域调用绕过
+        （曾漏传落到默认租户判权限，跨租户限制形同虚设；AD-12）。"""
+        from vasta_storage.evidence_access import (
+            get_artifact_checked,
+            restrict_evidence,
+        )
+
+        src, _ = await seed(store)
+        await restrict_evidence(store, src, reason="PII",
+                                 tenant_id="t-real", project_id="p-real")
+        with pytest.raises(VastaError) as e1:
+            await get_artifact_checked(store, src)  # 完全不带作用域
+        assert e1.value.code == "evidence.scope_required"
+        with pytest.raises(VastaError) as e2:
+            await get_artifact_checked(store, src, tenant_id="t-real")  # 半截
+        assert e2.value.code == "evidence.scope_required"

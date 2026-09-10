@@ -53,6 +53,17 @@ class S3BlobStore:
     def _key(self, sha: str) -> str:
         return f"{self._prefix}/{sha[:2]}/{sha}"
 
+    @staticmethod
+    def _is_not_found(exc: Exception) -> bool:
+        """「对象确实不存在」判定——仅限明确的 404/NoSuchKey/KeyError
+        （fake 形态）；其余（403/限流/5xx/凭证）一律视为存储故障。"""
+        if isinstance(exc, KeyError):
+            return True  # 内存 fake 的 not-found 形态
+        if type(exc).__name__ == "ClientError":  # botocore（不硬依赖导入）
+            text = str(exc).upper()
+            return "404" in text or "NOSUCHKEY" in text
+        return False
+
     async def save_artifact(
         self,
         payload: bytes,
@@ -70,8 +81,15 @@ class S3BlobStore:
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
             return sha
-        except Exception:  # noqa: BLE001——不存在 → 写入
-            pass
+        except Exception as exc:  # noqa: BLE001
+            if not self._is_not_found(exc):
+                # 评审修复：head 瞬态/权限故障不再吞为「不存在」
+                # （曾任何 head 异常都触发全量重传——写放大 + dedup 失效）
+                raise VastaError(
+                    code="s3.head_failed",
+                    message=f"head {key} 失败（非 404——不重传，故障上抛）"
+                            f"：{exc}",
+                ) from exc
         metadata = {
             "tenant_id": tenant_id, "project_id": project_id,
             "sha256": sha,
@@ -96,10 +114,18 @@ class S3BlobStore:
             response = self._client.get_object(
                 Bucket=self._bucket, Key=self._key(sha256)
             )
-        except Exception as exc:  # noqa: BLE001——键不存在等
+        except Exception as exc:  # noqa: BLE001
+            if self._is_not_found(exc):
+                raise VastaError(
+                    code="artifact.not_found",
+                    message=f"artifact {sha256[:16]}… 不存在（{exc}）",
+                ) from exc
+            # 评审修复：瞬态错误（限流/5xx/凭证）不再误报 not_found
+            # ——删除证明/审计语义不被网络抖动污染
             raise VastaError(
-                code="artifact.not_found",
-                message=f"artifact {sha256[:16]}… 不存在（{exc}）",
+                code="s3.get_failed",
+                message=(f"artifact {sha256[:16]}… 取回失败"
+                         f"（非 404——存储故障，不代表已删除）：{exc}"),
             ) from exc
         payload = response["Body"].read()
         if hashlib.sha256(payload).hexdigest() != sha256:

@@ -100,14 +100,34 @@ class TestRollback:
 
 class TestShadowAndCanary:
     async def test_shadow_compare_diff(self, store) -> None:
-        """AC：影子期新旧版本并行对比产出差异报告。"""
+        """AC：影子期新旧版本并行对比产出差异报告（评审修复 G1 锚定：
+        差异**非空**——曾两次取同一版本恒 0 差异也过本测试）。"""
         await seed_two_versions(store)
         report = await compare_shadow(store, "model", "grid",
                                      new_version="2.0.0",
                                      old_version="1.0.0")
         assert report["old_version"] == "1.0.0"
         assert report["new_version"] == "2.0.0"
-        assert "differences" in report  # 差异清单
+        assert report["total_diffs"] >= 1  # ruleset 确实不同 → 差异必非空
+        fields = {d["field"] for d in report["differences"]}
+        assert fields  # 差异字段可定位（灰度放行依据）
+
+    async def test_shadow_compare_identical_versions_no_diff(
+            self, store) -> None:
+        """同版本自比 → 0 差异（对照锚定——差异检测真实工作）。"""
+        await seed_two_versions(store)
+        report = await compare_shadow(store, "model", "grid",
+                                     new_version="1.0.0",
+                                     old_version="1.0.0")
+        assert report["total_diffs"] == 0
+
+    async def test_phantom_version_rejected(self, store) -> None:
+        """评审修复：幻影版本号不可入状态机（曾只查资产级存在性）。"""
+        await seed_two_versions(store)
+        with pytest.raises(VastaError) as excinfo:
+            await promote_release(store, "model", "grid", "9.9.9",
+                                  to="testing")
+        assert excinfo.value.code == "release.version_not_published"
 
     async def test_canary_percent_configurable(self, store) -> None:
         """AC：灰度比例可配。"""

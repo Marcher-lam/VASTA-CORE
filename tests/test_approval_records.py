@@ -48,18 +48,38 @@ class TestFiveElements:
         assert events[-1].payload["approver"] == "alice@corp"
 
     async def test_expiry_auto_invalidates(self, store) -> None:
-        """AC：超时批准自动失效。"""
+        """AC：超时批准自动失效（评审修复——ttl_s=0/负值在签发侧被拒，
+        过期语义改由 expires_at 判定承担）。"""
         rec = await record_approval(
-            store, tool="set_status", args={}, approver="bob",
-            scope="t:p", ttl_s=0,  # 立即过期
-        )
-        assert is_approval_valid(rec) is False
-
-        rec_long = await record_approval(
             store, tool="set_status", args={}, approver="bob",
             scope="t:p", ttl_s=3600,
         )
-        assert is_approval_valid(rec_long) is True
+        assert is_approval_valid(rec) is True
+        expired = rec.model_copy(update={
+            "expires_at": rec.expires_at - timedelta(seconds=7200),
+        })
+        assert is_approval_valid(expired) is False
+
+    async def test_zero_and_negative_ttl_rejected(self, store) -> None:
+        """评审修复：ttl_s<=0 拒（签发即过期的批准无审计意义）。"""
+        for bad in (0, -3600):
+            with pytest.raises(VastaError) as excinfo:
+                await record_approval(
+                    store, tool="t", args={}, approver="a",
+                    scope="s", ttl_s=bad,
+                )
+            assert excinfo.value.code == "approval.bad_ttl"
+
+    async def test_approval_id_no_same_second_collision(self, store) -> None:
+        """评审修复：同秒同工具多批——id 不再碰撞。"""
+        ids = set()
+        for _ in range(20):
+            rec = await record_approval(
+                store, tool="same-tool", args={}, approver="a",
+                scope="s", ttl_s=60,
+            )
+            ids.add(rec.approval_id)
+        assert len(ids) == 20  # 无一碰撞
 
     async def test_expiry_boundary(self, store) -> None:
         """恰在过期时刻：expired。"""
@@ -89,6 +109,34 @@ class TestRevoke:
     async def test_revoke_unknown_rejected(self, store) -> None:
         with pytest.raises(VastaError):
             await revoke_approval(store, "ghost-id", reason="x")
+
+    async def test_revoke_scoped_not_cross_tenant(self, store) -> None:
+        """评审修复：撤销按作用域匹配——他租户同 id 不可误撤。"""
+        from vastacore.approvals import get_approval
+
+        rec = await record_approval(
+            store, tool="ship", args={}, approver="c", scope="t-a:p-a",
+            ttl_s=3600,
+        )
+        # t-b 视角撤销 → not_found（同 id 在他租户不可见）
+        with pytest.raises(VastaError) as excinfo:
+            await revoke_approval(store, rec.approval_id, reason="x",
+                                  tenant_id="t-b", project_id="p-b")
+        assert excinfo.value.code == "approval.not_found"
+        # 本租户撤销 + 重建闭环：get_approval 的 record 立即失效
+        await revoke_approval(store, rec.approval_id, reason="r")
+        rebuilt = await get_approval(store, rec.approval_id)
+        assert rebuilt.revoked is True
+        assert is_approval_valid(rebuilt) is False
+
+    async def test_naive_now_not_typeerror(self, store) -> None:
+        """评审修复：naive datetime.now() 直接可用（按 UTC 解释）。"""
+        from datetime import datetime
+
+        rec = await record_approval(
+            store, tool="t", args={}, approver="a", scope="s", ttl_s=3600,
+        )
+        assert is_approval_valid(rec, now=datetime.now()) is True
 
 
 class TestAuditSearch:

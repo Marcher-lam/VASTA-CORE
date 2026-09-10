@@ -95,9 +95,19 @@ async def get_artifact_checked(
 ) -> bytes:
     """权限感知的 artifact 取回——受限即拒 + 审计事件。
 
-    原始 get_artifact 不改（后向兼容层）；本函数是权限叠加层。"""
-    effective_tenant = tenant_id or "t-default"
-    effective_project = project_id or "t-default"
+    原始 get_artifact 不改（后向兼容层）；本函数是权限叠加层。
+    作用域缺省即拒（AD-12 fail-closed——漏传作用域不得落到
+    默认租户上判权限，否则限制可被无作用域调用绕过）。"""
+    if not tenant_id or not project_id:
+        raise VastaError(
+            code="evidence.scope_required",
+            message=(
+                "权限检查需要显式 tenant_id/project_id"
+                "（无作用域即拒——AD-12 fail-closed）"
+            ),
+        )
+    effective_tenant = tenant_id
+    effective_project = project_id
 
     # 不存在优先于受限（不存在的 sha 谈不上受限）
     with store._lock:  # noqa: SLF001

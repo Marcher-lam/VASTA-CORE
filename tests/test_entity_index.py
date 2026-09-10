@@ -116,7 +116,6 @@ class TestEntityIndex:
     async def test_migration_v3_to_v4(self, tmp_path) -> None:
         """旧 v3 库打开即补 entity_index 表（不丢既有数据）。"""
         import sqlite3
-        from pathlib import Path
 
         db = tmp_path / "old_v3.db"
         conn = sqlite3.connect(db)
@@ -128,8 +127,6 @@ class TestEntityIndex:
         )
         conn.commit()
         conn.close()
-        store = SqliteStorage(Path(db.stem))  # 不会用——直接测打开旧库
-        store.close()
         # 直接以 v3 user_version 打开存储目录中的库
         store_dir = tmp_path / "s2"
         store_dir.mkdir()

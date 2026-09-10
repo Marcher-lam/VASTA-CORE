@@ -118,6 +118,13 @@ class ArtifactCorruptedError(VastaError):
         self.sha256 = sha256
 
 
+def _valid_entity_value(value: object) -> bool:
+    """实体索引值校验（评审修复）：仅标量入索引——None/嵌套 dict/list
+    曾被 str() 成字面量落库（'None'、「{'id': 7}」），永远检索不到
+    预期实体且与真实字面量撞键。"""
+    return isinstance(value, (str, int, float, bool))
+
+
 
 
 class SqliteStorage(EvidenceSearchMixin, LineageMixin):
@@ -185,16 +192,18 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
         project_id: str,
         include_derived: bool,
     ) -> list[dict[str, object]]:
-        # 别名解析（同键）——命中别名替换为 canonical
-        alias_row = self._conn.execute(
-            "SELECT canonical_value FROM entity_alias"
-            " WHERE tenant_id=? AND project_id=? AND entity_key=? AND alias_value=?",
-            (tenant_id, project_id, entity_key, entity_value),
-        ).fetchone()
-        if alias_row is not None:
-            entity_value = alias_row[0]
-        hits: list[dict[str, object]] = []
         with self._lock:
+            # 别名解析（同键）——命中别名替换为 canonical
+            # （评审修复：SELECT 移入锁内——曾与他线程写事务交错）
+            alias_row = self._conn.execute(
+                "SELECT canonical_value FROM entity_alias"
+                " WHERE tenant_id=? AND project_id=? AND entity_key=?"
+                " AND alias_value=?",
+                (tenant_id, project_id, entity_key, entity_value),
+            ).fetchone()
+            if alias_row is not None:
+                entity_value = alias_row[0]
+            hits: list[dict[str, object]] = []
             for key, value, kind, ref in self._conn.execute(
                 "SELECT entity_key, entity_value, kind, ref FROM entity_index"
                 " WHERE tenant_id=? AND project_id=? AND entity_key=?"
@@ -297,6 +306,8 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
             if entity_refs is not None:
                 event_ref = f"{envelope.run_id}:{envelope.seq}"
                 for key, value in entity_refs.items():
+                    if not _valid_entity_value(value):
+                        continue  # 非标量不入索引（同 save_artifact——评审修复）
                     self._conn.execute(
                         "INSERT OR IGNORE INTO entity_index"
                         " (tenant_id, project_id, entity_key, entity_value,"
@@ -350,6 +361,21 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
             rows = self._conn.execute(query, params).fetchall()
         for row in rows:
             yield EventEnvelope.model_validate_json(row[0])
+
+    def last_event_info(
+        self, run_id: str,
+    ) -> tuple[int, str | None] | None:
+        """该 run 的最大 seq 及其 event_id（点查——Sequencer 同步快路径，
+        替代全量重扫；无事件返回 None）。"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT seq, event_id FROM events WHERE run_id=?"
+                " ORDER BY seq DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return (int(row[0]), row[1])
 
     async def aiter_run_events(
         self, run_id: str, *, tenant_id: str | None = None,
@@ -450,6 +476,11 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                 (tenant_id, project_id, sha, _utcnow_iso()),
             )
             for key, value in (entities or {}).items():
+                if not _valid_entity_value(value):
+                    # 评审修复：非标量（None/嵌套 dict/list）不入索引——
+                    # 曾 str() 字面量落库（'None'/「{'id': 7}」——永远检索
+                    # 不到预期实体，且与真实字面量撞键）
+                    continue
                 self._conn.execute(
                     "INSERT OR IGNORE INTO entity_index"
                     " (tenant_id, project_id, entity_key, entity_value,"

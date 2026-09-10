@@ -176,3 +176,99 @@ class TestTransactionBatch:
 
             key = _step_idempotency_key(batch, 0)
             assert key.startswith("idem-tx:step_0:")
+
+
+class TestReviewFixes:
+    """Epic 9 G1-G3 评审修复锚定（快道推进/引擎离场/dry-run 门/补偿留痕）。"""
+
+    async def test_engine_departure_signals_failure(self, tmp_path) -> None:
+        """评审缺口 G7：act 不抛但引擎离场 started → 步骤判失败并补偿
+        （恢复掩盖偏差——「不抛≠成功」的引擎信号面）。"""
+        from vasta_runtime.state import RunState
+
+        tool = StepTool()
+        session = await make_session(tmp_path, tool)
+        async with session:
+            await session.start()
+            await session.reset()
+            real_act = session.act
+            calls = {"n": 0}
+
+            async def act_then_depart(action):
+                result = await real_act(action)
+                calls["n"] += 1
+                if calls["n"] == 1:  # 第一步正常返回但引擎离场
+                    session._engine._state = RunState.FAILED  # noqa: SLF001
+                return result
+
+            session.act = act_then_depart  # type: ignore[method-assign]
+            batch = TransactionBatch(batch_id="tx-dep", steps=[
+                {"tool": "step", "args": {"id": "a"}},
+                {"tool": "step", "args": {"id": "b"}},
+            ])
+            result = await execute_batch(session, batch)
+            assert result.status == "aborted"
+            assert result.failed_step == "step"  # 第一步即判失败
+            assert result.executed == []
+            types = [e.type for e in session.events()]
+            assert "action.batch_step_failed" in types
+
+    async def test_unregistered_tool_rejected(self, tmp_path) -> None:
+        """评审修复：未注册工具拒整批（dry-run fail-closed——曾静默放行）。"""
+        tool = StepTool()
+        session = await make_session(tmp_path, tool)
+        async with session:
+            await session.start()
+            await session.reset()
+            batch = TransactionBatch(batch_id="tx-ghost", steps=[
+                {"tool": "ghost.tool", "args": {}},
+            ])
+            result = await execute_batch(session, batch)
+            assert result.status == "dry_run_rejected"
+            assert result.failed_step == "ghost.tool"
+
+    async def test_dry_run_exception_rejected(self, tmp_path) -> None:
+        """评审修复：dry_run 抛异常 → 整批拒（fail-closed，不裸逃）。"""
+
+        class ExplodingDryRun(StepTool):
+            async def dry_run(self, action):
+                raise RuntimeError("dry-run backend down")
+
+        tool = ExplodingDryRun()
+        session = await make_session(tmp_path, tool)
+        async with session:
+            await session.start()
+            await session.reset()
+            batch = TransactionBatch(batch_id="tx-boom", steps=[
+                {"tool": "step", "args": {"id": "a"}},
+            ])
+            result = await execute_batch(session, batch)
+            assert result.status == "dry_run_rejected"
+            assert result.failed_step == "step"
+
+    async def test_compensation_failure_leaves_trace(self, tmp_path) -> None:
+        """评审修复：补偿失败不再静默——事件留痕 + 结果字段可审计。"""
+
+        class BadCompensate(StepTool):
+            async def compensate(self, action, result):
+                raise RuntimeError("compensation backend down")
+
+        tool = BadCompensate(fail_on={"b"})
+        session = await make_session(tmp_path, tool)
+        async with session:
+            await session.start()
+            await session.reset()
+            batch = TransactionBatch(batch_id="tx-comp-fail", steps=[
+                {"tool": "step", "args": {"id": "a"}},
+                {"tool": "step", "args": {"id": "b"}},  # 失败步
+            ])
+            result = await execute_batch(session, batch)
+            assert result.status == "aborted"
+            assert result.executed == ["a"]
+            assert result.compensated == []
+            assert result.compensation_failed == ["a"]  # 悬空步可审计
+            types = [e.type for e in session.events()]
+            assert "action.batch_step_compensation_failed" in types
+            aborted = [e for e in session.events()
+                       if e.type == "action.batch_aborted"][-1]
+            assert aborted.payload["compensation_failed"] == ["a"]

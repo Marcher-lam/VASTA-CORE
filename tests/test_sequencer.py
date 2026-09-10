@@ -90,14 +90,114 @@ class TestEngineFastMode:
         e = await rebuilt.emit("run.paused", {})
         assert e.seq == 1
 
-    async def test_fast_mode_conflict_raises_not_silent(self) -> None:
-        """两个快道实例同流：后写者撞唯一约束 → DuplicateEventError。"""
+    async def test_fast_mode_no_advance_on_write_failure(self) -> None:
+        """评审缺口 G2 锚定：append 失败后 last_seq **不推进**——
+        「成功才推进、失败不留洞、重试无洞」的完整链条
+        （推进语义移回 append 前的突变体必须被本测试杀死）。"""
+
+        class FailOnce(FakeStorageAdapter):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls = 0
+
+            async def append_event(self, envelope):
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("disk full")
+                return self.log.append(envelope)
+
+        store = FailOnce()
+        seq = EventSequencer(store, "run-f", resync_each_emit=False)
+        with pytest.raises(RuntimeError):
+            await seq.emit("run.created", {})
+        assert seq.last_seq == -1  # 失败不推进（推进若在 append 前则 =0）
+        e = await seq.emit("run.created", {})  # 重试用同一 seq——无洞
+        assert e.seq == 0
+
+    async def test_system_mode_uses_point_query_not_full_scan(self) -> None:
+        """评审修复：系统流同步走 last_event_info 点查（O(1)——
+        曾每次 emit 全量重扫 O(n²)）。"""
+
+        class CountingStore(FakeStorageAdapter):
+            def __init__(self) -> None:
+                super().__init__()
+                self.full_scans = 0
+                self.point_queries = 0
+
+            def last_event_info(self, run_id):
+                self.point_queries += 1
+                events = list(super().iter_run_events(run_id))
+                if not events:
+                    return None
+                return (events[-1].seq, events[-1].event_id)
+
+            def iter_run_events(self, run_id):
+                self.full_scans += 1
+                return super().iter_run_events(run_id)
+
+        store = CountingStore()
+        seq = EventSequencer(store, "sys")
+        for _ in range(50):
+            await seq.emit("memory.note", {})
+        assert store.point_queries == 50  # 每次 emit 一次点查
+        assert store.full_scans == 0  # 零全量重扫（曾 50 次递增扫描）
+
+    async def test_concurrent_emit_serialized(self) -> None:
+        """评审修复：同一 sequencer 并发 emit 不再必败一路
+        （实例锁串行化——sync 与 append 之间的交错窗口关闭）。"""
+        import asyncio
+
+        store = FakeStorageAdapter()
+        seq = EventSequencer(store, "conc")
+        results = await asyncio.gather(
+            seq.emit("run.created", {"n": 1}),
+            seq.emit("run.created", {"n": 2}),
+            seq.emit("run.created", {"n": 3}),
+        )
+        assert sorted(r.seq for r in results) == [0, 1, 2]  # 全部成功无撞
+
+    async def test_fast_mode_conflict_self_heals_and_joins(self) -> None:
+        """快道 resume 时点落后（他实例已推进）：撞唯一约束 → 同步尾部
+        后续接重试（评审修复：不再永久卡死；事件接上存储尾部，
+        无洞、父链完整——不静默丢）。"""
         store = FakeStorageAdapter()
         a = EventSequencer(store, "run-z", resync_each_emit=False)
-        b = EventSequencer(store, "run-z", resync_each_emit=False)
+        ea = await a.emit("run.created", {})
+        # b 从 seq=0 resume（落后——a 已推进到 0）
+        rebuilt_b = EventSequencer.resuming(store, "run-z", last_seq=0,
+                                            last_event_id=ea.event_id)
+        eb = await rebuilt_b.emit("run.started", {})  # seq=1 正常
+        ea2 = await a.emit("run.paused", {})  # a 与 b 交错推进
+        assert (eb.seq, ea2.seq) == (1, 2)
+        # 落后撞号形态：c resume 在 seq=1，但流已被 a/b 推到 2
+        c = EventSequencer.resuming(store, "run-z", last_seq=1,
+                                    last_event_id=eb.event_id)
+        ec = await c.emit("run.resumed", {})  # seq=2 撞 → 自愈接 seq=3
+        assert ec.seq == 3
+        assert len(list(store.iter_run_events("run-z"))) == 4  # 无覆盖无洞
+
+    async def test_fast_mode_fresh_start_on_nonempty_stream_raises(
+            self) -> None:
+        """声称空流（last_seq=-1）对非空流从头写 = rerun 冲突——上抛
+        不自愈（quickstart.rerun_conflict 检测依赖此路径）。"""
+        store = FakeStorageAdapter()
+        a = EventSequencer(store, "run-r", resync_each_emit=False)
         await a.emit("run.created", {})
+        b = EventSequencer(store, "run-r", resync_each_emit=False)  # 从零
         with pytest.raises(DuplicateEventError):
-            await b.emit("run.started", {})  # b 也从 seq=0 开始 → 撞键
+            await b.emit("run.started", {})
+
+    async def test_fast_mode_persistent_conflict_raises(self) -> None:
+        """自愈重试一次后仍撞（存储尾部不前进的异常形态）→ 上抛。"""
+
+        class AlwaysConflict(FakeStorageAdapter):
+            def append_event(self, envelope):  # type: ignore[override]
+                raise DuplicateEventError(envelope.run_id, envelope.seq)
+
+        seq = EventSequencer(AlwaysConflict(), "run-w",
+                             resync_each_emit=False)
+        with pytest.raises(DuplicateEventError):
+            await seq.emit("run.created", {})
 
 
 class TestConstructionSitesConverged:

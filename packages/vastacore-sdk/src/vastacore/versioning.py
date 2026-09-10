@@ -209,11 +209,15 @@ async def publish_policy_snapshot(
 
 async def version_as_of(
     store: Any, kind: str, name: str, *,
+    version: str | None = None,
     as_of_seq: int | None = None,
     as_of_ts: datetime | None = None,
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> VersionRecord:
-    """取该名称当时（默认最新）的版本记录 + 完整 bundle（只读零副作用）。"""
+    """取该名称当时（默认最新）的版本记录 + 完整 bundle（只读零副作用）。
+
+    ``version`` 指定时取该版本（未发布过该版本则 not_found）——
+    影子对比（compare_shadow）与发布存在性校验（promote）用。"""
     type_ = _event_type_of(kind)
     latest: dict[str, Any] | None = None
     found = False
@@ -227,15 +231,18 @@ async def version_as_of(
         p = event.payload
         if p.get("name") != name:
             continue
+        if version is not None and p.get("version") != version:
+            continue
         latest = dict(p)
         found = True
     if not found or latest is None:
         point = "latest" if (as_of_seq is None and as_of_ts is None) else (
             f"seq={as_of_seq}" if as_of_seq is not None else f"ts={as_of_ts}"
         )
+        target = f" v{version}" if version is not None else ""
         raise VastaError(
             code="versioning.not_found",
-            message=f"{kind} {name!r} 在 {point} 无发布记录",
+            message=f"{kind} {name!r}{target} 在 {point} 无发布记录",
         )
     canonical = await store.get_artifact(
         latest["sha256"], tenant_id=tenant_id, project_id=project_id,

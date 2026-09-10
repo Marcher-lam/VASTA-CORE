@@ -110,18 +110,43 @@ class PostgresEventStore:
             ) from exc
         self._dsn = dsn
         self._pool: Any | None = None
+        # 评审修复：并发首用双 pool 泄漏——锁保护首建
+        self._pool_lock: Any = None  # 延迟创建（asyncio.Lock 需循环）
         self._blob_store = blob_store  # None → 工件入 PG bytea
         self._schema_setup = schema_setup
+
+    def _get_pool_lock(self) -> Any:
+        import asyncio
+
+        if self._pool_lock is None:
+            self._pool_lock = asyncio.Lock()
+        return self._pool_lock
 
     async def _ensure_pool(self) -> Any:
         import asyncpg
 
         if self._pool is None:
-            self._pool = await asyncpg.create_pool(self._dsn, min_size=1)
-            if self._schema_setup:
-                async with self._pool.acquire() as conn:
-                    await conn.execute(_SCHEMA)
+            async with self._get_pool_lock():
+                if self._pool is None:  # 双检——并发首用只建一个
+                    self._pool = await asyncpg.create_pool(self._dsn,
+                                                           min_size=1)
+                    if self._schema_setup:
+                        async with self._pool.acquire() as conn:
+                            await conn.execute(_SCHEMA)
         return self._pool
+
+    async def _dedicated_conn(self) -> Any:
+        """专用连接（不进共享 pool）——同步临时循环路径用。
+
+        评审修复：sync iter 曾把共享 pool 绑到临时事件循环（loop 关闭
+        后异步路径复用同一 pool 跨循环报废）——临时上下文一律专用连接，
+        用后即关。"""
+        import asyncpg
+
+        conn = await asyncpg.connect(self._dsn)
+        if self._schema_setup:
+            await conn.execute(_SCHEMA)
+        return conn
 
     async def close(self) -> None:
         if self._pool is not None:
@@ -148,10 +173,21 @@ class PostgresEventStore:
                     envelope.event_id,
                     json.dumps(envelope.payload, ensure_ascii=False),
                 )
-            except Exception as exc:  # asyncpg.UniqueViolationError
-                if "duplicate key" in str(exc).lower():
-                    raise DuplicateEventError(envelope.run_id, envelope.seq) \
-                        from exc
+            except Exception as exc:
+                # 评审修复：按约束名分流（曾按英文串 "duplicate key"
+                # 分类——event_id 冲突被误报为 seq 冲突，非英文 locale
+                # 直接漏裸异常）
+                constraint = getattr(exc, "constraint_name", "") or ""
+                if constraint in ("events_pkey", "events_event_id_key") \
+                        or "duplicate key" in str(exc).lower():
+                    if constraint == "events_event_id_key":
+                        raise VastaError(
+                            code="event.duplicate_id",
+                            message=(f"event_id {envelope.event_id} "
+                                     "already stored"),
+                        ) from exc
+                    raise DuplicateEventError(
+                        envelope.run_id, envelope.seq) from exc
                 raise
         return envelope
 
@@ -183,7 +219,10 @@ class PostgresEventStore:
         *, tenant_id: str | None = None, project_id: str | None = None,
     ):
         """同步迭代（快照预取）——仅无事件循环上下文可用；
-        事件循环内（asyncio 代码/pytest-asyncio）请用 aiter_run_events。"""
+        事件循环内（asyncio 代码/pytest-asyncio）请用 aiter_run_events。
+
+        评审修复：临时循环走专用连接（用后即关），不再创建/触碰共享
+        pool——同步读一次不再把共享 pool 绑到已关闭的循环上。"""
         import asyncio as _aio
 
         try:
@@ -197,10 +236,42 @@ class PostgresEventStore:
                         "无循环上下文）",
             )
         fetched = _aio.new_event_loop().run_until_complete(
-            self._iter_async(run_id, tenant_id, project_id)
-        )
+            self._iter_dedicated(run_id, tenant_id, project_id))
         _aio.set_event_loop(None)
         return iter(fetched)
+
+    async def _iter_dedicated(
+        self, run_id: str,
+        tenant_id: str | None, project_id: str | None,
+    ) -> list[EventEnvelope]:
+        conn = await self._dedicated_conn()
+        try:
+            query = "SELECT * FROM events WHERE run_id=$1"
+            params: list[Any] = [run_id]
+            if tenant_id is not None and project_id is not None:
+                query += " AND tenant_id=$2 AND project_id=$3"
+                params += [tenant_id, project_id]
+            query += " ORDER BY seq"
+            rows = await conn.fetch(query, *params)
+            return [self._row_to_envelope(row) for row in rows]
+        finally:
+            await conn.close()
+
+    async def last_event_info(
+        self, run_id: str,
+    ) -> tuple[int, str | None] | None:
+        """该 run 最大 seq 及其 event_id（点查——Sequencer 同步快路径）。
+        无事件返回 None。"""
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT seq, event_id FROM events WHERE run_id=$1"
+                " ORDER BY seq DESC LIMIT 1",
+                run_id,
+            )
+        if row is None:
+            return None
+        return (int(row["seq"]), row["event_id"])
 
     async def aiter_run_events(
         self, run_id: str,
@@ -237,15 +308,21 @@ class PostgresEventStore:
         tenant_id: str = "t-default",
         project_id: str = "p-default",
     ) -> str:
-        if self._blob_store is not None:
-            return await self._blob_store.save_artifact(
+        sha = hashlib.sha256(payload).hexdigest()
+        bytea_in_pg = self._blob_store is None
+        if not bytea_in_pg:
+            # 组合形态：字节入外部 blob（AD-14 全局去重——head 命中同址）
+            await self._blob_store.save_artifact(
                 payload, mime=mime, source=source,
                 classification=classification, retention=retention,
                 tenant_id=tenant_id, project_id=project_id,
             )
-        sha = hashlib.sha256(payload).hexdigest()
         pool = await self._ensure_pool()
         async with pool.acquire() as conn:
+            # 评审修复：组合形态也落 PG 元数据（曾直接 return——
+            # artifact_scope/entity_index 全丢，租户可达性与实体检索
+            # 双失效）。artifacts 行在组合形态为占位（payload 空串——
+            # 读路径走 blob，不消费该列；行仅为 FK 锚）。
             await conn.execute(
                 """
                 INSERT INTO artifacts (sha256, payload, mime, source,
@@ -253,7 +330,8 @@ class PostgresEventStore:
                 VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (sha256) DO NOTHING
                 """,
-                sha, payload, mime, source, classification, retention,
+                sha, payload if bytea_in_pg else b"",
+                mime, source, classification, retention,
             )
             await conn.execute(
                 """
@@ -264,6 +342,9 @@ class PostgresEventStore:
                 sha, tenant_id, project_id,
             )
             for key, value in (entities or {}).items():
+                if value is None or not isinstance(value, (str, int, float,
+                                                           bool)):
+                    continue  # 评审修复：非标量不入索引（None/嵌套不落库）
                 await conn.execute(
                     """
                     INSERT INTO entity_index
@@ -286,6 +367,21 @@ class PostgresEventStore:
             )
         pool = await self._ensure_pool()
         async with pool.acquire() as conn:
+            # 评审修复：给定作用域时校验租户可达性（AD-14——曾任何
+            # 租户知道 sha 即可取字节）；不传作用域=管理面显式全量读
+            if tenant_id is not None and project_id is not None:
+                scoped = await conn.fetchval(
+                    "SELECT 1 FROM artifact_scope"
+                    " WHERE sha256=$1 AND tenant_id=$2 AND project_id=$3",
+                    sha256, tenant_id, project_id,
+                )
+                if scoped is None:
+                    raise VastaError(
+                        code="artifact.not_found",
+                        message=(f"artifact {sha256[:16]}… 在 "
+                                 f"{tenant_id}:{project_id} 不可达"
+                                 "（AD-14 作用域）"),
+                    )
             row = await conn.fetchrow(
                 "SELECT payload FROM artifacts WHERE sha256=$1", sha256
             )
