@@ -71,7 +71,9 @@ def _static_check(code: str) -> None:
 class PythonWorldModel:
     """受限 Python 世界模型（双执行模式，评审修复后语义与文档一致）：
 
-    - ``sandbox=SandboxExecutor(...)``：每次 transition 经受限子进程
+    - ``sandbox=SandboxExecutor(...)`` 或 ``sandbox=make_sandbox_pool()``
+      （Story 9.14 接线：模型执行全经池——容器优先/开发档回退/
+      并发上限）：每次 transition 经受限执行
       （AD-6 主路径：静态检查 + 资源限额 + 最小环境 + 超时墙钟）；
     - ``sandbox=None``：受限 builtins 本地直跑（静态检查 + 无 IO/反射
       的内置集；用于快速验证与测试，不是生产边界）。"""

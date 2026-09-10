@@ -100,12 +100,14 @@ def impact_analysis(
         and items & set(c.scope.items())
     ]
     affected: dict[str, Any] = {c.claim_id: c for c in direct}
-    # 下游闭包（BFS；visited 防环）
+    # 下游闭包（BFS；visited 防环；refuted/retired 不入——评审修复 F14：
+    # 终态下游曾计入 affected_count 又被处理跳过，报告计数不变量破坏）
     frontier = [c.claim_id for c in direct]
     while frontier:
         current = frontier.pop()
         for other in cognition._claims.values():  # noqa: SLF001
-            if other.claim_id in affected or other.status == "retired":
+            terminal = other.status in ("refuted", "retired")
+            if other.claim_id in affected or terminal:
                 continue
             if current in other.depends_on:
                 affected[other.claim_id] = other
@@ -203,6 +205,12 @@ def seed_confidence_interval(
         raise VastaError(
             code="revalidation.ci_needs_seeds",
             message=f"CI 至少需要 2 个种子样本（得到 {len(values)}）",
+        )
+    if not all(math.isfinite(v) for v in values):
+        # 评审修复 F16：NaN/inf 样本静默产出全 NaN CI——拒
+        raise VastaError(
+            code="revalidation.ci_non_finite",
+            message="CI 样本含非有限值（NaN/inf）",
         )
     n = len(values)
     mean = sum(values) / n

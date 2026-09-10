@@ -91,9 +91,12 @@ class TestImpactAnalysis:
         """影响面：scope 命中 + depends_on 下游闭包；无关/终态不参与。"""
         cog = CognitionService(store)
         await cog.propose(claim("hit", run_id=None))
-        await cog.propose(claim("downstream", depends_on=["hit"]))
+        # 评审修复（验证缺口 M12 假锚定）：下游主张 scope={}——
+        # 非 scope 直接命中，闭包传播路径真正承重（原 fixture 给同
+        # scope 使删闭包后该测试仍绿）
+        await cog.propose(claim("downstream", scope={}, depends_on=["hit"]))
         await cog.propose(claim("unrelated", scope={"region": "dev"}))
-        await cog.propose(claim("dead", depends_on=["hit"]))
+        await cog.propose(claim("dead", scope={}, depends_on=["hit"]))
         await cog.retire("dead")  # 退役不参与
         affected = {c.claim_id for c in impact_analysis(
             cog, {"region": "prod"})}
@@ -102,8 +105,8 @@ class TestImpactAnalysis:
     async def test_cycle_safe(self, store) -> None:
         """依赖环不死循环（visited 防环）。"""
         cog = CognitionService(store)
-        await cog.propose(claim("a", depends_on=["b"]))
-        await cog.propose(claim("b", depends_on=["a"]))
+        await cog.propose(claim("a", scope={}, depends_on=["b"]))
+        await cog.propose(claim("b", scope={}, depends_on=["a"]))
         affected = {c.claim_id for c in impact_analysis(
             cog, {"region": "prod"})}
         assert affected == {"a", "b"}

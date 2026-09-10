@@ -77,6 +77,8 @@ def _replay(events: list[Any]) -> tuple[RunState, dict[str, Any] | None,
         elif t in _TERMINAL:
             state = _TERMINAL[t]
         elif t == "action.executed":
+            if event.payload.get("replayed"):
+                continue  # 幂等重放命中不耗预算（评审修复：与运行期口径一致）
             executed.append((str(event.payload.get("tool", "?")), event.seq))
     return state, created, checkpoint, checkpoint_seq, executed
 
@@ -143,10 +145,19 @@ async def adopt_run(
     seed_recovered = stream_seed is not None
     tenant = events[-1].tenant_id
     project = events[-1].project_id
+    last = events[-1]
+    # seeded 时钟基点=流尾 ts（评审修复 M6：接管后 ts 续算不回退）
+    clock_start = last.ts if effective_seed is not None else None
     context = RunContext.create(
         run_id=run_id, tenant_id=tenant, project_id=project,
-        seed=effective_seed,
+        seed=effective_seed, clock_start=clock_start,
     )
+    if effective_seed is not None:
+        # ID 流预烧（评审修复 F1）：seeded ID 流「可再生」=从头发号——
+        # 直接接续会与已消费 ID 全量相撞（真实存储 event_id UNIQUE 硬拒）。
+        # 快进 last.seq+1 抽（seq 0..last 已消费），后续派生从新位置起。
+        for _ in range(last.seq + 1):
+            context.new_event_id()
 
     budget, actions_used, model_calls_used = _budget_baseline(
         created, checkpoint, cp_seq, executed)
@@ -158,7 +169,6 @@ async def adopt_run(
         tool_gateway=tool_gateway, policy_engine=policy_engine,
         recovery_policy=recovery_policy, safety_clock=safety_clock,
     )
-    last = events[-1]
     engine._sequencer = EventSequencer.resuming(  # noqa: SLF001——同包接管对齐
         store, run_id,
         last_seq=last.seq, last_event_id=last.event_id,
@@ -169,9 +179,12 @@ async def adopt_run(
     engine.tracker.restore(actions_used, model_calls_used)
     if state is RunState.PAUSED and checkpoint is not None:
         engine._checkpoint = Checkpoint.model_validate(checkpoint)  # noqa: SLF001
-    engine.tracker.start()  # 墙钟重新计费（崩溃期间不计——安全侧）
-    if state is RunState.PAUSED:
-        engine.tracker.pause()  # paused 接管：等待 resume 才计费
+    if state is not RunState.CREATED:
+        # 墙钟重新计费（崩溃期间不计——安全侧）；CREATED 态不 start
+        # （评审修复 F12：接管方 start() 才起算——排队期不烧墙钟预算）
+        engine.tracker.start()
+        if state is RunState.PAUSED:
+            engine.tracker.pause()  # paused 接管：等待 resume 才计费
 
     await engine._emit("run.adopted", {  # noqa: SLF001——接管留痕
         "adopted_from_seq": last.seq,

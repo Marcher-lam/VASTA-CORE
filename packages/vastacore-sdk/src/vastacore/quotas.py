@@ -180,13 +180,24 @@ class CostLedger:
         basis: str = "",
     ) -> None:
         """记一笔成本（模型粒度；估算口径 basis 透传——NFR-015）。"""
+        import math
+
+        cost = float(estimated_cost)
+        if not math.isfinite(cost) or cost < 0:
+            # 评审修复 F4/F13：NaN/inf 经 JSON 落 null 毒化全部汇总
+            # （append-only 不可修复）；负成本可"充值"预算——一律拒
+            raise VastaError(
+                code="billing.bad_cost",
+                message=(f"estimated_cost 须为非负有限数"
+                         f"（得到 {estimated_cost!r}——退款请显式建模）"),
+            )
         sequencer = EventSequencer(
             store, _BILLING_RUN,
             tenant_id=tenant_id, project_id=project_id,
         )
         await sequencer.emit("run.cost_recorded", {
             "run_id": run_id, "model": model, "calls": calls,
-            "estimated_cost": round(float(estimated_cost), 10),
+            "estimated_cost": round(cost, 10),
             "basis": basis,
         })
 
@@ -235,7 +246,7 @@ class CostLedger:
         """单 Run 成本总计。"""
         return sum(r["estimated_cost"] for r in CostLedger._rows(
             store, tenant_id=tenant_id, project_id=project_id)
-            if r["run_id"] == run_id)
+            if r["run_id"] == run_id and r["estimated_cost"] is not None)
 
     @staticmethod
     async def project_total(
@@ -243,7 +254,8 @@ class CostLedger:
     ) -> float:
         """项目（作用域）累计成本——预算闸的判定口径。"""
         return sum(r["estimated_cost"] for r in CostLedger._rows(
-            store, tenant_id=tenant_id, project_id=project_id))
+            store, tenant_id=tenant_id, project_id=project_id)
+            if r["estimated_cost"] is not None)
 
     @staticmethod
     async def project_summary(
@@ -256,7 +268,8 @@ class CostLedger:
         for r in rows:
             entry = by_run.setdefault(
                 r["run_id"], {"total": 0.0, "models": {}})
-            entry["total"] += r["estimated_cost"]
+            if r["estimated_cost"] is not None:  # 毒化行（历史）不崩汇总
+                entry["total"] += r["estimated_cost"]
             model = entry["models"].setdefault(
                 r["model"], {"calls": 0, "estimated_cost": 0.0,
                              "basis": r["basis"]})
@@ -279,10 +292,10 @@ class CostLedger:
             if event.type != "run.cost_recorded" \
                     or event.tenant_id != tenant_id:
                 continue
-            by_project[event.project_id] = (
-                by_project.get(event.project_id, 0.0)
-                + event.payload.get("estimated_cost", 0.0)
-            )
+            cost = event.payload.get("estimated_cost")
+            if cost is not None:  # 毒化行（历史）不崩汇总
+                by_project[event.project_id] = (
+                    by_project.get(event.project_id, 0.0) + cost)
         return {"projects": by_project,
                 "total": sum(by_project.values())}
 

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -39,17 +40,25 @@ _CRON_FIELDS = (
     ("day_of_week", 0, 6),  # 0=周日（cron 惯例）
 )
 
-#: next_after 扫描上限（分钟）——400 天（防畸形表达式死循环）。
-_MAX_SCAN_MINUTES = 400 * 24 * 60
+#: next_after 扫描上限（分钟）——4 年（覆盖闰年 2/29 合法低频表达式；
+#: 评审修复 F7：原 400 天把「下一次命中在闰年」的合法表达式误判畸形）。
+_MAX_SCAN_MINUTES = 4 * 366 * 24 * 60
+
+_ASCII_DIGIT = re.compile(r"^[0-9]+$")
 
 
 def _parse_field(expr: str, low: int, high: int) -> set[int]:
-    """单字段解析：* / a / a-b / a-b/n / a,b（组合）→ 值集合。"""
+    """单字段解析：* / a / a-b / a-b/n / a,b（组合）→ 值集合。
+
+    仅 ASCII 数字（评审修复 F19：int() 的 Unicode 十进制语义
+    （٥→5）会使配置面与审计面出现不可预期等价类——拒绝）。"""
     values: set[int] = set()
     for part in expr.split(","):
         step = 1
         if "/" in part:
             part, step_s = part.split("/", 1)
+            if not _ASCII_DIGIT.match(step_s):
+                raise ValueError(f"step 须为 ASCII 数字：{step_s!r}")
             step = int(step_s)
             if step < 1:
                 raise ValueError(f"step 须 ≥1：{step_s!r}")
@@ -57,8 +66,12 @@ def _parse_field(expr: str, low: int, high: int) -> set[int]:
             start, end = low, high
         elif "-" in part:
             a, b = part.split("-", 1)
+            if not (_ASCII_DIGIT.match(a) and _ASCII_DIGIT.match(b)):
+                raise ValueError(f"{part!r} 含非 ASCII 数字")
             start, end = int(a), int(b)
         else:
+            if not _ASCII_DIGIT.match(part):
+                raise ValueError(f"{part!r} 含非 ASCII 数字")
             start = end = int(part)
         if start < low or end > high or start > end:
             raise ValueError(f"{part!r} 超出 [{low},{high}] 或区间倒置")
@@ -75,6 +88,8 @@ class CronSpec:
     规则未实现——调度语义显式化，避免歧义）。"""
 
     def __init__(self, expression: str) -> None:
+        import calendar
+
         parts = expression.split()
         if len(parts) != 5:
             raise VastaError(
@@ -92,6 +107,20 @@ class CronSpec:
                 code="schedule.bad_cron",
                 message=f"cron 字段非法（{expression!r}）：{exc}",
             ) from exc
+        # 可行性剪枝（评审修复 F7：dom×month 组合无任何合法日——
+        # 如 2 月 30 日——构造期即拒，防 4 年空扫描阻塞事件循环）。
+        # 年域取 4 年窗口（闰年 2/29 合法——单年判定会误拒）。
+        _minute, _hour, dom, month, _dow = self._sets
+        if not any(
+            d <= calendar.monthrange(year, m)[1]
+            for year in range(2026, 2030)
+            for m in month for d in dom
+        ):
+            raise VastaError(
+                code="schedule.bad_cron",
+                message=(f"{expression!r} 永不命中（如 2 月 30 日——"
+                         "dom×month 无合法日）"),
+            )
         self.expression = expression
 
     def matches(self, dt: datetime) -> bool:
@@ -129,7 +158,7 @@ class ScheduleSpec(BaseModel):
     event_source: str | None = None  # 事件类型（如 release.transition）
     tasks: list[VastaLabTask] = Field(default_factory=list)
     root: str = "."  # 批量执行 store 根（复用 8.9）
-    max_retries: int = Field(default=2, ge=0)
+    max_retries: int = Field(default=2, ge=0, le=10)  # 评审修复 F20：上界（同步重试无界放大阻塞）
 
     def model_post_init(self, __context: Any) -> None:
         has_cron, has_source = self.cron is not None, \
@@ -187,7 +216,9 @@ class Scheduler:
                 tasks, root=root, tenant_id=tenant_id,
                 project_id=project_id)
         )
-        self._clock = clock or datetime.now
+        # 评审修复 F2：默认 UTC aware（naive 本地钟与 aware 比较会
+        # TypeError——调度统一 UTC 与文档口径一致）
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._tenant = tenant_id
         self._project = project_id
         self._cron: dict[str, tuple[ScheduleSpec, CronSpec, datetime]] = {}
@@ -196,7 +227,22 @@ class Scheduler:
 
     # ---- 注册 ----
     async def add(self, spec: ScheduleSpec) -> None:
-        """注册调度 + 留痕（plan.scheduled）。"""
+        """注册调度 + 留痕（plan.scheduled）。
+
+        schedule_id 全局唯一（评审修复 M2：事件源路径曾追加不去重——
+        重复注册导致每次触发双执行；与 cron 路径覆盖语义统一为拒绝）。"""
+        if any(spec.schedule_id == s.schedule_id
+               for s in self._cron.values()):
+            raise VastaError(
+                code="schedule.duplicate",
+                message=f"调度 {spec.schedule_id!r} 已注册（crons）",
+            )
+        if any(spec.schedule_id == s.schedule_id
+               for specs in self._event.values() for s in specs):
+            raise VastaError(
+                code="schedule.duplicate",
+                message=f"调度 {spec.schedule_id!r} 已注册（events）",
+            )
         if spec.cron is not None:
             cron = CronSpec(spec.cron)
             self._cron[spec.schedule_id] = (

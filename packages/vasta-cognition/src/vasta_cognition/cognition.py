@@ -101,13 +101,29 @@ class CognitionService:
     # ---- 事件层 ----
     def _rebuild(self) -> None:
         try:
-            events = list(self.store.iter_run_events(self._run_id))
+            events = list(self.store.iter_run_events(
+                self._run_id, tenant_id=self._tenant,
+                project_id=self._project))
+        except TypeError:
+            # 端口不支持作用域参数（FakeStorageAdapter）——信封手动过滤
+            events = [
+                e for e in self.store.iter_run_events(self._run_id)
+                if e.tenant_id == self._tenant
+                and e.project_id == self._project
+            ]
         except Exception:
             events = []
         # 统一序列器（系统流模式）每发全量同步——重放恢复无需手动对齐游标
         for event in events:
             if event.type.startswith("claim."):
                 self._apply_claim_event(event.type, event.payload)
+
+    def refresh(self) -> None:
+        """投影刷新（Story 9.13 评审修复 F8：跨实例写入——Studio mount
+        后业务侧 propose/refute——常驻投影看不到；读面调用前刷新）。"""
+        self._claims.clear()
+        self._known_conflicts.clear()
+        self._rebuild()
 
     def _sync_from_store(self) -> None:
         """与存储对齐——桥接（AD-13）可能已在本 run 追加事件。
@@ -324,7 +340,15 @@ class CognitionService:
         self, claim_id: str, *, factor: float, reason: str,
     ) -> float:
         """置信衰减（Story 9.11）：confidence ×= factor，落
-        claim.confidence_decayed；返回衰减后置信。"""
+        claim.confidence_decayed；返回衰减后置信。
+
+        factor 守卫（评审修复 F15）：0 < factor ≤ 1——公开 API 直调
+        不再可能产出 [0,1] 外的置信并落流。"""
+        if not 0 < factor <= 1:
+            raise VastaError(
+                code="claim.bad_decay_factor",
+                message=f"factor 须在 (0,1]（得到 {factor}）",
+            )
         claim = self._require_active(claim_id)
         after = round(claim.confidence * factor, 6)
         await self._emit("claim.confidence_decayed", {

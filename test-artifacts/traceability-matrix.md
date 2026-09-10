@@ -44,7 +44,7 @@ externalPointerStatus: 'not_used'
 | P1（34 ★FR，Must） | 34 | 2（FR-022/024） | 32 / 32 | **100%** | ✅ PASS |
 | P2 | 0 | 0 | 0 | N/A | N/A |
 | P3 | 0 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **3** | **39 / 39** | **100%** | ✅ **PASS**（含豁免登记） |
+| **Total** | **42** | **2** | **40 / 40** | **100%** | ✅ **PASS**（含豁免登记；豁免 2=W-1/W-3，W-2/W-4 已解除——复评四/六） |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -321,5 +321,26 @@ cognition.refute（既有级联）→ 依赖模型挂起（world_model.suspended
 | FR-024 | WAIVED（W-4） | **FULL** | `tests/test_bridge_wiring.py`：三跳全事件断言（2 模型挂起 + 3 计划失效 + 来源主张可溯） |
 
 **门禁更新**: FR-024 由「豁免不计分母」转 FULL 计入——P0 7/7、
-P1 **32/32**、Overall **39/39 = 100% → PASS 维持**。剩余豁免 2 项
+P1 **33/33**、Overall **40/40 = 100% → PASS 维持**。剩余豁免 2 项
 （W-1 AC-07 CI / W-3 FR-022）维持，均在册。
+（G4-G6 评审修复时勘误：初写 39/39 系沿抄复评四数字——分母未随
+FR-024 转正从 32 更新到 33；验收审计指出。）
+
+
+---
+
+## 复评记录七（2026-09-10，G4-G6 四层代码评审修复）
+
+**变更**: Story 9.8-9.14 四层评审（盲审/边界/验证缺口/验收审计）——
+patch 22 组（高危 6）+22 锚定测试（705→727 全绿）。高危修复：
+seeded Run 接管 event_id 流预烧（真实 UNIQUE 约束下集成测试）+ seeded
+时钟基点续算；Scheduler 默认钟 UTC（开箱 TypeError）；系统流并发写
+撞号有界重试（8 并发落账无裸抛）；Studio 租户过滤/投影刷新/token
+encode/XSS 转义；备份含 objects/ + 头校验 + 工件可达校验；
+PodmanBackend 四缺陷 + **Lab 接线（make_sandbox_pool——模型执行
+全经池落地，验收审计 ❌ 项解除）**。验证缺口 4 项全补（预算累计/
+闭包 fixture 假锚定/parent 注入/等值边界）。报告见
+docs/reviews/epic9-g456-code-review.md。
+
+**门禁**: 判据覆盖不变——P0 7/7、P1 33/33、**Overall 40/40 = 100%
+→ PASS 维持**。

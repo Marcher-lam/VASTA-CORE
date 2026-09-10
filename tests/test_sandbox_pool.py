@@ -40,24 +40,63 @@ class FakeBackend:
 
 
 class TestPodmanCommand:
-    def test_network_disabled_and_limits_present(self) -> None:
+    def test_network_disabled_and_limits_present(self, tmp_path) -> None:
         """AC：rootless 容器——网络恒关 + 内存/PID/CPU 限额 +
-        seccomp 系统调用 allowlist。"""
+        seccomp 系统调用 allowlist（profile JSON 路径形态——评审修复
+        F11 后的合法语法）。"""
+
+        profile = tmp_path / "seccomp.json"
+        profile.write_text("{}", encoding="utf-8")
         cmd = build_podman_command(
             "img:1", mem_mb=256, pids_limit=16, cpu_s=1,
-            syscall_allowlist=("read", "write"))
+            seccomp_profile=profile)
         assert "--network=none" in cmd
         assert "--memory=256m" in cmd
         assert "--pids-limit=16" in cmd
         assert "--cpus=1" in cmd
         seccomp = cmd[cmd.index("--security-opt") + 1]
-        assert "allowlist:read,write" in seccomp
+        assert seccomp == f"seccomp={profile}"
+
+    def test_seccomp_profile_is_valid_whitelist_json(self) -> None:
+        """profile 为 ERRNO 默认拒 + 白名单放行的合法 JSON。"""
+        import json
+
+        from vasta_model_lab.pool import seccomp_profile_json
+
+        data = json.loads(seccomp_profile_json(("read", "write")))
+        assert data["defaultAction"] == "SCMP_ACT_ERRNO"
+        assert data["syscalls"][0]["names"] == ["read", "write"]
+        assert data["syscalls"][0]["action"] == "SCMP_ACT_ALLOW"
 
     def test_default_syscall_allowlist_minimal(self) -> None:
-        """默认 allowlist 不含高危面（exec/fork/socket 拒于容器层）。"""
+        """默认 allowlist 不含高危面（exec/fork/socket/connect 拒于
+        容器层）但含 CPython 必需调用（评审修复 F11 补集）。"""
         dangerous = {"execve", "execveat", "fork", "vfork", "clone",
                      "socket", "connect", "bind", "listen", "accept"}
         assert not dangerous & set(DEFAULT_SYSCALL_ALLOWLIST)
+        for needed in ("rt_sigreturn", "newfstatat", "getdents64",
+                       "getcwd", "uname"):
+            assert needed in DEFAULT_SYSCALL_ALLOWLIST
+
+    def test_podman_backend_static_check_applies(self, tmp_path) -> None:
+        """评审修复 F11：容器后端静态 allowlist 前置（越权 import 拒
+        于命令构造前——与子进程后端口径统一）。"""
+        backend = PodmanBackend()
+        with pytest.raises(VastaError):
+            backend._prepare("import subprocess\nsubprocess.run(['ls'])")
+
+    def test_lab_wiring_model_via_pool(self) -> None:
+        """评审修复 M5：模型执行全经池——PythonWorldModel 直接收池
+        （run_sync 接口；本机回退子进程后端，语义与直用 executor 一致）。"""
+        from tests.test_model_lab import grid_manifest
+        from vasta_model_lab import PythonWorldModel, make_sandbox_pool
+
+        manifest = grid_manifest("pooled")
+        model = PythonWorldModel(
+            manifest, "result = {'x': state['x'] + 1}",
+            sandbox=make_sandbox_pool())
+        out = model.transition({"x": 41}, {"tool": "step"})
+        assert out["x"] == 42
 
 
 class TestBackendSelection:

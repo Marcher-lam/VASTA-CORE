@@ -17,6 +17,12 @@ from .lab import (
     plan_bfs,
     validate_model,
 )
+from .pool import (
+    PodmanBackend,
+    SandboxPool,
+    SubprocessBackend,
+    make_sandbox_pool,
+)
 
 __version__ = "0.1.0"
 
@@ -28,6 +34,10 @@ __all__ = [
     "PythonWorldModel",
     "RuleSet",
     "SandboxExecutor",
+    "SandboxPool",
+    "PodmanBackend",
+    "SubprocessBackend",
+    "make_sandbox_pool",
     "Trajectory",
     "ValidationReport",
     "WorldModelBridge",

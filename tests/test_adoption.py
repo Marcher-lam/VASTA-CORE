@@ -214,3 +214,52 @@ class TestBudgetBaseline:
         # 重放应得 2（checkpoint 基线 1 + 其后 1）——snapshot 快照检查
         snap = report.engine.tracker.snapshot()
         assert snap.actions_used == 2
+
+
+class TestRealStorageIntegration:
+    """评审修复 F1/M6/F12 锚定：真实 SqliteStorage（event_id UNIQUE
+    约束真实生效——FakeStorageAdapter 不查该约束故 G4-G6 评审前失真）。"""
+
+    async def test_seeded_run_adoptable_on_real_store(self, tmp_path) -> None:
+        """F1：seeded Run 接管后 event_id 流不撞 UNIQUE（ID 预烧）+
+        ts 单调续算（M6 时钟基点）。"""
+        from vasta_storage import SqliteStorage
+
+        store = SqliteStorage(tmp_path / "real")
+        try:
+            engine = await make_run(store, seed=42)
+            await engine.start()
+            await engine.reset(seed=1)
+            await engine.step(Action(tool="noop"))
+            before = list(store.iter_run_events("run-adopt"))
+            del engine  # 崩溃
+
+            report = await adopt_run(store, "run-adopt", env=SimpleEnv())
+            adopted = report.engine
+            await adopted.step(Action(tool="noop"))
+            await adopted.complete()
+            after = list(store.iter_run_events("run-adopt"))
+            # event_id 全局唯一（真实 UNIQUE 约束下写入成功即证明）
+            ids = [e.event_id for e in after]
+            assert len(ids) == len(set(ids))
+            # ts 单调（接管后续算不回退）
+            ts = [e.ts for e in after]
+            assert ts == sorted(ts)
+            # adopted(1) + step 组(action.executed+2 观察共3) + complete(1)
+            assert len(after) == len(before) + 5
+        finally:
+            store.close()
+
+    async def test_created_adoption_does_not_start_wall_clock(
+            self) -> None:
+        """F12：CREATED 接管不提前起算墙钟（start() 才计费）。"""
+        import time
+
+        store = FakeStorageAdapter()
+        engine = await make_run(store, seed=1)
+        del engine  # 启动即崩（CREATED）
+        report = await adopt_run(store, "run-adopt", env=SimpleEnv())
+        time.sleep(0.05)  # 排队期
+        assert report.engine.tracker.wall_seconds_used == 0.0  # 未计费
+        await report.engine.start()
+        assert report.engine.tracker.wall_seconds_used >= 0.0  # start 后计费

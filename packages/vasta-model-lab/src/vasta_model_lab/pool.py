@@ -17,37 +17,56 @@ import contextlib
 import shutil
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 from vasta_protocols.errors import VastaError
 
-#: 生产档默认系统调用 allowlist（容器 seccomp 白名单——最小集）。
+#: 生产档默认系统调用 allowlist（容器 seccomp 白名单——最小集 +
+#: CPython 运行必需：评审修复 F11 补 newfstatat/statx/getdents64/
+#: getcwd/uname/rt_sigreturn——原缺集连 python3 启动/IO 都不可完成）。
 DEFAULT_SYSCALL_ALLOWLIST: tuple[str, ...] = (
     "read", "write", "open", "close", "fstat", "lseek", "mmap",
     "mprotect", "munmap", "brk", "rt_sigaction", "rt_sigprocmask",
+    "rt_sigreturn",
     "ioctl", "pread64", "pwrite64", "readv", "writev", "access",
+    "newfstatat", "statx", "getdents64", "getcwd", "uname",
     "exit", "exit_group", "getpid", "gettid", "futex", "nanosleep",
-    "clock_gettime", "getrandom",
+    "clock_gettime", "getrandom", "dup", "dup2", "pipe",
 )
 
 #: 基线系统调用集（seccomp default 允许面之外显式追加）。
 BaseEmitter = Callable[[str, dict[str, Any]], Any]
 
 
+def seccomp_profile_json(syscall_allowlist: tuple[str, ...]) -> str:
+    """seccomp profile JSON（评审修复 F11：``seccomp=allowlist:...``
+    非法语法——Podman/Docker 只接受 profile JSON 路径；白名单模式
+    defaultAction=ERRNO + names 白名单）。"""
+    import json
+
+    return json.dumps({
+        "defaultAction": "SCMP_ACT_ERRNO",
+        "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_X86"],
+        "syscalls": [{
+            "names": sorted(syscall_allowlist),
+            "action": "SCMP_ACT_ALLOW",
+        }],
+    })
+
+
 def build_podman_command(
     image: str, *,
     mem_mb: int, pids_limit: int, cpu_s: int,
-    syscall_allowlist: tuple[str, ...],
+    seccomp_profile: Path,
 ) -> list[str]:
-    """rootless 容器命令构造（纯函数——可测；网络恒关闭）。"""
+    """rootless 容器命令构造（纯函数——可测；网络恒关闭；
+    seccomp 为 profile JSON 路径——F11）。"""
     return [
         "podman", "run", "--rm", "--network=none",
         f"--memory={mem_mb}m", f"--pids-limit={pids_limit}",
         f"--cpus={cpu_s}",
-        # seccomp：仅放行 allowlist（Docker/Podman 兼容 JSON 经 stdin 传
-        # 亦可；命令行安全档取 default+allowlist 交集语义由运行时承载）
-        "--security-opt",
-        "seccomp=allowlist:" + ",".join(syscall_allowlist),
+        "--security-opt", f"seccomp={seccomp_profile}",
         image,
     ]
 
@@ -74,6 +93,7 @@ class PodmanBackend:
         self, *,
         image: str = "localhost/vasta-sandbox:latest",
         mem_mb: int = 128, pids_limit: int = 32, cpu_s: int = 2,
+        timeout_s: float = 5.0,
         syscall_allowlist: tuple[str, ...] = DEFAULT_SYSCALL_ALLOWLIST,
         runtime: str = "podman",
     ) -> None:
@@ -88,6 +108,7 @@ class PodmanBackend:
         self.mem_mb = mem_mb
         self.pids_limit = pids_limit
         self.cpu_s = cpu_s
+        self.timeout_s = timeout_s
         self.syscall_allowlist = tuple(syscall_allowlist)
         self.runtime = runtime
 
@@ -96,9 +117,23 @@ class PodmanBackend:
         return self._available
 
     def command(self) -> list[str]:
+        """命令构造（seccomp profile 写临时文件传路径——F11）。"""
+        import tempfile
+
+        profile = Path(tempfile.gettempdir()) / "vasta-seccomp.json"
+        profile.write_text(
+            seccomp_profile_json(self.syscall_allowlist), encoding="utf-8")
         return build_podman_command(
             self.image, mem_mb=self.mem_mb, pids_limit=self.pids_limit,
-            cpu_s=self.cpu_s, syscall_allowlist=self.syscall_allowlist)
+            cpu_s=self.cpu_s, seccomp_profile=profile)
+
+    def _prepare(self, code: str) -> list[str]:
+        """静态 allowlist 前置（评审修复 F11：容器后端曾跳过——与
+        子进程后端口径统一，越权 import 在命令构造前即拒）。"""
+        from .sandbox import _static_check
+
+        _static_check(code)
+        return [*self.command(), "python3", "-c", code]
 
     async def execute(
         self, code: str, payload: dict[str, Any],
@@ -111,10 +146,11 @@ class PodmanBackend:
                 code="sandbox.backend_unavailable",
                 message="podman 运行时不可用（构造期应已回退——池选型错误）",
             )
-        cmd = [*self.command(), "python3", "-c", code]
+        cmd = self._prepare(code)
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,  # 评审修复 F11：payload 注入
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -123,7 +159,18 @@ class PodmanBackend:
                 code="sandbox.spawn_failed",
                 message=f"容器启动失败：{exc}",
             ) from exc
-        out, err = await proc.communicate()
+        try:  # 评审修复 F11：超时墙钟——挂死容器 kill 回收（槽位不泄漏）
+            out, err = await asyncio.wait_for(
+                proc.communicate(
+                    input=json.dumps(payload).encode("utf-8")),
+                timeout=self.timeout_s)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise VastaError(
+                code="sandbox.timeout",
+                message=f"容器执行超时（>{self.timeout_s}s，真实墙钟）",
+            ) from None
         if proc.returncode != 0:
             raise VastaError(
                 code="sandbox.execution_failed",
@@ -136,6 +183,30 @@ class PodmanBackend:
                 code="sandbox.bad_output",
                 message=f"容器输出非 JSON：{exc}",
             ) from exc
+
+    def execute_sync(
+        self, code: str, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """同步路径（Lab 同步 transition 钩子——SandboxPool.run_sync 转发）。"""
+        import json
+        import subprocess
+
+        cmd = self._prepare(code)
+        try:
+            proc = subprocess.run(  # noqa: S603
+                cmd, input=json.dumps(payload).encode("utf-8"),
+                capture_output=True, timeout=self.timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            raise VastaError(
+                code="sandbox.timeout",
+                message=f"容器执行超时（>{self.timeout_s}s）",
+            ) from exc
+        if proc.returncode != 0:
+            raise VastaError(
+                code="sandbox.execution_failed",
+                message=proc.stderr.decode(errors="replace")[-200:],
+            )
+        return dict(json.loads(proc.stdout.decode("utf-8")))
 
 
 class SubprocessBackend:
@@ -211,6 +282,18 @@ class SandboxPool:
             if _aio.iscoroutine(maybe):
                 await maybe
 
+    def run_sync(self, code: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """同步执行（Lab 同步 transition 钩子接线——评审修复 M5：
+        ``PythonWorldModel(sandbox=池)`` 即「模型执行全经池」）。"""
+        execute_sync = getattr(self.backend, "execute_sync", None)
+        if callable(execute_sync):
+            return execute_sync(code, payload)
+        # 后端无同步面（测试替身）——退 async run（新循环；生产后端
+        # 均有同步面）
+        import asyncio
+
+        return asyncio.run(self.run(code, payload))
+
     async def run(self, code: str, payload: dict[str, Any]) -> dict[str, Any]:
         """经池执行（模块 allowlist 由后端静态检查承载；系统调用
         allowlist 由容器后端 seccomp 配置承载）。"""
@@ -230,5 +313,13 @@ class SandboxPool:
             self.in_use -= 1
 
 
+def make_sandbox_pool(**pool_kwargs: Any) -> SandboxPool:
+    """Lab 装配面默认池（评审修复 M5：模型执行全经池的接线入口——
+    ``PythonWorldModel(..., sandbox=make_sandbox_pool())``；容器优先/
+    开发档回退/并发上限/降级留痕一次到位）。"""
+    return SandboxPool(**pool_kwargs)
+
+
 __all__ = ["DEFAULT_SYSCALL_ALLOWLIST", "PodmanBackend", "SandboxBackend",
-           "SandboxPool", "SubprocessBackend", "build_podman_command"]
+           "SandboxPool", "SubprocessBackend", "build_podman_command",
+           "make_sandbox_pool", "seccomp_profile_json"]

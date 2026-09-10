@@ -129,20 +129,26 @@ class IntegrityReport(BaseModel):
                                 description="seq 断裂的 run 清单")
     parent_breaks: list[str] = Field(default_factory=list,
                                      description="父链断裂的 run 清单")
+    missing_artifacts: list[str] = Field(
+        default_factory=list,
+        description="引用悬空/损坏的工件清单（评审修复 H3：恢复库"
+                    "须证据可达，不只是事件可读）")
 
     @computed_field
     @property
     def ok(self) -> bool:
-        """派生：无断裂即通过（随清单填充实时反映；序列化包含）。"""
-        return not self.seq_gaps and not self.parent_breaks
+        """派生：无断裂且无悬空工件即通过（随清单填充实时反映）。"""
+        return not self.seq_gaps and not self.parent_breaks \
+            and not self.missing_artifacts
 
 
 def verify_stream_integrity(store: Any) -> IntegrityReport:
     """事件流完整性校验：每 run seq 从 0 连续无洞；parent_event_id 链
-    与前一事件 event_id 一致（首事件 None）。信封可重建（model_validate
-    已由迭代器保证——损坏行在读取面暴露）。"""
+    与前一事件 event_id 一致（首事件 None）；事件引用的工件全部可达
+    且哈希可校验（get_artifact 内含校验——H3：证据面一并核）。"""
     runs = _distinct_runs(store)
     report = IntegrityReport(runs_checked=len(runs), events_checked=0)
+    refs: set[str] = set()
     for run_id in runs:
         events = list(store.iter_run_events(run_id))
         report.events_checked += len(events)
@@ -155,6 +161,19 @@ def verify_stream_integrity(store: Any) -> IntegrityReport:
                 report.parent_breaks.append(run_id)
                 break
             prev_id = event.event_id
+        for event in events:
+            payload_refs = event.payload.get("artifact_refs")
+            if isinstance(payload_refs, list):
+                refs.update(str(r) for r in payload_refs)
+            for key in ("contract_ref", "result_ref"):
+                ref = event.payload.get(key)
+                if ref:
+                    refs.add(str(ref))
+    for sha in sorted(refs):
+        try:
+            store.get_artifact(sha)
+        except Exception:  # noqa: BLE001——悬空/损坏统一记 missing
+            report.missing_artifacts.append(sha)
     return report
 
 
@@ -167,34 +186,65 @@ def _distinct_runs(store: Any) -> list[str]:
     return [r[0] for r in rows]
 
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
 def backup_snapshot(store: Any, dest: str | Path) -> Path:
-    """SQLite 在线备份（backup API——WAL 模式一致性快照，锁内执行）。"""
+    """一致性备份（评审修复 H3/F6：库 + **objects/ 证据 CAS**——原仅拷
+    store.db，恢复后全部工件悬空而校验仍绿）。
+
+    dest 为备份**目录**（store.db + objects/）；SQLite 经 backup API
+    （WAL 一致性，锁内），objects/ 文件拷贝（内容寻址不可变——拷贝
+    即一致）。幂等：清空旧目录重建。"""
     dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
-        dest.unlink()  # 幂等：覆盖旧备份
-    dest_conn = sqlite3.connect(dest)
+        import shutil
+
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    dest_conn = sqlite3.connect(dest / "store.db")
     try:
         with store._lock:  # noqa: SLF001——快照一致性
             store._conn.backup(dest_conn)  # noqa: SLF001
     finally:
         dest_conn.close()
+    objects = Path(store.objects_dir)
+    if objects.exists():
+        import shutil
+
+        shutil.copytree(objects, dest / "objects",
+                        dirs_exist_ok=True)
     return dest
 
 
 def restore_snapshot(backup: str | Path, target: str | Path) -> Path:
-    """备份恢复到目标目录（target/ 目录下重建 store.db + objects/）。
+    """备份恢复到目标目录（store.db + objects/）。
 
-    恢复语义：备份文件即恢复库（不回写原库——演练/回滚以新根落地，
-    原库不受影响）。"""
+    恢复语义：备份目录即恢复源（不回写原库——演练/回滚以新根落地，
+    原库不受影响）。备份完整性先验（评审修复 F5：0 字节/torn 备份
+    曾静默恢复成空库且演练「通过」）。"""
     backup, target = Path(backup), Path(target)
-    if not backup.exists():
+    db = backup / "store.db" if (backup / "store.db").exists() \
+        else backup  # 兼容裸 db 文件形态
+    if not db.exists():
         raise VastaError(
             code="ops.backup_missing",
-            message=f"备份文件 {backup} 不存在",
+            message=f"备份 {backup} 不存在",
+        )
+    head = db.read_bytes()[:16] if db.stat().st_size >= 16 else b""
+    if head != _SQLITE_MAGIC:
+        raise VastaError(
+            code="ops.corrupt_backup",
+            message=(f"备份 {db} 非 SQLite 库（截断/损坏——头校验"
+                     "失败，拒绝静默恢复成空库）"),
         )
     target.mkdir(parents=True, exist_ok=True)
-    (target / "store.db").write_bytes(backup.read_bytes())
+    import shutil
+
+    shutil.copyfile(db, target / "store.db")
+    if (backup / "objects").exists():
+        shutil.copytree(backup / "objects", target / "objects",
+                        dirs_exist_ok=True)
     return target
 
 
@@ -204,7 +254,7 @@ async def recovery_drill(store: Any, dest: str | Path) -> dict[str, Any]:
     from vasta_storage import SqliteStorage
 
     backup = backup_snapshot(store, dest)
-    drill_root = backup.with_name(f"{backup.stem}-restored")
+    drill_root = backup.parent / f"{backup.name}-restored"
     restore_snapshot(backup, drill_root)
     restored = SqliteStorage(drill_root)
     try:

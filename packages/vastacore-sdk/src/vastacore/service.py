@@ -136,9 +136,9 @@ def create_app(
         from .ops import MetricsSnapshot, evaluate_alerts
 
         counters = service.metrics_counters
-        actions = max(counters["actions"], 1)  # 空转时错误率定义 0
-        snapshot = MetricsSnapshot(
-            error_rate=round(counters["errors"] / actions, 6),
+        total = counters["errors"] + counters["actions"]
+        snapshot = MetricsSnapshot(  # 评审修复 M4：分母含错误数（占比口径）
+            error_rate=round(counters["errors"] / total, 6) if total else 0.0,
             queue_depth=len(service.sessions),
             quota_throttled=_quota_throttle_count(service.store),
             sessions_active=len(service.sessions),

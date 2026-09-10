@@ -64,6 +64,7 @@ class RunContext:
         project_id: str = "p-default",
         seed: int | None = None,
         clock: Callable[[], datetime] | None = None,
+        clock_start: datetime | None = None,
         replay_mode: bool = False,
         real_tools_authorized: bool = False,
         config: Mapping[str, Any] | None = None,
@@ -74,7 +75,10 @@ class RunContext:
             )
         id_rng: random.Random | None = None
         if seed is not None:
-            effective_clock: Callable[[], datetime] = clock or _SeededClock()
+            # 跨进程接管（Story 9.10）：seeded 时钟可指定基点（流尾 ts）——
+            # 接管后事件 ts 续算不回退（评审修复 M6）
+            effective_clock: Callable[[], datetime] = clock or _SeededClock(
+                base=clock_start or _SEED_TS_BASE)
             # 双流（评审修复）：事件 ID 与应用随机分离，插入一个事件
             # 不再平移后续所有随机数；ID 流掺入 run_id——同 run_id+seed 可再生，
             # 不同 run 同 seed 不撞全局唯一 event_id。

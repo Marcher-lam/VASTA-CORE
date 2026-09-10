@@ -28,6 +28,10 @@ from .envelope import EventEnvelope
 from .errors import DuplicateEventError
 from .ids import new_event_id, now_utc
 
+#: 并发撞号重试上限（系统流多写者交错——每轮 resync 收敛竞争；
+#: 超出视为真并发异常上抛）。
+_MAX_COLLISION_RETRIES = 8
+
 
 class EventSequencer:
     """统一信封构造 + seq 分配（AD-2：事件追加唯一写路径的构造侧）。"""
@@ -129,25 +133,31 @@ class EventSequencer:
         """构造并追加一个事件（构造 + seq 分配唯一路径）。
 
         append 成功才推进本地 seq/event_id（写失败不留洞）；
-        快道模式撞号（DuplicateEventError）时同步存储尾部并重试一次
-        （跨实例续接自愈——二次仍撞则上抛）。
+        撞号（DuplicateEventError）时同步存储尾部并重试一次——
+        覆盖两种形态：快道 resume 落后（他实例推进）与系统流并发
+        交错（sync 与 append 之间的 await 窗口——评审修复：多实例
+        并发写同一系统流不再随机裸抛 duplicate_seq）；二次仍撞上抛。
         **rerun 例外**：本地一无所知（last_seq<0）即撞号 = 声称空流
         对非空流从头重放（同 run_id 重跑）——上抛不自愈
         （quickstart.rerun_conflict 检测依赖此路径）。"""
         async with self._emit_lock:
             if self._resync:
                 await self._sync_from_store()
-            try:
-                envelope = self._build(type_, payload)
-                await self._store.append_event(envelope)
-            except DuplicateEventError:
-                if self._resync or self._last_seq < 0:
-                    # 系统流模式刚同步过仍撞（真并发写），或
-                    # 快道声称空流撞非空流（rerun）——上抛
-                    raise
-                await self._sync_from_store()  # 快道：吸收他实例进度
-                envelope = self._build(type_, payload)
-                await self._store.append_event(envelope)
+            for _attempt in range(_MAX_COLLISION_RETRIES + 1):
+                try:
+                    envelope = self._build(type_, payload)
+                    await self._store.append_event(envelope)
+                    break
+                except DuplicateEventError:
+                    if self._last_seq < 0:
+                        # rerun：声称空流撞非空流——上抛（不合流既有 run）
+                        raise
+                    # 吸收他写者进度后重试（并发交错窗口内多写者竞争——
+                    # 单次重试不够时有界循环；耗尽上抛真并发异常）
+                    await self._sync_from_store()
+            else:
+                raise DuplicateEventError(
+                    self._run_id, self._last_seq + 1)  # pragma: no cover
             # 快道/系统流通用：append 成功才推进（写失败不留洞）
             self._last_seq = envelope.seq
             self._last_event_id = envelope.event_id

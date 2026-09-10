@@ -923,9 +923,12 @@ FR-076 → G5  运维基线
 
 **依赖**：G1 为地基（存储抽象先行）；G2/G3 并行；G4 依赖 G1；G5/G6 独立可并行。组间无前向依赖。
 
-**进度（2026-09-10）**：G1–G3（Story 9.1–9.7）已交付并通过四层代码评审
-（9 高危 + 12 中危修复、+25 锚定测试；报告见 docs/reviews/epic9-g123-code-review.md；
-defer 9 项入复盘清单——含 SDK 系统流模块的 PG 档接通属 G4+）。
+**进度（2026-09-10）**：**Epic 9 全部 14 Story 交付完毕**——G1-G3 与
+G4-G6 均已通过四层代码评审（分别 +25/+22 锚定；报告见
+docs/reviews/epic9-g123-code-review.md 与 epic9-g456-code-review.md；
+defer 项入复盘清单）。事件命名注记：9.9 AC 字面 schedule.created/fired
+在 AD-5 13 族约束下实现为 plan.scheduled/plan.fired（族内形态）；
+9.14「模型执行全经池」经 make_sandbox_pool 接线（评审修复）。
 
 
 ### Story 9.1: 存储抽象双后端与统一 Sequencer（G1）

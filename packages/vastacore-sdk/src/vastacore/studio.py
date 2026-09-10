@@ -39,7 +39,11 @@ def mount_studio(
 
     def require_token(request: Request) -> None:
         auth = request.headers.get("Authorization", "")
-        if not hmac.compare_digest(auth, f"Bearer {token}"):
+        # 评审修复 F9：非 ASCII 凭据/token 下 str 比较抛 TypeError→500；
+        # 两侧 encode 后 compare_digest（bytes 形态接受任意字节）
+        if not hmac.compare_digest(auth.encode("utf-8", "surrogateescape"),
+                                   f"Bearer {token}".encode(
+                                       "utf-8", "surrogateescape")):
             raise HTTPException(status_code=401, detail="invalid token")
 
     def _claim_or_404(claim_id: str) -> Any:
@@ -53,6 +57,7 @@ def mount_studio(
     @app.get("/studio/api/claims",
              dependencies=[Depends(require_token)])
     async def claims() -> list[dict[str, Any]]:
+        cognition.refresh()  # 评审修复 F8：跨实例写入后的投影刷新
         items = []
         for c in cognition._claims.values():  # noqa: SLF001——SDK 域只读
             downstream = sum(
@@ -71,6 +76,7 @@ def mount_studio(
     @app.get("/studio/api/claims/{claim_id}",
              dependencies=[Depends(require_token)])
     async def claim_detail(claim_id: str) -> dict[str, Any]:
+        cognition.refresh()
         claim = _claim_or_404(claim_id)
         downstream = [
             o.claim_id for o in cognition._claims.values()  # noqa: SLF001
@@ -82,7 +88,9 @@ def mount_studio(
     async def conflicts() -> list[dict[str, Any]]:
         """冲突清单（cognition 流重放 claim.conflict_detected）。"""
         found: list[dict[str, Any]] = []
-        for event in store.iter_run_events("cognition"):
+        for event in store.iter_run_events(
+                "cognition", tenant_id=tenant_id,
+                project_id=project_id):  # 评审修复 H2：租户过滤
             if event.type == "claim.conflict_detected":
                 found.append(dict(event.payload))
         return found
@@ -91,7 +99,9 @@ def mount_studio(
     @app.get("/studio/api/runs/{run_id}/timeline",
              dependencies=[Depends(require_token)])
     async def run_timeline(run_id: str) -> dict[str, Any]:
-        events = list(store.iter_run_events(run_id))
+        events = list(store.iter_run_events(
+            run_id, tenant_id=tenant_id,
+            project_id=project_id))  # 评审修复 H2：租户过滤
         if not events:
             raise HTTPException(
                 status_code=404, detail=f"run {run_id!r} not found")
@@ -130,6 +140,7 @@ def mount_studio(
     async def impact_preview(k: str, v: str) -> dict[str, Any]:
         from .revalidation import impact_analysis
 
+        cognition.refresh()  # 评审修复 F8
         affected = impact_analysis(cognition, {k: v})
         return {
             "affected_scope": {k: v},
@@ -152,14 +163,20 @@ def mount_studio(
 
         from .approvals import record_approval
 
+        cognition.refresh()  # 终态判定不基于陈旧投影
         _claim_or_404(claim_id)
         decision = body.get("decision")
-        approver = str(body.get("approver", ""))
-        reason = str(body.get("reason", ""))
-        if decision not in ("approve", "reject") or not approver:
+        approver = body.get("approver")
+        reason = body.get("reason")
+        valid = (decision in ("approve", "reject")
+                 and isinstance(approver, str) and approver
+                 and isinstance(reason, str))
+        if not valid:
+            # 评审修复 F21：类型校验（非 str 不再 str() 强转入审计流）
             raise HTTPException(
                 status_code=400,
-                detail="decision 须 approve|reject 且 approver 必填")
+                detail="decision 须 approve|reject；approver/reason 须为"
+                       "非空字符串")
         approval = await record_approval(
             store, tool="claim.review",
             args={"claim_id": claim_id, "decision": decision,
@@ -191,12 +208,15 @@ def mount_studio(
         """标注：claim.annotated 纯留痕（旁注不是判定——判定走 review）。"""
         from vasta_protocols.errors import VastaError
 
+        cognition.refresh()
         _claim_or_404(claim_id)
-        note = str(body.get("note", ""))
-        annotator = str(body.get("annotator", ""))
-        if not note or not annotator:
+        note = body.get("note")
+        annotator = body.get("annotator")
+        valid = (isinstance(note, str) and note
+                 and isinstance(annotator, str) and annotator)
+        if not valid:
             raise HTTPException(
-                status_code=400, detail="note 与 annotator 必填")
+                status_code=400, detail="note 与 annotator 须为非空字符串")
         try:
             await cognition.annotate(claim_id, note, annotator=annotator)
         except VastaError as exc:
@@ -263,26 +283,32 @@ const api = p => fetch(p, {headers: H}).then(r => {
   if (!r.ok) throw new Error(r.status + " " + p);
   return r.json();
 });
+// 评审修复 F10：所有插值先转义（statement 等源自模型输出——
+// innerHTML 直插是存储型 XSS）
+const esc = v => String(v).replace(/[&<>"']/g, c => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+})[c]);
 async function loadClaims() {
   const q = document.getElementById("q").value;
   const rows = (await api("/studio/api/claims")).filter(
     c => !q || c.statement.includes(q));
   document.getElementById("claims").innerHTML = rows.map(c => `
-    <tr><td>${c.claim_id}</td><td>${c.memory_type}</td>
-    <td>${c.statement}</td>
-    <td><span class="badge ${c.status}">${c.status}</span></td>
+    <tr><td>${esc(c.claim_id)}</td><td>${esc(c.memory_type)}</td>
+    <td>${esc(c.statement)}</td>
+    <td><span class="badge ${esc(c.status)}">${esc(c.status)}</span></td>
     <td>${c.confidence.toFixed(2)}</td>
     <td>${c.depends_on}/${c.downstream}</td>
     <td>${c.run_id ?
-      `<button onclick="drill('${c.run_id}')">${c.run_id}</button>` : "—"}
+      `<button onclick="drill('${esc(c.run_id)}')">${esc(c.run_id)}</button>`
+      : "—"}
     </td></tr>`).join("") || "<tr><td colspan=7>（无主张）</td></tr>";
 }
 async function loadConflicts() {
   const cs = await api("/studio/api/conflicts");
   document.getElementById("conflicts").innerHTML = cs.length
     ? cs.map(c => `<div class="badge disputed">冲突</div>
-      ${c.claim_ids.join(" vs ")}（scope: ${c.scope_key}，
-      由 ${c.triggered_by} 触发）`).join("<br>")
+      ${c.claim_ids.map(esc).join(" vs ")}（scope: ${esc(c.scope_key)}，
+      由 ${esc(c.triggered_by)} 触发）`).join("<br>")
     : "（无活跃冲突）";
 }
 async function runImpact() {
@@ -294,8 +320,8 @@ async function runImpact() {
     ? "（该范围无受影响主张）"
     : `<b>${r.count} 条受影响（含依赖传播）：</b><ul>` +
       r.claims.map(c =>
-        `<li>${c.claim_id} · ${c.statement} · 置信 ${c.confidence}
-         · <span class="badge ${c.status}">${c.status}</span></li>`
+        `<li>${esc(c.claim_id)} · ${esc(c.statement)} · 置信 ${c.confidence}
+         · <span class="badge ${esc(c.status)}">${esc(c.status)}</span></li>`
       ).join("") + "</ul>";
 }
 function drill(rid) {

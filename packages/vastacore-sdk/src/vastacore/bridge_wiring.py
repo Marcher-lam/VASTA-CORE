@@ -60,10 +60,12 @@ async def refute_with_propagation(
         store, "cognition", tenant_id=tenant_id, project_id=project_id)
     suspended: list[str] = []
     invalidated: list[str] = []
+    seen_models: set[str] = set()  # 评审修复 F18：共享模型只挂起一次
     for cid in [claim_id, *cascaded]:
-        models = list(model_names_of(cid))
+        models = [m for m in model_names_of(cid) if m not in seen_models]
         if not models:
             continue
+        seen_models.update(models)
         suspended.extend(
             await bridge.on_claim_refuted(cid, model_names=models))
         if plans_of_model is None:
