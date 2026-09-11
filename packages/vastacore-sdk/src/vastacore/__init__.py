@@ -39,6 +39,11 @@ from .governance.drift import (
     DriftReport,
     run_drift_check,
 )
+from .governance.identity import (
+    SCIM_GROUP_ROLES,
+    OIDCTokenVerifier,
+    ScimSync,
+)
 from .governance.quotas import CostLedger, QuotaEnforcer, QuotaExceededError, QuotaSpec
 from .governance.release import (
     ReleaseResult,
@@ -132,6 +137,9 @@ __all__ = [
     "DriftPolicy",
     "DriftReport",
     "run_drift_check",
+    "OIDCTokenVerifier",
+    "SCIM_GROUP_ROLES",
+    "ScimSync",
     "AuditExport",
     "AuditExportQuery",
     "export_audit_json",
