@@ -235,6 +235,7 @@ class CostLedger:
                 "calls": p.get("calls", 0),
                 "estimated_cost": p.get("estimated_cost", 0.0),
                 "basis": p.get("basis", ""),
+                "ts": event.ts.isoformat(),  # 10.13：周期窗过滤
             })
         return rows
 

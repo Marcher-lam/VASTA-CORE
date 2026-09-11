@@ -38,6 +38,15 @@ from .governance.audit_log import (
     audit_log_integrity_statement,
     query_audit_log,
 )
+from .governance.billing import (
+    AdviceItem,
+    Bill,
+    BillingPeriod,
+    BillLine,
+    OptimizationReport,
+    generate_bill,
+    optimization_advice,
+)
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
 from .governance.byok import (
     LOCAL_CAPABILITY,
@@ -189,6 +198,13 @@ __all__ = [
     "airgap_check",
     "configure_secret_ref",
     "redact_secrets",
+    "AdviceItem",
+    "Bill",
+    "BillLine",
+    "BillingPeriod",
+    "OptimizationReport",
+    "generate_bill",
+    "optimization_advice",
     "promote_release",
     "resume_release",
     "retire_release",
