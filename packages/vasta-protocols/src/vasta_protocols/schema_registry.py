@@ -47,7 +47,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "artifact": {
         "access_denied", "corrupted", "deletion_proved", "not_found",
-        "published", "retention_configured",
+        "retention_configured",
     },
     "claim": {
         "accepted", "annotated", "confidence_decayed",
@@ -62,7 +62,8 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "incident": {"declared", "opened", "resolved"},
     "memory": {"note"},
-    "observation": {"decision", "external", "reset", "transition"},
+    "observation": {"decision", "external", "reset", "terminal",
+                    "transition"},
     "plan": {
         "fired", "fire_failed", "invalidated", "scheduled",
     },
@@ -72,7 +73,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     "run": {
         "access_denied", "adopted", "bill_generated", "cancelled",
         "completed", "cost_recorded", "created", "failed",
-        "identity_asserted", "model_exchange", "paused",
+        "identity_asserted", "paused",
         "quota_configured", "resumed", "role_assigned", "role_revoked",
         "scim_synced", "secret_ref_configured", "started", "throttled",
     },
