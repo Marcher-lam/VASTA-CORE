@@ -25,6 +25,13 @@ from .governance.approvals import (
     revoke_approval,
     search_approvals,
 )
+from .governance.audit_export import (
+    AuditExport,
+    AuditExportQuery,
+    export_audit_json,
+    export_audit_json_traced,
+    render_audit_html,
+)
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
 from .governance.drift import (
     DriftMetrics,
@@ -125,6 +132,11 @@ __all__ = [
     "DriftPolicy",
     "DriftReport",
     "run_drift_check",
+    "AuditExport",
+    "AuditExportQuery",
+    "export_audit_json",
+    "export_audit_json_traced",
+    "render_audit_html",
     "promote_release",
     "resume_release",
     "retire_release",
