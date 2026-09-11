@@ -260,7 +260,7 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
 
 | # | 判据 | 豁免理由（证据） | Owner | 到期 | 解除条件 |
 |---|------|------------------|-------|------|----------|
-| W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五**：CI 计算面已挂 Story 9.11。**复评八（2026-09-09）用户裁决：续豁至 Stage 5**（多 Agent 平台化——真实适配器接入为必然前置；解除条件不变） | BMad | Stage 5（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪） |
+| W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五**：CI 计算面已挂 Story 9.11。**复评十（2026-09-11）用户裁决：挂 Epic 11 适配器 Story 11.11**（机制就绪+门控形态交付；真实接入后由复评确认解除） | BMad | Epic 11 Story 11.11 落地后 | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪，Story 交付接线） |
 | W-2 | FR-013 业务实体维度 | payload_equals 已覆盖实体字段级检索（五维实测）；专用实体索引/别名属存储增强 | BMad | Stage 3 存储改造（PG 迁移同期） | 实体索引落地 + 检索测试 |
 | W-3 | FR-022 revise/promote/narrow | support/accept 近似承载（历史）。**复评九（2026-09-11）已解除**——Story 10.5 三算子落地（`tests/test_claim_operators.py` 13 项：链/方向/真子集/重放一致） | BMad | ~~Epic 10 Story~~ 已解除 | ✅ 达成（显式事件 + 状态机测试） |
 | W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3）。**复评六（2026-09-10）已解除**——Story 9.14 `refute_with_propagation`（refute→world_model.suspended→plan.invalidated 三跳链路 + `tests/test_bridge_wiring.py` 四项锚定） | BMad | ~~Stage 3 编排~~ 已解除 | ✅ 达成（`test_bridge_wiring.py`：全链三跳/无模型零传播/缺省 provider/传播不越界） |
@@ -371,3 +371,15 @@ CognitionService 三算子：`revise`（陈述演化——claim.revised 携旧�
 **门禁**: FR-022 转正计入——P0 7/7、P1 **34/34**、Overall
 **41/41 = 100% → PASS 维持**。豁免在册仅剩 **W-1**（AC-07 CI，
 复评八续豁 Stage 5）。
+
+
+---
+
+## 复评记录十（2026-09-11，Stage 5 启动裁决）
+
+**变更**: 用户裁决两项——W-1（AC-07 CI）**挂 Epic 11 Story 11.11**
+（真实适配器接入 Story——机制就绪+VASTA_REAL_ADAPTER 门控形态交付，
+seed_confidence_interval 并入评测报告的接线随 Story 落地，真实接入后
+由复评确认解除）；governance 子包**维持平铺**（20 模块 4156 行未超限，
+Stage 5 多 Agent 新模块进新子包 agents/）。豁免在册 1 项不变，门禁
+41/41 = 100% PASS 维持。

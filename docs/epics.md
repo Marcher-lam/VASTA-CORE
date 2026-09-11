@@ -418,8 +418,192 @@ So that 用量可计费、成本可归因可优化（FR-078）。
 **Then** 账单生成（按模型/项目分项，basis 口径延续）；预算使用率与优化建议（低效路由/高成本模型替代候选——router 成本面复用）
 **And** 账单留痕（billing 流周期闭合事件）；账单不可变（再生成=新周期版本）
 
-### Epic 11: 平台化与多 Agent（Stage 5，仅 Epic 级）
+### Epic 11: 平台化与多 Agent（Stage 5，2026-09-11 增量拆解）
 组合/概率模型、动态自治、多 Agent 委派与共享边界、组织级风险预算、跨组织知识、排行榜、流式/边缘协同。**FRs covered:** FR-009, FR-027, FR-039, FR-042, FR-050, FR-051, FR-054, FR-056, FR-069, FR-077
+
+#### Epic 11 内部能力分组（2026-09-11 拆解）
+
+| 组 | 用户价值 | FR | 带入项 |
+|---|---|---|---|
+| G0 工程前置 | 工具承载而非记忆：事件目录生成机制（D1——手工快照必然漂移）与提交脚本化（D3——pytest+ruff+lint-imports+sprint-status 回写一键，声明失实与回写断链两连的共同根治） | —（Epic 10 复盘 D1/D3） | D2 组合测试惯例入评审检查项（流程项，无 Story） |
+| G1 多 Agent 委派核心 | 多 Agent 不是默认答案：委派必须显式声明边界（输入范围/权限/预算/输出契约），Working Memory 默认私有、已验证知识显式发布，Agent 角色可配置 | FR-050 + FR-051 + FR-054 | 底座：FR-052 人工接管 / FR-053 Supervisor 兜底（Epic 3 已交付） |
+| G2 共享与知识边界 | 跨 Agent/项目/组织共享需显式发布与权限——共享是动作不是默认 | FR-027 | 10.4 引擎接管（跨进程）为 Agent 生命周期底座 |
+| G3 自治与风险治理 | 自治等级按环境/工具/操作/数据范围动态调整；组织级风险预算——自治有闸 | FR-039 + FR-077 | FR-033 策略逐格授予（Epic 3）为静态底座，本组做动态化 |
+| G4 模型扩展与并行探索 | 概率/因果/约束/组合模型（model-lab 扩展）；并行探索与候选世界模型竞赛 | FR-042 + FR-056 | 9.9 调度器与 8.9 批量 Run 为并行底座 |
+| G5 真实适配器与生态 | 真实模型适配器接入（机制就绪+门控形态）；跨模型/环境排行榜；实时流式与边缘协同 | —（W-1）+ FR-069 + FR-009 | **W-1 解除挂 11.11**（复评十裁决）；共享 token 通道移除随真实 IdP 落地一并（Epic 10 复盘开放问题 2） |
+
+备注：多 Agent 交付以「机制完整 + 内存/Fake 多 Agent 测试」为形态——真实分布式部署与真实组织接入不属本 Stage 代码范围（PRD「多 Agent 不是默认答案」的工程化表达：先交边界与治理，再交规模）。governance 子包维持平铺（复评十裁决——Stage 5 新增多 Agent 模块进新子包 `agents/`）。
+
+#### Story 列表
+
+### Story 11.1: 事件目录生成机制（G0）
+
+As a 平台架构师,
+I want schema_registry 事件目录从代码发射点自动生成,
+So that 手工快照漂移不再发生（10.7 全量对拍零缺失、G3-G5 即陈旧）。
+
+**Acceptance Criteria:**
+
+**Given** schema_registry._EVENT_CATALOG（手工）与全仓事件发射点
+**When** 运行目录生成
+**Then** 从代码 `emit("…")` / `_emit("…")` 调用点提取事件类型，与目录对拍——缺漏即报（fail-closed 生成器，输出可直接更新目录）
+**And** 守卫测试入套件：目录与发射点零漂移（CI 级，防再次陈旧）
+
+### Story 11.2: 提交脚本化（G0）
+
+As a 平台维护者,
+I want Story 提交前一键门禁（pytest + ruff + lint-imports + sprint-status 回写）,
+So that 声明失实（两连）与回写断链（两 Epic）不再依赖记忆。
+
+**Acceptance Criteria:**
+
+**Given** Epic 10 复盘 D3（工具承载而非记忆）
+**When** 提交一个 Story
+**Then** 脚本一键跑三门禁 + 把 Story 键与状态写入 sprint-status（增量、幂等）；任一门禁红即拒提交
+**And** 本 Story 起新 Story 键在开发前注册（backlog→done 生命周期完整，簿记链从此不断）
+
+### Story 11.3: 多 Agent 委派契约（G1）
+
+As a 平台负责人,
+I want 委派任务显式声明输入范围、权限、预算与输出契约,
+So that 多 Agent 启用时边界是声明的不是默认的（FR-050）。
+
+**Acceptance Criteria:**
+
+**Given** AgentSession/RunEngine 与 9.5 批准流、9.8 配额
+**When** 主 Agent 委派任务给子 Agent
+**Then** DelegationContract 四要素（输入范围/权限清单/预算转移/输出契约）显式建模；超范围输入拒；预算从主 Agent 划转（记账留痕）
+**And** 委派事件留痕（run 族——委派链可溯）；子 Agent 契约模板复用 Epic 3 六段链
+
+### Story 11.4: Working Memory 私有与显式发布（G1）
+
+As a 安全负责人,
+I want Working Memory 默认私有、已验证知识显式发布共享,
+So that Agent 间知识流动是授权动作不是默认泄漏（FR-051）。
+
+**Acceptance Criteria:**
+
+**Given** CognitionService（per-scope 投影）与 claim 状态机
+**When** 子 Agent 产出主张/记忆
+**Then** 默认仅本 Agent 作用域可见；显式发布（publish_knowledge）后按目标作用域可见——发布动作留痕（claim 族）
+**And** 已验证（accepted）方可发布（未验证主张不可跨 Agent 共享）；撤销发布即回收可见性
+
+### Story 11.5: Agent 角色配置（G1）
+
+As a 平台架构师,
+I want Actor/Observer/Verifier/Builder/Curator 五类可配置角色,
+So that 多 Agent 协作中职责显式化（FR-054）。
+
+**Acceptance Criteria:**
+
+**Given** RBAC（10.8）与能力矩阵
+**When** 配置 Agent 角色
+**Then** 五类角色各有能力面（Actor 执行/Observer 只读观察/Verifier 核验/Builder 构建/Curator 维护）——角色决定可调用工具面与事件发射面
+**And** 角色配置留痕；跨角色操作拒（Observer 不能 act）
+
+### Story 11.6: 跨 Agent/项目/组织共享边界（G2）
+
+As a 安全负责人,
+I want 跨 Agent/项目/组织共享需显式发布与权限,
+So that 知识资产离开产生它的边界是授权动作（FR-027）。
+
+**Acceptance Criteria:**
+
+**Given** 11.4 显式发布与 10.8 RBAC
+**When** 跨项目/组织共享主张或工件
+**Then** 共享发布三态（私有/项目内/组织内）+ 目标作用域权限校验；共享事件留痕（含撤销）
+**And** 跨组织共享需双边授权（发布方+接收方）；未授权读取拒（403 语义 + 留痕）
+
+### Story 11.7: 动态自治等级（G3）
+
+As a 风险负责人,
+I want 自治等级按环境、工具、操作、数据范围动态调整,
+So that 自治不是全有全无（FR-039）。
+
+**Acceptance Criteria:**
+
+**Given** FR-033 策略逐格授予（静态底座）与自治等级模型
+**When** 环境风险/工具风险/操作风险/数据敏感度变化
+**Then** 自治等级（L0 观察～L3 自主）按四维动态计算——维度变化留痕、等级跃迁留痕；降级即时、升级需满足条件
+**And** 与策略引擎联动（等级决定哪些动作免批/需批/禁批）
+
+### Story 11.8: 组织级风险预算（G3）
+
+As a 组织风险官,
+I want 组织级自治等级与风险预算,
+So that 多 Agent 规模化时组织风险有总量闸（FR-077）。
+
+**Acceptance Criteria:**
+
+**Given** 9.8 配额（速率/并发/成本）与 11.7 动态等级
+**When** 配置组织风险预算（风险敞口总量/高危操作配额/自治等级上限）
+**Then** 组织维度风险敞口计量（高危操作计数×风险权重）；超预算即组织级降自治（留痕）；预算配置与触顶留痕
+**And** 组织/项目/Agent 三级预算层级（下级不超上级）
+
+### Story 11.9: 概率/因果/约束/组合模型（G4）
+
+As a 模型研究者,
+I want 概率、因果、约束与组合世界模型,
+So that 确定性转移之外的不确定性可建模（FR-042）。
+
+**Acceptance Criteria:**
+
+**Given** model-lab（DSL/受限 Python）与性质测试底座
+**When** 定义概率模型（转移分布）/因果模型（干预查询）/约束模型（可行域）/组合模型（模型编排）
+**Then** 概率模型转移采样可注入 seed（确定性测试）；约束模型可行域校验；组合模型按 DSL 组件编排——全部入沙箱执行
+**And** 静态检查扩展（概率/因果语法白名单）；模型类型入事件留痕
+
+### Story 11.10: 并行探索与候选竞赛（G4）
+
+As a 研究负责人,
+I want 并行探索与候选世界模型竞赛,
+So that 多个候选假设可同时验证择优（FR-056）。
+
+**Acceptance Criteria:**
+
+**Given** 9.9 调度器、8.9 批量 Run 与离线评估
+**When** 发起候选竞赛（N 个候选模型/配置 × 同任务集）
+**Then** 并行执行（每候选独立 Run）；评测报告按候选对比排序（复用 8.7 消融语义）；胜出候选标记留痕
+**And** 竞赛受配额约束（复用 9.8）；候选间预算隔离（一候选超预算不毁整赛）
+
+### Story 11.11: 真实模型适配器接入（G5——W-1 解除挂载）
+
+As a 平台运营者,
+I want 真实模型适配器接入框架与首个参考实现,
+So that 平台从替身模型走向真实模型（W-1 解除条件）。
+
+**Acceptance Criteria:**
+
+**Given** ModelAdapter 协议、ModelRouter（8.6）与 VASTA_PG_DSN/OIDC 门控先例
+**When** 接入真实适配器（OpenAI 兼容 HTTP 形态参考实现）
+**Then** 适配器凭 SecretRef 注入（10.12 BYOK——凭证不落库）；airgap 检查识别新依赖；门控集成测试（VASTA_REAL_ADAPTER 环境变量——未设 skip）
+**And** W-1 解除路径：真实适配器 × VastaLab ≥10 种子 → seed_confidence_interval 并入评测报告（本 Story 交付接线；解除在真实接入后由复评确认）；共享 token 通道移除评估（与真实 IdP 落地一并）
+
+### Story 11.12: 跨模型/环境排行榜（G5）
+
+As a 运营负责人,
+I want 跨模型/环境公开或私有排行榜,
+So that 候选竞赛与评测结果可跨 Run 聚合比较（FR-069）。
+
+**Acceptance Criteria:**
+
+**Given** 评测报告（8.7）与竞赛结果（11.10）
+**When** 生成排行榜（任务集 × 指标 × 时间窗）
+**Then** 条目含模型/配置/评测口径与证据引用（Run 可溯）；公开/私有两种可见性（复用 11.6 共享边界）
+**And** 排行榜生成留痕；条目不可篡改（引用评测事件而非复制数值）
+
+### Story 11.13: 实时流式环境与边缘协同（G5）
+
+As a 边缘场景负责人,
+I want 实时流式环境与边缘节点协同,
+So that 流式输入与近数据端执行可用（FR-009）。
+
+**Acceptance Criteria:**
+
+**Given** EnvironmentAdapter 协议与观察采集
+**When** 接入流式环境（事件序列输入）与边缘节点（近端执行+证据回传）
+**Then** 流式观察按窗口成帧入证据库（帧级 CAS+引用）；边缘节点执行时本地缓冲、连通后证据回传合并（完整性校验）
+**And** 断连恢复语义（复用 9.10 接管底座）；流式与批量路径共存（同一 Run 可混）
 
 ### Epic 12: 开放生态（Stage 6，仅 Epic 级）
 插件清单与签名、私有注册表与撤销、验证发布者、公开分发、证据第三方验证、跨区域/边缘编排。**FRs covered:** FR-019, FR-079, FR-080, FR-082, FR-083, FR-084

@@ -136,6 +136,21 @@ development_status:
   10-12-byok-airgap: done
   10-13-usage-billing: done
   epic-10-retrospective: done
+  epic-11: in-progress
+  11-1-catalog-generation: backlog
+  11-2-ship-script: backlog
+  11-3-delegation-contract: backlog
+  11-4-memory-privacy: backlog
+  11-5-agent-roles: backlog
+  11-6-sharing-boundary: backlog
+  11-7-dynamic-autonomy: backlog
+  11-8-org-risk-budget: backlog
+  11-9-probabilistic-models: backlog
+  11-10-parallel-tournament: backlog
+  11-11-real-adapter: backlog
+  11-12-leaderboard: backlog
+  11-13-streaming-edge: backlog
+  epic-11-retrospective: optional
 
   epic-11: backlog
   epic-11-retrospective: optional
