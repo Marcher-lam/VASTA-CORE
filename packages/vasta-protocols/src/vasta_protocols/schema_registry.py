@@ -52,6 +52,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     "claim": {
         "accepted", "annotated", "confidence_decayed",
         "conflict_detected", "conflict_resolved", "disputed", "narrowed",
+        "published_knowledge", "published_knowledge_revoked",
         "promoted", "proposed", "refuted", "retired", "revalidated",
         "revised", "supported",
     },
