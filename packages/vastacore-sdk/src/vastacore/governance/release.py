@@ -219,6 +219,9 @@ async def promote_release(
             store, action="release.promote_active",
             detail={"kind": kind, "name": name, "version": version},
             approver=approver, tenant_id=tenant_id, project_id=project_id)
+        # 10.10：复核迁移事件自含 approver（审计四元组主体自含——
+        # 免经 approval_id 反查）
+        payload["approver"] = approver
     sequencer = EventSequencer(
         store, _REGISTRY_RUN,
         tenant_id=tenant_id, project_id=project_id)
@@ -366,7 +369,7 @@ async def revoke_release(
     await sequencer.emit("release.transition", {
         "kind": kind, "name": name, "version": version,
         "from": current, "to": "revoked", "reason": reason,
-        "approval_id": approval_id,
+        "approval_id": approval_id, "approver": approver,
     })
     invalidated: list[str] = []
     if plans_of_model is not None:

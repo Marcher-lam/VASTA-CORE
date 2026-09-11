@@ -32,6 +32,12 @@ from .governance.audit_export import (
     export_audit_json_traced,
     render_audit_html,
 )
+from .governance.audit_log import (
+    AuditEntry,
+    AuditLogQuery,
+    audit_log_integrity_statement,
+    query_audit_log,
+)
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
 from .governance.drift import (
     DriftMetrics,
@@ -145,6 +151,10 @@ __all__ = [
     "export_audit_json",
     "export_audit_json_traced",
     "render_audit_html",
+    "AuditEntry",
+    "AuditLogQuery",
+    "audit_log_integrity_statement",
+    "query_audit_log",
     "promote_release",
     "resume_release",
     "retire_release",

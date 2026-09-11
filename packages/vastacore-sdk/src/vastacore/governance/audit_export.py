@@ -44,6 +44,9 @@ class AuditExportQuery(BaseModel):
     tenant_id: str = "t-default"
     project_id: str = "p-default"
     include_runs: bool = False
+    include_audit_log: bool = Field(
+        default=False,
+        description="附带归一化审计条目（10.10——四元组视图）")
     exported_by: str = Field(default="operator",
                              description="导出人（留痕用）")
 
@@ -62,6 +65,10 @@ class AuditExport(BaseModel):
     artifact_refs: list[str] = Field(
         default_factory=list,
         description="引用工件 sha 清单（不含 blob 内容——只读审计面）")
+    audit_log: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="归一化审计条目（10.10 四元组——include_audit_log "
+                    "时填充；导出接审计日志聚合面）")
 
 
 def _in_window(event: Any, start: datetime, end: datetime) -> bool:
@@ -123,6 +130,14 @@ def export_audit_json(
         for run in all_runs:
             if run not in AUDIT_STREAMS:
                 collect(run)
+    audit_log: list[dict[str, Any]] = []
+    if query.include_audit_log:
+        from .audit_log import AuditLogQuery, query_audit_log
+
+        entries = query_audit_log(store, AuditLogQuery(
+            start_ts=query.start_ts, end_ts=query.end_ts,
+            tenant_id=query.tenant_id, project_id=query.project_id))
+        audit_log = [e.model_dump() for e in entries]
     return AuditExport(
         generated_at=now_utc().isoformat(),
         exported_by=query.exported_by,
@@ -131,7 +146,7 @@ def export_audit_json(
         scope={"tenant_id": query.tenant_id,
                "project_id": query.project_id},
         total_events=total, streams=streams,
-        artifact_refs=sorted(refs),
+        artifact_refs=sorted(refs), audit_log=audit_log,
     )
 
 
