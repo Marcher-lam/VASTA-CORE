@@ -67,7 +67,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "incident": {"declared", "opened", "resolved"},
     "memory": {"note"},
-    "observation": {"decision", "external", "reset", "terminal",
+    "observation": {"decision", "external", "reset", "stream_frame", "terminal",
                     "transition"},
     "plan": {
         "fired", "fire_failed", "invalidated", "scheduled",
@@ -78,7 +78,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     "run": {
         "access_denied", "adopted", "bill_generated", "cancelled",
         "completed", "cost_recorded", "created", "delegation_completed",
-        "delegation_created", "failed",
+        "delegation_created", "failed", "gap_detected",
         "agent_role_set", "autonomy_adjusted", "identity_asserted",
         "paused",
         "quota_configured", "resumed", "risk_budget_configured",
