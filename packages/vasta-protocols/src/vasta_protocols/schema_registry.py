@@ -81,6 +81,9 @@ _EVENT_CATALOG: dict[str, set[str]] = {
 
 def register_event_type(event_type: str) -> None:
     """动态注册事件类型（扩展面——13 族校验强制，族外拒）。"""
+    if "." not in event_type:
+        raise ValueError(
+            f"event_type 须为点分形态（族.事件）：{event_type!r}")
     family = event_type.split(".", 1)[0]
     if family not in EVENT_FAMILIES:
         raise ValueError(
@@ -103,8 +106,10 @@ def envelope_json_schema() -> dict[str, Any]:
     约束对消费者机器可读）。"""
     schema = EventEnvelope.model_json_schema()
     families = "|".join(sorted(EVENT_FAMILIES))
-    pattern = rf"^[a-z][a-z0-9_]*\.({families})\.[a-z][a-z0-9_]*$|" \
-        rf"^[a-z][a-z0-9_]*\.({families})$"
+    # 族是**首 token**（对齐 envelope._validate_event_type 的运行时语义
+    # ——评审修复 F1：原 pattern 把族锚在中段/末段，72/72 目录合法事件
+    # 全部被拒、倒置形态（foo.run.bar）反而被收）
+    pattern = rf"^({families})(\.[a-z][a-z0-9_]*)+$"
     props = schema.setdefault("properties", {})
     if "type" in props and isinstance(props["type"], dict):
         props["type"] = {
@@ -151,7 +156,8 @@ def migrate_envelope(
 ) -> dict[str, Any]:
     """事件可读升级：旧版事件 dict → 目标版本（逐跳链式；
     同版本 no-op 恒等返回；未知起点/无链 fail-closed 拒）。"""
-    version = str(event.get("schema_version", ""))
+    raw = event.get("schema_version")
+    version = "" if raw is None else str(raw).strip()
     if not version:
         raise ValueError("事件缺 schema_version（不可迁移——元数据不全）")
     if version == to_version:
@@ -180,8 +186,12 @@ def detect_breaking_changes(
     for field in sorted(set(old_props) - set(new_props)):
         breaking.append(f"field-removed:{field}")
     for field in sorted(set(old_props) & set(new_props)):
-        old_type = old_props[field].get("type")
-        new_type = new_props[field].get("type")
+        old_field = old_props[field] if isinstance(old_props[field], dict) \
+            else {}
+        new_field = new_props[field] if isinstance(new_props[field], dict) \
+            else {}
+        old_type = old_field.get("type")
+        new_type = new_field.get("type")
         if old_type and new_type and old_type != new_type:
             breaking.append(f"type-changed:{field}:{old_type}->{new_type}")
     return breaking

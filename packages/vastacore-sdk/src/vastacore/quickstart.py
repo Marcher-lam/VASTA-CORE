@@ -51,12 +51,20 @@ async def quickstart(
     - 每条观察先落 CAS 再入事件（AD-3，capture_observations=True）；
     - 预算安全停止与 Supervisor 升级均接为正常结局；
     - 同一 store 根目录复用同一 run_id 重跑会因 (run_id, seq) 唯一约束
-      失败（确定性重放请用两个不同根目录，见 docs/quickstart.md）。
+      失败（确定性重放请用两个不同 root 目录，见 docs/quickstart.md）。
     """
     store_root = Path(root) / "store"
     store = SqliteStorage(store_root)
+    # rerun 显式预检（评审修复 H3 前依赖 sequencer 撞号上抛——该例外
+    # 已删；预检语义更准：同 run_id 流非空即拒）
+    effective_run_id = run_id or new_run_id()
+    if list(store.iter_run_events(effective_run_id)):
+        raise VastaError(
+            code="quickstart.rerun_conflict",
+            message=(f"run {effective_run_id!r} 已存在于 {store_root}"
+                     "（确定性重放请用两个不同 root 目录，见 docs/quickstart.md）"),
+        )
     try:
-        effective_run_id = run_id or new_run_id()
         context = RunContext.create(run_id=effective_run_id, seed=seed)
         engine = await RunEngine.create(
             env=GridWorldAdapter(),

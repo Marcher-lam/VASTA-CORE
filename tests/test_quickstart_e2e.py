@@ -108,7 +108,7 @@ class TestRerunSemantics:
         with pytest.raises(VastaError) as excinfo:
             await vastacore.quickstart(tmp_path / "r", seed=1, run_id="run-again")
         assert excinfo.value.code == "quickstart.rerun_conflict"
-        assert "different root" in excinfo.value.message
+        assert "不同 root" in excinfo.value.message
 
     async def test_pyproject_version_matches_package(self) -> None:
         """sdk 版本单源守卫：pyproject 与 _version.py 不得漂移。"""

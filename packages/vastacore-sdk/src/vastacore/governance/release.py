@@ -72,29 +72,41 @@ class RollbackResult(BaseModel):
     rolled_back_to: str
 
 
-def _get_state_sync(store: Any, kind: str, name: str) -> dict[str, str]:
-    """同步版状态重建（事件全量重放——MVP 规模）。"""
+def _replay(
+    store: Any, kind: str, name: str,
+) -> tuple[dict[str, str], list[str]]:
+    """事件全量重放 → (按版本最新状态表, 去重活跃序)。
+
+    评审修复 F4/M1/M3：放弃栈式 active_history（suspend→resume 同版本
+    重复压栈、多次终态只弹一次——_active 可指向 revoked 版本且 rollback
+    自回滚）。活跃序：版本进入 active 即入列（去重），离开 active
+    （挂起/终态/回滚）即从任意位置移除。"""
     state: dict[str, str] = {}
-    active_history: list[str] = []
+    active_order: list[str] = []
     for event in store.iter_run_events(_REGISTRY_RUN):
         p = event.payload
         if event.type == "release.transition" and p.get("kind") == kind \
                 and p.get("name") == name:
-            state[p["version"]] = p["to"]
-            if p["to"] == "active":
-                active_history.append(p["version"])
-            elif p["to"] in _TERMINAL and active_history \
-                    and active_history[-1] == p["version"]:
-                # active 版本退役/吊销/回滚——活跃历史弹出（10.3：
-                # revoked 的 active 不得继续被 _active 引用）
-                active_history.pop()
+            version, to = p["version"], p["to"]
+            state[version] = to
+            if to == "active" and version not in active_order:
+                active_order.append(version)
+            elif to != "active" and version in active_order:
+                active_order.remove(version)
         elif event.type == "release.rolled_back" and p.get("kind") == kind \
                 and p.get("name") == name:
-            if active_history:
-                active_history.pop()  # 弹出当前 active
-            state[p.get("rolled_back_from", "")] = "rolled_back"
-    if active_history:
-        state["_active"] = active_history[-1]
+            rolled_from = p.get("rolled_back_from", "")
+            if rolled_from in active_order:
+                active_order.remove(rolled_from)
+            state[rolled_from] = "rolled_back"
+    return state, active_order
+
+
+def _get_state_sync(store: Any, kind: str, name: str) -> dict[str, str]:
+    """同步版状态重建（MVP 规模全量重放；``_active`` = 活跃序末位）。"""
+    state, active_order = _replay(store, kind, name)
+    if active_order:
+        state["_active"] = active_order[-1]
     return state
 
 
@@ -156,6 +168,18 @@ async def promote_release(
             code="release.already_active",
             message=f"{kind} {name!r} v{version} 已是 active",
         )
+    # 评审修复 F2：promote 只承载灰度链——suspended/retired/revoked
+    # 是**专用函数**语义（挂起/退役/吊销各有 reason/approver/级联面），
+    # 经 promote 传入即绕过复核门与级联（to="revoked" 曾零复核可吊销）
+    if to in ("suspended", "retired", "revoked"):
+        dedicated = {
+            "suspended": "suspend_release", "retired": "retire_release",
+            "revoked": "revoke_release"}[to]
+        raise VastaError(
+            code="release.invalid_transition",
+            message=(f"{to} 是专用生命周期动作——请走 {dedicated}"
+                     "（复核/级联语义在彼处）"),
+        )
     allowed = _VALID_TRANSITIONS.get(current, frozenset())
     if to not in allowed:
         raise VastaError(
@@ -209,7 +233,11 @@ async def _lifecycle_step(
     store: Any, kind: str, name: str, version: str, *,
     to: str, reason: str,
 ) -> ReleaseResult:
-    """suspend/resume/retire 共用迁移步（复核免——非上线/吊销门）。"""
+    """suspend/resume/retire 共用迁移步（复核免——非上线/吊销门）。
+
+    评审修复 M1：resume（to=active）时若活跃序已有**其他**服务版本 →
+    拒（双 current；promote 的灰度替换是设计内让位，resume 撞已服务
+    版本是冲突——先挂起/退役当前再恢复）。"""
     from .versioning import version_as_of
 
     try:
@@ -219,7 +247,7 @@ async def _lifecycle_step(
             code="release.version_not_published",
             message=f"{kind} {name!r} v{version} 尚未发布",
         ) from None
-    state = _get_state_sync(store, kind, name)
+    state, active_order = _replay(store, kind, name)
     current = state.get(version, "candidate")
     allowed = _VALID_TRANSITIONS.get(current, frozenset())
     if to not in allowed:
@@ -227,6 +255,13 @@ async def _lifecycle_step(
             code="release.invalid_transition",
             message=(f"非法迁移：{current} → {to}"
                      f"（合法：{sorted(allowed) or '无'}）"),
+        )
+    if to == "active" and any(v != version for v in active_order):
+        raise VastaError(
+            code="release.active_conflict",
+            message=(f"{kind} {name!r} 活跃序已有服务版本 "
+                     f"{[v for v in active_order if v != version]}"
+                     "——先挂起/退役当前再 resume（防双 current）"),
         )
     sequencer = EventSequencer(store, _REGISTRY_RUN)
     await sequencer.emit("release.transition", {
@@ -319,29 +354,30 @@ async def revoke_release(
 async def rollback_release(
     store: Any, kind: str, name: str,
 ) -> RollbackResult:
-    """回滚到前一 active 版本。"""
-    state = _get_state_sync(store, kind, name)
-    current_active = state.get("_active")
+    """回滚到前一 active 版本。
+
+    评审修复 F4/M2/M3：重放复用 _replay 的去重活跃序（原自带重放把
+    resume 重复压栈——rollback 可自回滚到自身/以 revoked 为锚点抹掉
+    吊销终态）；回滚目标须为**可服务**版本——终态（revoked/retired/
+    rolled_back）与 suspended 版本拒。"""
+    state, active_order = _replay(store, kind, name)
+    current_active = active_order[-1] if active_order else None
     if not current_active:
         raise VastaError(
             code="release.no_active_to_rollback",
             message=f"{kind} {name!r} 无 active 版本可回滚",
         )
-    # 找前一 active（重放历史——倒数第二个到 active 的版本）
-    active_history: list[str] = []
-    for event in store.iter_run_events(_REGISTRY_RUN):
-        p = event.payload
-        if event.type == "release.transition" and p.get("kind") == kind \
-                and p.get("name") == name and p.get("to") == "active":
-            active_history.append(p["version"])
-        elif event.type == "release.rolled_back" and p.get("kind") == kind \
-                and p.get("name") == name and active_history:
-            active_history.pop()
-    previous = active_history[-2] if len(active_history) >= 2 else None
+    previous = active_order[-2] if len(active_order) >= 2 else None
     if previous is None:
         raise VastaError(
             code="release.no_previous_active",
             message=f"{kind} {name!r} 无前一 active 版本（首次 active 不可回滚）",
+        )
+    if state.get(previous) in ("suspended", *_TERMINAL):
+        raise VastaError(
+            code="release.no_serviceable_target",
+            message=(f"回滚目标 v{previous} 现为 {state.get(previous)}"
+                     "（不可服务——挂起/终态版本不能承接流量）"),
         )
     sequencer = EventSequencer(store, _REGISTRY_RUN)
     await sequencer.emit("release.rolled_back", {

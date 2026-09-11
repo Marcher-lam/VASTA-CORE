@@ -30,6 +30,7 @@ _EXPORT_RUN = "evaluation"
 AUDIT_STREAMS: tuple[str, ...] = (
     "approvals", "access", "quotas", "billing", "incidents",
     "lifecycle", "schedules", "environment", "cognition", "registry",
+    "evaluation",  # 评审修复 F11：漂移/重验证留痕入企业审计面
 )
 
 
@@ -64,9 +65,17 @@ class AuditExport(BaseModel):
 
 
 def _in_window(event: Any, start: datetime, end: datetime) -> bool:
+    """窗判定（评审修复 F5：查询侧 naive 按 UTC 解释——原裸 TypeError
+    崩溃；事件 ts 恒 aware（信封强制），naive 窗是调用方最自然形态）。"""
+    from datetime import UTC
+
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=UTC)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=UTC)
     ts = event.ts
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=start.tzinfo)
+        ts = ts.replace(tzinfo=UTC)
     return start <= ts <= end
 
 
@@ -80,7 +89,8 @@ def export_audit_json(
     streams: dict[str, list[dict[str, Any]]] = {}
     refs: set[str] = set()
     total = 0
-    for stream in AUDIT_STREAMS:
+    def collect(stream: str) -> None:
+        nonlocal total
         events = [
             e for e in store.iter_run_events(
                 stream, tenant_id=query.tenant_id,
@@ -88,7 +98,7 @@ def export_audit_json(
             if _in_window(e, query.start_ts, query.end_ts)
         ]
         if not events:
-            continue
+            return
         rows = []
         for e in events:
             rows.append(e.model_dump(mode="json"))
@@ -101,6 +111,18 @@ def export_audit_json(
                 if ref:
                     refs.add(str(ref))
         streams[stream] = rows
+
+    for stream in AUDIT_STREAMS:
+        collect(stream)
+    if query.include_runs:
+        # 评审修复 M4/F6：原字段为死旗——实现真实收集（业务 run =
+        # 非系统流名的事件流；sqlite 直查 distinct——同 SDK 域模式）
+        with store._lock:  # noqa: SLF001——同 SDK 域只读直查
+            all_runs = [r[0] for r in store._conn.execute(  # noqa: SLF001
+                "SELECT DISTINCT run_id FROM events").fetchall()]
+        for run in all_runs:
+            if run not in AUDIT_STREAMS:
+                collect(run)
     return AuditExport(
         generated_at=now_utc().isoformat(),
         exported_by=query.exported_by,

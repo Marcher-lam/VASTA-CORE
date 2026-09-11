@@ -131,11 +131,15 @@ class TestNarrow:
             await cog.narrow("c1", {"region": "dev"}, reason="x")
         assert "新增/改值" in e2.value.message
 
-    async def test_narrow_empty_scope_allowed(self, store) -> None:
-        """收到空 scope=撤回全部范围声明（全集的真子集——激进但合法）。"""
+    async def test_narrow_to_empty_rejected(self, store) -> None:
+        """评审修复 M7：收到空 scope 语义是扩大到全域（且静默退出
+        冲突互斥）——拒；撤回范围声明走 retire。"""
         cog = await seed(store)
-        await cog.narrow("c1", {}, reason="范围声明撤回")
-        assert cog.get("c1").scope == {}
+        with pytest.raises(VastaError) as excinfo:
+            await cog.narrow("c1", {}, reason="范围声明撤回")
+        assert excinfo.value.code == "claim.bad_narrow"
+        assert "retire" in excinfo.value.message
+        assert cog.get("c1").scope == {"region": "prod", "tier": "paid"}
 
 
 class TestReplayConsistency:

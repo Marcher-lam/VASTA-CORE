@@ -174,16 +174,41 @@ async def run_drift_check(
     severity 分级：重验证 fail=sev1（模型输出不可信）/ pass=sev2
     （指标漂移但性质仍守）；建议动作：fail→suspend、分布偏移主导→
     rollback 候选、其余→monitor。"""
-    from ..ops.ops import AlertRule, MetricsSnapshot, declare_incident, evaluate_alerts
+    # 评审修复 F3：governance 不得依赖 ops——告警/事故原语已下沉本包
+    from .alerting import AlertRule, MetricsSnapshot, evaluate_alerts
+    from .incidents import declare_incident
+
+    # 评审修复 M5：幻影版本预检（漂移检测对象必须是已注册资产——
+    # 曾可为不存在资产制造治理事件与 incident）
+    from .versioning import version_as_of as _vao
+
+    try:
+        await _vao(store, kind, name, version=version,
+                   tenant_id=tenant_id, project_id=project_id)
+    except VastaError:
+        raise VastaError(
+            code="release.version_not_published",
+            message=f"{kind} {name!r} v{version} 尚未发布",
+        ) from None
 
     policy = policy or DriftPolicy()
     drifted, breaches = evaluate_drift(metrics, policy)
+    alerts_fired: list[dict[str, Any]] = []
+    if drifted:
+        # 告警联动（9.12 复用）——评审修复 F10/G2(d)：告警结果并入
+        # measured 事件 payload（原为无副作用死算，整段可删仍全绿）
+        alerts_fired = [
+            a.model_dump() for a in evaluate_alerts(
+                MetricsSnapshot(extra={f"drift:{kind}:{name}": 1.0}),
+                [AlertRule(name="model_drift_detected",
+                           metric=f"drift:{kind}:{name}", threshold=0.5,
+                           severity="sev2")])]
     sequencer = EventSequencer(
         store, _EVAL_RUN, tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("evaluation.model_drift_measured", {
         "kind": kind, "name": name, "version": version,
         "metrics": metrics.model_dump(), "drifted": drifted,
-        "breaches": breaches,
+        "breaches": breaches, "alerts_fired": alerts_fired,
     })
     report = DriftReport(kind=kind, name=name, version=version,
                          drifted=drifted, breaches=breaches)
@@ -191,22 +216,18 @@ async def run_drift_check(
         report.recommended_action = "none"
         return report
 
-    # 告警规则触发（9.12 复用——漂移指标入快照 extra，规则内联）
-    alerts = evaluate_alerts(  # noqa: F841——触发即告警（AC 面）
-        MetricsSnapshot(extra={f"drift:{kind}:{name}": 1.0}),
-        [AlertRule(name="model_drift_detected",
-                   metric=f"drift:{kind}:{name}", threshold=0.5,
-                   severity="sev2")])
-    if not alerts:  # pragma: no cover——1.0 > 0.5 构造性成立
-        raise VastaError(code="drift.alert_not_fired",
-                         message="漂移超阈未触发告警（内部一致性错误）")
-
     # 模型级重验证（C4——超阈即跑；evaluator 缺省跳过并如实记 None）
     revalidation: dict[str, Any] | None = None
     if evaluator is not None:
-        revalidation = await revalidate_model(
-            store, kind, name, version, evaluator=evaluator,
-            tenant_id=tenant_id, project_id=project_id)
+        # 评审修复 M6：evaluator 异常不再断头（measured 已落而 incident
+        # 缺失）——异常按重验证失败继续链路（fail 方向处置）
+        try:
+            revalidation = await revalidate_model(
+                store, kind, name, version, evaluator=evaluator,
+                tenant_id=tenant_id, project_id=project_id)
+        except Exception as exc:  # noqa: BLE001——异常=不可信（fail 处置）
+            revalidation = {"passed": False, "score": 0.0,
+                            "error": f"{type(exc).__name__}: {exc}"[:200]}
         report.revalidation_passed = revalidation["passed"]
         report.revalidation_score = revalidation["score"]
 
@@ -220,11 +241,12 @@ async def run_drift_check(
     # 引用为关联键——incident 登记需非空清单）
     severity = "sev1" if revalidation is None or not revalidation["passed"] \
         else "sev2"
-    related = report.affected_runs or [f"{kind}/{name}:{version}"]
+    subject = f"{kind}/{name}:{version}"  # 评审修复 F10：不伪装 run id
     report.incident_id = await declare_incident(
         store, f"模型漂移：{kind} {name} v{version}"
         f"（超阈：{','.join(breaches)}）",
-        related_runs=related, severity=severity,
+        related_runs=report.affected_runs, severity=severity,
+        subject=subject,
         tenant_id=tenant_id, project_id=project_id)
 
     if revalidation is not None and not revalidation["passed"]:

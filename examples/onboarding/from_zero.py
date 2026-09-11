@@ -26,7 +26,7 @@ from vasta_protocols.protocols import (
 )
 from vasta_storage import first_deviation, render_text, timeline
 from vastacore import AgentSession
-from vastacore.agent import ContractTemplate
+from vastacore import ContractTemplate
 
 # ── 1) 你已有的环境：实现五协议 EnvironmentAdapter ───────────────────────
 

@@ -116,8 +116,8 @@ class CognitionService:
                 if e.tenant_id == self._tenant
                 and e.project_id == self._project
             ]
-        except Exception:
-            events = []
+        # 评审修复 F9：其余异常不再吞（曾静默截断成空投影——全量套件
+        # 间歇失败的放大器；存储故障应 fail-loud）
         # 统一序列器（系统流模式）每发全量同步——重放恢复无需手动对齐游标
         for event in events:
             if event.type.startswith("claim."):
@@ -404,6 +404,13 @@ class CognitionService:
                 message="new_statement 须为非空字符串",
             )
         claim = self._require_active(claim_id)
+        if new_statement == claim.statement:
+            # 评审修复 L2：相同内容 no-op 拒（与 promote 平级/narrow
+            # 全等口径一致——空操作不落事件不增 version）
+            raise VastaError(
+                code="claim.bad_statement",
+                message="新陈述与旧陈述相同（空操作）",
+            )
         return await self._emit("claim.revised", {
             "claim_id": claim_id,
             "statement_old": claim.statement,
@@ -470,6 +477,21 @@ class CognitionService:
                 code="claim.bad_narrow",
                 message="新 scope 与旧 scope 全等（收窄须实际收缩）",
             )
+        if not scope_restrictions:
+            # 评审修复 M7：收到空 dict 语义是"扩大到全域"（约束全撤）
+            # 且静默退出冲突互斥——撤回范围声明请走 retire
+            raise VastaError(
+                code="claim.bad_narrow",
+                message="不可收窄到空 scope（空 scope=全域适用——撤回"
+                        "全部范围声明请 retire）",
+            )
+        for key, value in scope_restrictions.items():
+            if not isinstance(value, str):
+                # 评审修复 L1：非字符串值裸 TypeError——受控错误码
+                raise VastaError(
+                    code="claim.bad_narrow",
+                    message=f"scope 值须为字符串（{key!r}: {value!r}）",
+                )
         return await self._emit("claim.narrowed", {
             "claim_id": claim_id,
             "scope_old": dict(claim.scope),
