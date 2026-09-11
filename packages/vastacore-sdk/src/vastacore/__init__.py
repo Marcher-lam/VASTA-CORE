@@ -39,6 +39,14 @@ from .governance.audit_log import (
     query_audit_log,
 )
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
+from .governance.byok import (
+    LOCAL_CAPABILITY,
+    AirgapReport,
+    SecretRef,
+    airgap_check,
+    configure_secret_ref,
+    redact_secrets,
+)
 from .governance.data_policy import (
     DataPolicy,
     DisposalCandidate,
@@ -175,6 +183,12 @@ __all__ = [
     "enforce_residency",
     "retention_due",
     "verify_residency",
+    "AirgapReport",
+    "LOCAL_CAPABILITY",
+    "SecretRef",
+    "airgap_check",
+    "configure_secret_ref",
+    "redact_secrets",
     "promote_release",
     "resume_release",
     "retire_release",
