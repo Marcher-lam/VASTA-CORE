@@ -51,6 +51,11 @@ MVP_MEMORY_TYPES: tuple[MemoryType, ...] = (
     "counterexample",
 )
 
+#: 认知成熟度晋升链（Story 10.5——FR-022 promote 语义）：working →
+#: hypothesis → guide；counterexample 是反例记忆，不在晋升链上。
+_PROMOTION_CHAIN: tuple[MemoryType, ...] = ("working", "hypothesis",
+                                            "guide")
+
 
 class Claim(BaseModel):
     """认知图节点（蓝图 §11.2）。version 随状态迁移递增（FR-021）。"""
@@ -171,6 +176,22 @@ class CognitionService:
                 # 衰减（低于推翻线的处置由调用方决定 refuted）
                 claim.confidence = float(
                     payload.get("confidence_after", claim.confidence))
+                claim.version += 1
+            elif type_ == "claim.revised":
+                # 修订（Story 10.5——FR-022）：陈述内容演化（状态/置信不动）
+                claim.statement = str(payload.get("statement_new",
+                                                  claim.statement))
+                claim.version += 1
+            elif type_ == "claim.promoted":
+                # 晋升（Story 10.5——FR-022）：记忆类型沿成熟度链上移
+                claim.memory_type = payload.get(  # type: ignore[assignment]
+                    "memory_type_new", claim.memory_type)
+                claim.version += 1
+            elif type_ == "claim.narrowed":
+                # 收窄（Story 10.5——FR-022）：适用范围收缩（只减不增）
+                scope = payload.get("scope_new")
+                if isinstance(scope, dict):
+                    claim.scope = dict(scope)
                 claim.version += 1
             # claim.revalidated：纯留痕（verdict/env 入审计流），状态不变
 
@@ -368,6 +389,92 @@ class CognitionService:
         self._require_active(claim_id)
         return await self._emit("claim.annotated", {
             "claim_id": claim_id, "note": note, "annotator": annotator,
+        })
+
+    # ---- 三算子（Story 10.5，FR-022——W-3 解除）----
+
+    async def revise(
+        self, claim_id: str, new_statement: str, *, reason: str,
+    ) -> EventEnvelope:
+        """修订：陈述内容演化（``claim.revised`` 携旧→新值；状态/置信/
+        类型不动——内容精度提升不是状态变迁）。"""
+        if not isinstance(new_statement, str) or not new_statement.strip():
+            raise VastaError(
+                code="claim.bad_statement",
+                message="new_statement 须为非空字符串",
+            )
+        claim = self._require_active(claim_id)
+        return await self._emit("claim.revised", {
+            "claim_id": claim_id,
+            "statement_old": claim.statement,
+            "statement_new": new_statement,
+            "reason": reason,
+        })
+
+    async def promote(
+        self, claim_id: str, to_type: MemoryType,
+    ) -> EventEnvelope:
+        """晋升：记忆类型沿成熟度链上移（working→hypothesis→guide；
+        跨级=强晋升允许，降级/平级/counterexample 出入链拒）。
+
+        与 ``accept``（状态迁移）正交：promote 是类型迁移。"""
+        claim = self._require_active(claim_id)
+        if to_type not in _PROMOTION_CHAIN:
+            raise VastaError(
+                code="claim.bad_promotion",
+                message=(f"晋升目标 {to_type!r} 不在链上"
+                         f" {_PROMOTION_CHAIN}（counterexample 是反例"
+                         "记忆——不参与晋升）"),
+            )
+        if claim.memory_type not in _PROMOTION_CHAIN:
+            raise VastaError(
+                code="claim.bad_promotion",
+                message=f"{claim.memory_type!r} 不在晋升链上（无晋升语义）",
+            )
+        if _PROMOTION_CHAIN.index(to_type) <= \
+                _PROMOTION_CHAIN.index(claim.memory_type):
+            raise VastaError(
+                code="claim.bad_promotion",
+                message=(f"非法晋升方向：{claim.memory_type} → {to_type}"
+                         "（只升不降；平级是空操作）"),
+            )
+        return await self._emit("claim.promoted", {
+            "claim_id": claim_id,
+            "memory_type_old": claim.memory_type,
+            "memory_type_new": to_type,
+        })
+
+    async def narrow(
+        self, claim_id: str, scope_restrictions: dict[str, str],
+        *, reason: str,
+    ) -> EventEnvelope:
+        """收窄：适用范围收缩为**真子集**（``claim.narrowed`` 携
+        scope 旧→新）。
+
+        收窄校验（fail-closed）：新 scope 的每对键值必须已在旧 scope
+        中（不得新增键或改值——那是 broaden）；且至少收窄一项
+        （全等=空操作拒）。删除键值对即收窄。"""
+        claim = self._require_active(claim_id)
+        new_items = set(scope_restrictions.items())
+        old_items = set(claim.scope.items())
+        if not new_items <= old_items:
+            added_or_changed = new_items - old_items
+            raise VastaError(
+                code="claim.bad_narrow",
+                message=(f"收窄不得新增/改值（违例："
+                         f"{dict(added_or_changed)}）——扩大范围请显式"
+                         "建新主张"),
+            )
+        if new_items == old_items:
+            raise VastaError(
+                code="claim.bad_narrow",
+                message="新 scope 与旧 scope 全等（收窄须实际收缩）",
+            )
+        return await self._emit("claim.narrowed", {
+            "claim_id": claim_id,
+            "scope_old": dict(claim.scope),
+            "scope_new": dict(scope_restrictions),
+            "reason": reason,
         })
 
     # ---- 查询 ----

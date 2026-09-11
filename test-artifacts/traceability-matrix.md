@@ -44,7 +44,7 @@ externalPointerStatus: 'not_used'
 | P1（34 ★FR，Must） | 34 | 2（FR-022/024） | 32 / 32 | **100%** | ✅ PASS |
 | P2 | 0 | 0 | 0 | N/A | N/A |
 | P3 | 0 | 0 | 0 | N/A | N/A |
-| **Total** | **42** | **2** | **40 / 40** | **100%** | ✅ **PASS**（含豁免登记；豁免 2=W-1/W-3，W-2/W-4 已解除——复评四/六） |
+| **Total** | **42** | **1** | **41 / 41** | **100%** | ✅ **PASS**（含豁免登记；仅 W-1 维持（复评八续豁 Stage 5），W-2/W-3/W-4 已解除——复评四/六/九） |
 
 **图例:** ✅ PASS（达标）/ ⚠️ WARN（低于目标非致命）/ ❌ FAIL（低于下限，阻断）
 
@@ -135,7 +135,7 @@ externalPointerStatus: 'not_used'
 | FR-014 | 图像 inspect/crop/pixel/diff | FULL ✅ | `test_image_tools.py` 17 条（I）：溯源/越界/面积上限/血缘 |
 | FR-020 | 九类认知（MVP 四类） | FULL ✅ | `test_cognition.py` 全族（I）；九类 Literal 封闭 + `MVP_MEMORY_TYPES` 四类（PRD 认可切分） |
 | FR-021 | Claim 七字段 | FULL ✅ | `test_cognition.py::TestReviewGuards::test_version_increments_on_transitions`（评审后补版本）+ lifecycle（I） |
-| FR-022 | 七种主张操作 | WAIVED（豁免登记） ⚠️ | 创建/支持/接受/争议/推翻/退役 + 存在性/终态守卫（I）。**修订(revise)/晋升(promote)为近似语义（support/accept）、缩小范围(narrow)无实现** |
+| FR-022 | 七种主张操作 | FULL ✅（复评九解除 W-3） | 创建/支持/接受/争议/推翻/退役 + 存在性/终态守卫（I）；**revise/promote/narrow 三算子显式事件**（Story 10.5——claim.revised/promoted/narrowed 携旧→新值、version 递增、晋升链方向守卫、narrow 真子集校验）（I） |
 | FR-023 | 显式 Conflict | FULL ✅ | `TestConflict` + 幂等/事件化守卫（评审后）（I） |
 | FR-024 | 依赖失效标记 Plan 与资产 | FULL ✅（复评六解除 W-4） | 级联 refuted（穿透/环护）+ world_model.suspended 桥接（I）；**refute→plan.invalidated 自动链路**（Story 9.14 `refute_with_propagation`——级联下游模型挂起 + 关联计划失效，来源主张可溯）（I） |
 | FR-025 | ContextBuilder 四维 | FULL ✅ | `TestContextBuilder` + relevance/risk 守卫（评审后）（I） |
@@ -262,7 +262,7 @@ SM-2 要求「MVP 验收 AC-01~08 全通过」。当前 3/8 FULL：AC-02/03/04�
 |---|------|------------------|-------|------|----------|
 | W-1 | AC-07 置信区间 | 多种子标准差已有（复评一）；CI 需**真实 Agent 方差**——模拟器方差不具代表性（epic4567 评审 defer #2）。**复评五**：CI 计算面已挂 Story 9.11。**复评八（2026-09-09）用户裁决：续豁至 Stage 5**（多 Agent 平台化——真实适配器接入为必然前置；解除条件不变） | BMad | Stage 5（真实模型适配器接入后） | 真实适配器 × VastaLab 任务集 ≥10 种子的 CI 落入评测报告（计算面已就绪） |
 | W-2 | FR-013 业务实体维度 | payload_equals 已覆盖实体字段级检索（五维实测）；专用实体索引/别名属存储增强 | BMad | Stage 3 存储改造（PG 迁移同期） | 实体索引落地 + 检索测试 |
-| W-3 | FR-022 revise/promote/narrow | support/accept 近似承载修订/晋升语义（事件留痕可辨）；narrow 无实现。**复评八（2026-09-09）用户裁决：解除**——挂 Epic 10 认知算子 Story（解除条件不变） | BMad | ~~Stage 3~~ → Epic 10 Story 落地 | 三算子显式事件 + 状态机测试 |
+| W-3 | FR-022 revise/promote/narrow | support/accept 近似承载（历史）。**复评九（2026-09-11）已解除**——Story 10.5 三算子落地（`tests/test_claim_operators.py` 13 项：链/方向/真子集/重放一致） | BMad | ~~Epic 10 Story~~ 已解除 | ✅ 达成（显式事件 + 状态机测试） |
 | W-4 | FR-024 claim→Plan 标记 | 计划失效由偏差路径驱动（FR-037 实测）；claim 驱动标记需桥接接线（同 Epic1-7 A3）。**复评六（2026-09-10）已解除**——Story 9.14 `refute_with_propagation`（refute→world_model.suspended→plan.invalidated 三跳链路 + `tests/test_bridge_wiring.py` 四项锚定） | BMad | ~~Stage 3 编排~~ 已解除 | ✅ 达成（`test_bridge_wiring.py`：全链三跳/无模型零传播/缺省 provider/传播不越界） |
 
 **豁免语义**: 四项均「机制部分在、字母级缺口」，豁免期间不计分母；到期未解除
@@ -355,3 +355,19 @@ Epic 10 认知算子 Story（解除条件不变：三算子显式事件 + 状态
 Story 落地时转正）；W-1（AC-07 CI）**续豁至 Stage 5**（真实适配器
 接入为 Stage 5 多 Agent 前置；解除条件不变）。豁免在册数不变
 （2 项），门禁 40/40 = 100% PASS 维持。
+
+
+---
+
+## 复评记录九（2026-09-11，Story 10.5 三算子落地——W-3 解除）
+
+**变更**: WAIVER **W-3 解除**（复评八裁决挂载，本轮达成）——
+CognitionService 三算子：`revise`（陈述演化——claim.revised 携旧→新）、
+`promote`（记忆类型沿 working→hypothesis→guide 链上移——跨级允许/
+降级平级拒/counterexample 出入链拒）、`narrow`（scope 真子集收缩——
+新增键/改值拒、全等空操作拒）；三算子 version 各 +1（FR-021）、
+投影重放一致（AD-2）。+13 测试（753→766 全绿）。
+
+**门禁**: FR-022 转正计入——P0 7/7、P1 **34/34**、Overall
+**41/41 = 100% → PASS 维持**。豁免在册仅剩 **W-1**（AC-07 CI，
+复评八续豁 Stage 5）。
