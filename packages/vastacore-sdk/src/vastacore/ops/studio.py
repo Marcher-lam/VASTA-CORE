@@ -183,10 +183,9 @@ def mount_studio(
         cognition.refresh()  # 终态判定不基于陈旧投影
         _claim_or_404(claim_id)
         decision = body.get("decision")
-        # AC：approver 事件携带真实身份——RBAC 下取认证主体（body
-        # 可省略；显式传值须与主体一致，防冒名）
-        # AC：approver 携带真实身份——RBAC 下取认证主体（依赖工厂已
-        # 写入 request.state.principal）；body 显式传值须与主体一致（防冒名）
+        # AC：approver 携带真实身份——RBAC 认证主体注入（依赖工厂
+        # 写入 request.state.principal；body 省略时取主体、显式传值
+        # 须与主体一致防冒名）
         authenticated = getattr(request.state, "principal", None)
         auth_user = getattr(authenticated, "user", None)
         approver = body.get("approver") or auth_user

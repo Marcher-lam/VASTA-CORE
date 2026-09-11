@@ -106,7 +106,10 @@ class OIDCTokenVerifier:
                 code="identity.bad_jwks",
                 message="JWKS 无 keys 数组",
             )
-        self._jwks = {k["kid"]: k for k in keys if "kid" in k}
+        # 评审修复 F6：非 dict 元素容错（曾裸 TypeError）
+        self._jwks = {k["kid"]: k for k in keys
+                      if isinstance(k, dict) and isinstance(
+                          k.get("kid"), str)}
         self._jwks_loaded = True
 
     async def _key_for(self, kid: str) -> dict[str, Any]:
@@ -140,6 +143,13 @@ class OIDCTokenVerifier:
                 code="identity.bad_token",
                 message=f"JWT 解码失败：{exc}",
             ) from exc
+        # 评审修复 F5/M-6：非 dict 结构（数组/null/数字）→ 受控 401
+        # 而非裸 AttributeError 500
+        if not isinstance(header, dict) or not isinstance(payload, dict):
+            raise VastaError(
+                code="identity.bad_token",
+                message="JWT header/payload 须为 JSON 对象",
+            )
         signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
         return header, payload, signature, signing_input
 
@@ -152,13 +162,19 @@ class OIDCTokenVerifier:
         aud = payload.get("aud")
         if isinstance(aud, str):
             aud = [aud]
+        if not isinstance(aud, list):  # 评审修复 F5：int 等标量曾裸崩
+            aud = None
         if self.audience not in (aud or []):
             raise VastaError(
                 code="identity.aud_mismatch",
                 message=f"aud {payload.get('aud')!r} 不含 {self.audience!r}",
             )
+        import math
+
         exp = payload.get("exp")
-        if not isinstance(exp, (int, float)) or exp < self._clock():
+        # 评审修复 L-5：NaN/inf 恒 False 绕过比较——isfinite 拒
+        if not isinstance(exp, (int, float)) \
+                or not math.isfinite(exp) or exp < self._clock():
             raise VastaError(
                 code="identity.token_expired",
                 message=f"exp {exp!r} 已过期或缺失（fail-closed）",
@@ -259,6 +275,35 @@ class ScimSync(BaseModel):
     groups_url: str
     fetcher: Any = Field(description="async (url) -> dict")
 
+    async def _fetch_all(self, url: str) -> list[dict[str, Any]]:
+        """SCIM 拉全（评审修复 F12：单页截断曾静默漏同步页外用户）。
+
+        先拉裸 URL（多数部署单页即全量——fetcher 无需支持分页参数）；
+        ``totalResults`` 超页才按 startIndex 续拉。"""
+        doc = await self.fetcher(url)
+        if not isinstance(doc, dict):
+            return []
+        page = doc.get("Resources", [])
+        if not isinstance(page, list):
+            return []
+        items = [x for x in page if isinstance(x, dict)]
+        total = doc.get("totalResults")
+        if not isinstance(total, int) or len(items) >= total or not items:
+            return items
+        while len(items) < total:
+            index = len(items) + 1
+            doc2 = await self.fetcher(
+                url + ("&" if "?" in url else "?")
+                + f"startIndex={index}&count=200")
+            if not isinstance(doc2, dict):
+                break
+            page2 = doc2.get("Resources", [])
+            if not isinstance(page2, list) or not page2:
+                break
+            items.extend(x for x in page2 if isinstance(x, dict))
+        return items
+
+
     async def sync(
         self, store: Any, *,
         tenant_id: str = "t-default", project_id: str = "p-default",
@@ -268,12 +313,13 @@ class ScimSync(BaseModel):
 
         幂等：分配事件仅在用户角色**与上次同步不同**时落（重放
         access 流取用户→角色最新值）。"""
-        users_doc = await self.fetcher(self.users_url)
-        groups_doc = await self.fetcher(self.groups_url)
+        # 评审修复 F12：跟随分页（startIndex 递进至 totalResults）
+        users_doc = await self._fetch_all(self.users_url)
+        groups_doc = await self._fetch_all(self.groups_url)
         users = {str(u["id"]): str(u.get("userName") or u["id"])
-                 for u in users_doc.get("Resources", [])
+                 for u in users_doc
                  if isinstance(u, dict) and "id" in u}
-        groups = groups_doc.get("Resources", [])
+        groups = groups_doc
 
         # 现状（重放 access 流——用户→最新角色）
         current: dict[str, str] = {}
@@ -281,6 +327,8 @@ class ScimSync(BaseModel):
                 _ACCESS_RUN, tenant_id=tenant_id, project_id=project_id):
             if event.type == "run.role_assigned":
                 current[event.payload["user"]] = event.payload["role"]
+            elif event.type == "run.role_revoked":
+                current.pop(event.payload["user"], None)
 
         # 组→成员角色（约定名；一用户多组取最高权限）
         precedence = [Role.ADMIN, Role.OPERATOR, Role.AUDITOR,
@@ -289,7 +337,10 @@ class ScimSync(BaseModel):
         for group in groups:
             if not isinstance(group, dict):
                 continue
-            role = SCIM_GROUP_ROLES.get(str(group.get("displayName", "")))
+            # 评审修复 F20：组名约定大小写不敏感（IdP 规范差异静默
+            # 降权整组用户）
+            role = SCIM_GROUP_ROLES.get(
+                str(group.get("displayName", "")).lower())
             if role is None:
                 continue
             for member in group.get("members", []):
@@ -308,12 +359,27 @@ class ScimSync(BaseModel):
             await assign_role(store, user, role, assigned_by=assigned_by,
                               tenant_id=tenant_id, project_id=project_id)
             assigned += 1
+        # 评审修复 M-3/F13：移出全部约定组的用户——回收（撤权生效；
+        # 曾永久残留——身份生命周期缺口）
+        revoked = 0
+        sequencer = EventSequencer(
+            store, _ACCESS_RUN,
+            tenant_id=tenant_id, project_id=project_id)
+        for user in sorted(current):
+            if user in user_roles:
+                continue
+            await sequencer.emit("run.role_revoked", {
+                "user": user, "revoked_by": assigned_by,
+                "reason": "scim: not in any vasta-* group",
+            })
+            revoked += 1
 
         summary = {
             "users_total": len(users),
             "groups_total": len(groups),
             "role_mappings": len(user_roles),
             "assignments_written": assigned,
+            "revocations_written": revoked,
         }
         sequencer = EventSequencer(
             store, _ACCESS_RUN,

@@ -17,12 +17,25 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from vasta_protocols.sequencer import EventSequencer
 
 _BILLING_RUN = "billing"
+
+# 评审修复 M-1/F10：同周期并发生成的读-写竞态——按周期键进程内串行
+_BILL_LOCKS: dict[tuple, Any] = {}
+
+
+def _bill_lock(key: tuple) -> Any:
+    import asyncio
+
+    lock = _BILL_LOCKS.get(key)
+    if lock is None:
+        lock = _BILL_LOCKS[key] = asyncio.Lock()
+    return lock
 
 
 class BillingPeriod(BaseModel):
@@ -32,6 +45,13 @@ class BillingPeriod(BaseModel):
 
     start: datetime
     end: datetime
+
+    def model_post_init(self, __context: Any) -> None:
+        # 评审修复 F18：倒置/空窗拒（曾静默生成空账单并污染版本计数）
+        if self.end <= self.start:
+            raise ValueError(
+                f"BillingPeriod 须 start < end（得到 {self.start} ~ "
+                f"{self.end}）")
 
     @classmethod
     def monthly(cls, year: int, month: int) -> BillingPeriod:
@@ -43,7 +63,10 @@ class BillingPeriod(BaseModel):
         return cls(start=start, end=end)
 
     def label(self) -> str:
-        return f"{self.start.strftime('%Y%m%d')}-{self.end.strftime('%Y%m%d')}"
+        # 评审修复 F11：含时刻到秒——日期边界重合的异窗不再撞 id
+        # /串扰版本计数
+        fmt = "%Y%m%dT%H%M%S"
+        return f"{self.start.strftime(fmt)}-{self.end.strftime(fmt)}"
 
 
 class BillLine(BaseModel):
@@ -99,6 +122,16 @@ async def generate_bill(
     """生成账单（周期聚合 + 留痕 + 版本递增——不可变）。
 
     窗过滤：事件 ts ∈ [start, end)（右开——月度衔接不重计）。"""
+
+    async with _bill_lock((period.label(), tenant_id, project_id)):
+        return await _generate_bill_locked(
+            store, period, tenant_id=tenant_id, project_id=project_id)
+
+
+async def _generate_bill_locked(
+    store: Any, period: BillingPeriod, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> Bill:
     from .quotas import CostLedger
 
     versions = _bill_versions(store, period, tenant_id=tenant_id,
@@ -187,8 +220,6 @@ async def optimization_advice(
     - budget-pressure：预算使用率 ≥ 80%（接 9.8 budget_total 配置）。"""
     from .quotas import CostLedger
 
-    bill = await generate_bill.__wrapped__(store, period) \
-        if False else None  # 占位防误用——真实实现见下
     # 重新聚合（不落新账单版本——advice 是只读报告）
     by_model: dict[str, dict[str, float]] = {}
     for row in CostLedger._rows(store, tenant_id=tenant_id,  # noqa: SLF001
@@ -230,8 +261,13 @@ async def optimization_advice(
                     "——usage 计量接入可改善成本精度"
                     "（router usage 透传）")))
     if budget_total is not None:
-        utilization = round(total / budget_total, 4) if budget_total else 0.0
-        if utilization >= 0.8:
+        # 评审修复 F19：负/零预算容错（负值曾裸崩 ValidationError）
+        if budget_total <= 0:
+            utilization = None if budget_total < 0 else 0.0
+            budget_total = budget_total if budget_total > 0 else None
+        else:
+            utilization = round(total / budget_total, 4)
+        if utilization is not None and utilization >= 0.8:
             advice.append(AdviceItem(
                 kind="budget-pressure",
                 detail=f"预算使用率 {utilization:.0%}"

@@ -181,10 +181,16 @@ def require_role(
     一体：401 未知 token / 403 越权）。"""
 
     async def dependency(request: Request) -> Principal:
+        import inspect
 
         auth = request.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip()
-        principal = resolver(token) if token else None
+        principal = None
+        if token:
+            result = resolver(token)
+            # 评审修复 H-1/F1：OIDC as_resolver 是 async——同步 resolver
+            # （静态映射）与异步（IdP）统一兼容
+            principal = await result if inspect.isawaitable(result)                 else result
         if principal is None:
             raise HTTPException(status_code=401, detail="invalid token")
         decision = evaluate_access(

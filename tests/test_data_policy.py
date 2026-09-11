@@ -61,7 +61,6 @@ class TestRetentionDue:
         await put(store, b"pii-young", classification="raw-pii", age_days=10)
         await put(store, b"unclass", age_days=400)
         due = retention_due(store, POLICY)
-        shas = {c.sha256[:8]: c for c in due}
         assert len(due) == 2  # pii-old + unclass（400>365）
         pii = [c for c in due if c.classification == "raw-pii"][0]
         assert pii.disposition == "delete"

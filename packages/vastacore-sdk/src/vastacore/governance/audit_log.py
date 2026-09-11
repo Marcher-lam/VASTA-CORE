@@ -97,6 +97,13 @@ def _principal_of(event_type: str, payload: dict[str, Any]) -> str:
 
 def _resource_of(event_type: str, payload: dict[str, Any]) -> str:
     """资源提取（按事件类型的资源键约定——缺失归 unknown）。"""
+    # 拒绝事件自含 resource 字段（rbac.deny_trace）——优先取（评审
+    # 修复 L-1：曾回落 user 字段把被拒用户名当资源）
+    if event_type == "run.access_denied":
+        for field in ("resource", "path"):
+            value = payload.get(field)
+            if isinstance(value, str) and value:
+                return value
     # 资产三元组（kind/name/version）优先于通用 id——资产引用在审计
     # 语义上比关联 id（如 approval_id）更有用（revoke 事件的资源应是
     # 模型而非批准号）
@@ -112,8 +119,10 @@ def _resource_of(event_type: str, payload: dict[str, Any]) -> str:
         value = payload.get(field)
         if isinstance(value, str) and value:
             return value
-    if "related_runs" in payload and payload["related_runs"]:
-        return ",".join(str(r) for r in payload["related_runs"][:3])
+    related = payload.get("related_runs")
+    if isinstance(related, (list, tuple)) and related:
+        # 评审修复 F7：非序列形态曾让整个查询崩（完整性优先失效）
+        return ",".join(str(r) for r in related[:3])
     return "unknown"
 
 
@@ -168,10 +177,11 @@ def audit_log_integrity_statement(store: Any) -> dict[str, Any]:
     for stream in _AUDIT_STREAMS:
         for event in store.iter_run_events(stream):
             counts[stream] = counts.get(stream, 0) + 1
+            # 评审修复 M-4/F4：全信封入摘要（payload/parent/tenant/
+            # project——曾只哈希五个表头字段，载荷篡改完全不可见）
             canonical = json.dumps(
-                {k: event.model_dump(mode="json")[k]
-                 for k in ("run_id", "seq", "event_id", "type", "ts")},
-                sort_keys=True, ensure_ascii=False)
+                event.model_dump(mode="json"),
+                sort_keys=True, ensure_ascii=False, default=str)
             chain_hash = hashlib.sha256(
                 (chain_hash + canonical).encode("utf-8")).hexdigest()
     return {

@@ -115,12 +115,23 @@ def create_app(
             rbac_dependencies[(res, act)] = require_role(
                 res, act, resolver=principal_resolver, store=service.store)
 
+    from fastapi import Depends as _Depends
+
     def require_token(request: Request) -> None:
         import hmac as _hmac
 
         auth = request.headers.get("Authorization", "")
         if not _hmac.compare_digest(auth, f"Bearer {token}"):
             raise HTTPException(status_code=401, detail="invalid token")
+
+    _evidence_read = (
+        _Depends(rbac_dependencies[("evidence", "read")])
+        if ("evidence", "read") in rbac_dependencies
+        else Depends(require_token))
+    _ops_read = (
+        _Depends(rbac_dependencies[("ops", "read")])
+        if ("ops", "read") in rbac_dependencies
+        else Depends(require_token))
 
     def _session(run_id: str) -> AgentSession:
         session = service.sessions.get(run_id)
@@ -145,7 +156,7 @@ def create_app(
                 status_code=503, detail=f"store not ready: {exc}") from exc
         return {"status": "ready", "sessions": len(service.sessions)}
 
-    @app.get("/metrics", dependencies=[Depends(require_token)])
+    @app.get("/metrics", dependencies=[_ops_read])
     async def metrics() -> dict[str, Any]:
         from .ops import MetricsSnapshot, evaluate_alerts
 
@@ -195,7 +206,7 @@ def create_app(
         service.sessions[session.run_id] = session
         return {"run_id": session.run_id}
 
-    @app.post("/runs/{run_id}/start", dependencies=[Depends(require_token)])
+    @app.post("/runs/{run_id}/start", dependencies=[_write_dep])
     async def start_run(run_id: str) -> dict[str, bool]:
         async with service.lock:
             from vasta_protocols.errors import VastaError
@@ -209,7 +220,7 @@ def create_app(
             # 其余异常放行为 500（评审修复：服务端缺陷不再伪装成客户端 400）
         return {"ok": True}
 
-    @app.post("/runs/{run_id}/reset", dependencies=[Depends(require_token)])
+    @app.post("/runs/{run_id}/reset", dependencies=[_write_dep])
     async def reset_run(run_id: str, body: ResetBody | None = None) -> dict[str, Any]:
         async with service.lock:
             from vasta_protocols.errors import VastaError
@@ -242,7 +253,7 @@ def create_app(
             {"kind": o.kind, "detail": o.detail} for o in observations
         ]}
 
-    @app.post("/runs/{run_id}/complete", dependencies=[Depends(require_token)])
+    @app.post("/runs/{run_id}/complete", dependencies=[_write_dep])
     async def complete_run(run_id: str) -> dict[str, bool]:
         async with service.lock:
             from vasta_protocols.errors import VastaError
@@ -283,7 +294,7 @@ def create_app(
             "artifacts": 0, "goal_reached": False, "vastacore_version": __version__,
         }
 
-    @app.get("/runs/{run_id}/timeline", dependencies=[Depends(require_token)])
+    @app.get("/runs/{run_id}/timeline", dependencies=[_read_dep])
     async def timeline(run_id: str) -> dict[str, Any]:
         events = await service.timeline_events(run_id)
         if events is None:
@@ -304,7 +315,7 @@ def create_app(
             ],
         }
 
-    @app.get("/evidence/search", dependencies=[Depends(require_token)])
+    @app.get("/evidence/search", dependencies=[_evidence_read])
     async def search(
         run_id: str | None = None,
         event_type: str | None = None,

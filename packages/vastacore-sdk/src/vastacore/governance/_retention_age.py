@@ -9,6 +9,7 @@ from typing import Any
 def artifact_ages(
     store: Any, *,
     tenant_id: str = "t-default", project_id: str = "p-default",
+    now: datetime | None = None,
 ) -> list[tuple[str, str | None, float]]:
     """本作用域工件的 (sha256, classification, age_days) 清单。
 
@@ -16,7 +17,8 @@ def artifact_ages(
     created_at 差值（created_at 缺失/不可解析按 0 计——保守不满期）。"""
     from vasta_protocols.ids import now_utc
 
-    now = now_utc()
+    if now is None:  # 评审修复 L-3：retention_due 的 as-of 时点透传
+        now = now_utc()
     rows: list[tuple[str, str | None, float]] = []
     with store._lock:  # noqa: SLF001——同 SDK 域只读直查
         for sha, classification, created_at in store._conn.execute(  # noqa: SLF001

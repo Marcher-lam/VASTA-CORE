@@ -67,12 +67,17 @@ def redact_secrets(config: dict[str, Any]) -> dict[str, Any]:
     """配置脱敏（深拷贝不改原——凭证键/值形态替换为指纹标注）。"""
     def redact(value: Any, key_hint: str = "") -> Any:
         if isinstance(value, dict):
-            return {k: redact(v, k) for k, v in value.items()}
-        if isinstance(value, list):
+            return {str(k): redact(v, str(k)) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
             return [redact(v, key_hint) for v in value]
         if isinstance(value, str):
+            import re
+
             key_lower = key_hint.lower()
-            if any(marker in key_lower for marker in _SECRET_KEYS):
+            # 评审修复 F16b：全词匹配（"token" 子串曾误伤
+            # next_page_token/Tokenizer 类配置键）
+            if any(re.search(rf"\b{re.escape(m)}\b", key_lower)
+                   for m in _SECRET_KEYS):
                 return f"***redacted:{_fp(value)}"
             if value.startswith(_SECRET_VALUE_PREFIXES):
                 return f"***redacted:{_fp(value)}"
@@ -151,8 +156,12 @@ def airgap_check(
 
 
 def _host_of(url: str) -> str:
+    """评审修复 F9：无 scheme 的 host:port 形态曾把 host 当 scheme
+    → hostname None → 误判本地（fail-open）。补 scheme 后解析。"""
     from urllib.parse import urlparse
 
+    if "://" not in url:
+        url = "scheme-placeholder://" + url
     try:
         return urlparse(url).hostname or ""
     except ValueError:
@@ -174,7 +183,15 @@ def _host_of_pg(dsn: str) -> str:
 
 
 def _mask_pg(dsn: str) -> str:
-    return dsn.split("@")[-1] if "@" in dsn else dsn
+    """评审修复 F8：key=value 形态的 password/user 键掩码（曾明文
+    泄入 airgap 违规报告）。"""
+    if "@" in dsn:
+        return dsn.split("@")[-1]
+    import re
+
+    return re.sub(
+        r"(password|user)=[^\s]*", r"\1=***", dsn,
+        flags=re.IGNORECASE)
 
 
 __all__ = ["AirgapReport", "LOCAL_CAPABILITY", "SecretRef",

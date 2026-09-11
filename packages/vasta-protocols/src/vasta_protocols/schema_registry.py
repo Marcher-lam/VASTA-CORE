@@ -47,7 +47,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "artifact": {
         "access_denied", "corrupted", "deletion_proved", "not_found",
-        "published",
+        "published", "retention_configured",
     },
     "claim": {
         "accepted", "annotated", "confidence_decayed",
@@ -70,9 +70,11 @@ _EVENT_CATALOG: dict[str, set[str]] = {
         "canary_config", "rolled_back", "transition",
     },
     "run": {
-        "adopted", "cancelled", "completed", "cost_recorded", "created",
-        "failed", "model_exchange", "paused", "quota_configured",
-        "resumed", "started", "throttled",
+        "access_denied", "adopted", "bill_generated", "cancelled",
+        "completed", "cost_recorded", "created", "failed",
+        "identity_asserted", "model_exchange", "paused",
+        "quota_configured", "resumed", "role_assigned", "role_revoked",
+        "scim_synced", "secret_ref_configured", "started", "throttled",
     },
     "verification": {"deviated", "passed"},
     "world_model": {"suspended", "updated", "validated"},

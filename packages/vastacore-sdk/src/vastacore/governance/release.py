@@ -341,7 +341,10 @@ async def revoke_release(
             code="release.version_not_published",
             message=f"{kind} {name!r} v{version} 尚未发布",
         ) from None
-    state = _get_state_sync(store, kind, name)
+    # 评审修复 H-2/F3：唯一漏传作用域的状态重建——非默认租户终态
+    # 守卫被完全绕过（已 revoked 可再 revoke）+ from 字段错记
+    state = _get_state_sync(store, kind, name, tenant_id=tenant_id,
+                            project_id=project_id)
     current = state.get(version, "candidate")
     allowed = _VALID_TRANSITIONS.get(current, frozenset())
     if "revoked" not in allowed:
@@ -434,12 +437,17 @@ async def rollback_release(
 async def compare_shadow(
     store: Any, kind: str, name: str, *,
     new_version: str, old_version: str,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> dict[str, Any]:
     """影子期新旧版本并行对比——差异报告（两版本各自取回 bundle）。"""
     from .versioning import version_as_of
 
-    new_rec = await version_as_of(store, kind, name, version=new_version)
-    old_rec = await version_as_of(store, kind, name, version=old_version)
+    new_rec = await version_as_of(
+        store, kind, name, version=new_version,
+        tenant_id=tenant_id, project_id=project_id)
+    old_rec = await version_as_of(
+        store, kind, name, version=old_version,
+        tenant_id=tenant_id, project_id=project_id)
     differences: list[dict[str, Any]] = []
     new_bundle = new_rec.bundle
     old_bundle = old_rec.bundle
@@ -462,7 +470,8 @@ async def compare_shadow(
 
 
 async def set_canary_percent(
-    store: Any, kind: str, name: str, percent: int,
+    store: Any, kind: str, name: str, percent: int, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> None:
     """灰度比例（1-100）。"""
     if not 1 <= percent <= 100:
@@ -471,15 +480,22 @@ async def set_canary_percent(
             message=f"灰度比例须在 [1,100]，得到 {percent}",
         )
     # 存储在事件流（查询面走重放——MVP 简化：发一个 config 事件）
-    sequencer = EventSequencer(store, _REGISTRY_RUN)
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN,
+        tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("release.canary_config", {
         "kind": kind, "name": name, "percent": percent,
     })
 
 
-async def get_canary_percent(store: Any, kind: str, name: str) -> int:
+async def get_canary_percent(
+    store: Any, kind: str, name: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> int:
     """读取灰度比例（最新 config 事件；默认 100=全量）。"""
-    for event in reversed(list(store.iter_run_events(_REGISTRY_RUN))):
+    for event in reversed(list(store.iter_run_events(
+            _REGISTRY_RUN, tenant_id=tenant_id,
+            project_id=project_id))):
         if event.type == "release.canary_config" \
                 and event.payload.get("kind") == kind \
                 and event.payload.get("name") == name:

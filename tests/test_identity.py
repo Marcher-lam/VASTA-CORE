@@ -199,7 +199,8 @@ class TestScimSync:
                                       project_id="p-a")
             assert summary == {"users_total": 2, "groups_total": 2,
                                "role_mappings": 2,
-                               "assignments_written": 2}
+                               "assignments_written": 2,
+                               "revocations_written": 0}
             events = [e for e in store.iter_run_events("access")
                       if e.type == "run.role_assigned"]
             by_user = {e.payload["user"]: e.payload["role"]

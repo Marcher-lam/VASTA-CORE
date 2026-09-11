@@ -130,8 +130,10 @@ def retention_due(
         now = now.replace(tzinfo=UTC)
     candidates: list[DisposalCandidate] = []
     for sha, classification, age_days in artifact_ages(
-            store, tenant_id=tenant_id, project_id=project_id):
-        holds = _active_holds(store, sha, tenant_id, project_id)
+            store, tenant_id=tenant_id, project_id=project_id, now=now):
+        # 评审修复 L-4/F22：_active_holds 契约要求调用方持锁
+        with store._lock:  # noqa: SLF001——同 SDK 域对齐 callee 契约
+            holds = _active_holds(store, sha, tenant_id, project_id)
         jurisdictions = [h for h in holds] if holds else []
         effective_retain = max(
             policy.rule_for(classification).retain_days,
@@ -154,15 +156,19 @@ def verify_residency(
 
     标记约定：路径含 ``region-<code>`` 段；无标记视为未声明（违规
     ——fail-closed：未声明不等于合规）。"""
-    match = _REGION_MARK.search(str(store_root))
-    if match is None:
+    # 评审修复 F15：全部标记须合规（首匹配曾可被顺序操纵——路径含
+    # region-eu-west/region-us-east 时首段合规即整体放行）
+    marks = _REGION_MARK.findall(str(store_root))
+    if not marks:
         return [f"store 路径 {store_root} 无区域标记（region-<code>）"
                 "——未声明不视为合规"]
-    found = match.group(1).lower()
-    if found != policy.region.lower():
-        return [f"驻留违规：数据在 region-{found}，策略要求 "
-                f"region-{policy.region}"]
-    return []
+    violations = []
+    for found in {m.lower() for m in marks}:
+        if found != policy.region.lower():
+            violations.append(
+                f"驻留违规：数据在 region-{found}，策略要求 "
+                f"region-{policy.region}")
+    return violations
 
 
 def enforce_residency(
