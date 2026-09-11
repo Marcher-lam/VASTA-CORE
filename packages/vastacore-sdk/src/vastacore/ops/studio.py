@@ -30,12 +30,28 @@ def mount_studio(
     token: str,
     tenant_id: str = "t-default",
     project_id: str = "p-default",
+    principal_resolver: Any | None = None,
 ) -> None:
-    """把 Studio 路由挂到既有 app（token 与业务面一致——零旁路）。"""
+    """把 Studio 路由挂到既有 app（token 与业务面一致——零旁路）。
+
+    Story 10.8：principal_resolver 给定时启用 RBAC（读=cognition:read、
+    写=cognition:write——review/annotate 需 operator+；缺省共享 token）。"""
     from vasta_cognition.cognition import CognitionService
 
     cognition = CognitionService(
         store, tenant_id=tenant_id, project_id=project_id)
+
+    from fastapi import Depends as _Depends
+
+    from ..governance.rbac import require_role as _require_role
+
+    _rbac = principal_resolver is not None
+    _read_dep = _Depends(_require_role(
+        "cognition", "read", resolver=principal_resolver, store=store,
+        tenant_id=tenant_id, project_id=project_id)) if _rbac else None
+    _write_dep = _Depends(_require_role(
+        "cognition", "write", resolver=principal_resolver, store=store,
+        tenant_id=tenant_id, project_id=project_id)) if _rbac else None
 
     def require_token(request: Request) -> None:
         auth = request.headers.get("Authorization", "")
@@ -55,7 +71,7 @@ def mount_studio(
 
     # ---- 认知图浏览（只读）----
     @app.get("/studio/api/claims",
-             dependencies=[Depends(require_token)])
+             dependencies=[_read_dep or Depends(require_token)])
     async def claims() -> list[dict[str, Any]]:
         cognition.refresh()  # 评审修复 F8：跨实例写入后的投影刷新
         items = []
@@ -74,7 +90,7 @@ def mount_studio(
         return items
 
     @app.get("/studio/api/claims/{claim_id}",
-             dependencies=[Depends(require_token)])
+             dependencies=[_read_dep or Depends(require_token)])
     async def claim_detail(claim_id: str) -> dict[str, Any]:
         cognition.refresh()
         claim = _claim_or_404(claim_id)
@@ -84,7 +100,7 @@ def mount_studio(
         return {"claim": claim.model_dump(), "downstream": downstream}
 
     @app.get("/studio/api/conflicts",
-             dependencies=[Depends(require_token)])
+             dependencies=[_read_dep or Depends(require_token)])
     async def conflicts() -> list[dict[str, Any]]:
         """冲突清单（cognition 流重放 claim.conflict_detected）。"""
         found: list[dict[str, Any]] = []
@@ -136,7 +152,7 @@ def mount_studio(
 
     # ---- 批量影响分析入口（只读预览——执行走 revalidate_claims）----
     @app.get("/studio/api/impact",
-             dependencies=[Depends(require_token)])
+             dependencies=[_read_dep or Depends(require_token)])
     async def impact_preview(k: str, v: str) -> dict[str, Any]:
         from ..governance.revalidation import impact_analysis
 
@@ -154,8 +170,9 @@ def mount_studio(
 
     # ---- 专家写操作（事件留痕 + 批准流——UI 零旁路）----
     @app.post("/studio/api/claims/{claim_id}/review",
-              dependencies=[Depends(require_token)])
-    async def review_claim(claim_id: str, body: dict[str, Any]) -> dict[str, Any]:
+              dependencies=[_write_dep or Depends(require_token)])
+    async def review_claim(claim_id: str, body: dict[str, Any],
+                           request: Request) -> dict[str, Any]:
         """审核：先落批准（9.5 五要素）再执行 cognition 判定。
         approve → claim.accepted；reject → claim.disputed（理由入
         counterevidence）。终态主张拒审（cognition 状态机守卫）。"""
@@ -166,7 +183,19 @@ def mount_studio(
         cognition.refresh()  # 终态判定不基于陈旧投影
         _claim_or_404(claim_id)
         decision = body.get("decision")
-        approver = body.get("approver")
+        # AC：approver 事件携带真实身份——RBAC 下取认证主体（body
+        # 可省略；显式传值须与主体一致，防冒名）
+        # AC：approver 携带真实身份——RBAC 下取认证主体（依赖工厂已
+        # 写入 request.state.principal）；body 显式传值须与主体一致（防冒名）
+        authenticated = getattr(request.state, "principal", None)
+        auth_user = getattr(authenticated, "user", None)
+        approver = body.get("approver") or auth_user
+        if not approver:
+            raise HTTPException(status_code=400,
+                                detail="approver 必填（RBAC 主体或 body.approver）")
+        if auth_user and body.get("approver") and body["approver"] != auth_user:
+            raise HTTPException(status_code=403,
+                                detail=f"approver 冒名：认证主体为 {auth_user!r}")
         reason = body.get("reason")
         valid = (decision in ("approve", "reject")
                  and isinstance(approver, str) and approver
@@ -203,20 +232,27 @@ def mount_studio(
         }
 
     @app.post("/studio/api/claims/{claim_id}/annotate",
-              dependencies=[Depends(require_token)])
-    async def annotate_claim(claim_id: str, body: dict[str, Any]) -> dict[str, Any]:
+              dependencies=[_write_dep or Depends(require_token)])
+    async def annotate_claim(claim_id: str, body: dict[str, Any],
+                             request: Request) -> dict[str, Any]:
         """标注：claim.annotated 纯留痕（旁注不是判定——判定走 review）。"""
         from vasta_protocols.errors import VastaError
 
         cognition.refresh()
         _claim_or_404(claim_id)
         note = body.get("note")
-        annotator = body.get("annotator")
+        authenticated = getattr(request.state, "principal", None)
+        auth_user = getattr(authenticated, "user", None)
+        annotator = body.get("annotator") or auth_user
         valid = (isinstance(note, str) and note
                  and isinstance(annotator, str) and annotator)
         if not valid:
             raise HTTPException(
                 status_code=400, detail="note 与 annotator 须为非空字符串")
+        if auth_user and body.get("annotator") and                 body["annotator"] != auth_user:
+            raise HTTPException(
+                status_code=403,
+                detail=f"annotator 冒名：认证主体为 {auth_user!r}")
         try:
             await cognition.annotate(claim_id, note, annotator=annotator)
         except VastaError as exc:

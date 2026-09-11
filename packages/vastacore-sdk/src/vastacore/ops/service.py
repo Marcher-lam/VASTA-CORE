@@ -80,8 +80,13 @@ def create_app(
     contracts: dict[str, ContractTemplate] | None = None,
     root: str | Path = ".vasta/store",
     token: str,
+    principal_resolver: Any | None = None,
 ) -> FastAPI:
-    """装配 HTTP 服务（token 必填——无匿名面）。"""
+    """装配 HTTP 服务（token 必填——无匿名面）。
+
+    Story 10.8：principal_resolver 给定时启用 RBAC（每端点按
+    (资源类, 动作) 评估，403 拒绝留痕 run.access_denied）；缺省回退
+    共享 token（开发档后向兼容）。"""
     from vasta_storage import timeline as build_timeline
 
     service = VastaService(
@@ -100,6 +105,15 @@ def create_app(
         service.close()  # 评审修复：shutdown 关闭全部会话与服务 store
 
     app.router.lifespan_context = _lifespan
+
+    # Story 10.8 RBAC：resolver 给定 → 每端点角色评估；否则裸 token
+    rbac_dependencies = {}
+    if principal_resolver is not None:
+        from ..governance.rbac import require_role
+        for res, act in (("runs", "read"), ("runs", "write"),
+                         ("evidence", "read"), ("ops", "read")):
+            rbac_dependencies[(res, act)] = require_role(
+                res, act, resolver=principal_resolver, store=service.store)
 
     def require_token(request: Request) -> None:
         import hmac as _hmac
@@ -157,7 +171,17 @@ def create_app(
         except Exception:  # noqa: BLE001——指标面不因单源缺失失败
             return 0
 
-    @app.post("/runs", status_code=201, dependencies=[Depends(require_token)])
+    from fastapi import Depends as _Depends
+    _write_dep = (
+        _Depends(rbac_dependencies[("runs", "write")])
+        if ("runs", "write") in rbac_dependencies
+        else Depends(require_token))
+    _read_dep = (
+        _Depends(rbac_dependencies[("runs", "read")])
+        if ("runs", "read") in rbac_dependencies
+        else Depends(require_token))
+
+    @app.post("/runs", status_code=201, dependencies=[_write_dep])
     async def create_run(body: CreateRunBody) -> dict[str, str]:
         async with service.lock:
             session = await AgentSession.create(
@@ -199,7 +223,7 @@ def create_app(
             # 其余异常放行为 500（评审修复：服务端缺陷不再伪装成客户端 400）
         return {"kind": obs.kind, "detail": obs.detail}
 
-    @app.post("/runs/{run_id}/act", dependencies=[Depends(require_token)])
+    @app.post("/runs/{run_id}/act", dependencies=[_write_dep])
     async def act(run_id: str, body: ActBody) -> dict[str, Any]:
         from vasta_protocols.errors import VastaError
         from vasta_protocols.protocols import Action
@@ -236,7 +260,7 @@ def create_app(
             service.sessions.pop(run_id, None)
         return {"ok": True}
 
-    @app.get("/runs/{run_id}/summary", dependencies=[Depends(require_token)])
+    @app.get("/runs/{run_id}/summary", dependencies=[_read_dep])
     async def summary(run_id: str) -> dict[str, Any]:
         session = service.sessions.get(run_id)
         if session is not None:

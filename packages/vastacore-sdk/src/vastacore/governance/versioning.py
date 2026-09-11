@@ -98,10 +98,13 @@ async def _emit_registry(
 
 
 def _existing_version(
-    store: Any, kind: str, name: str, version: str,
+    store: Any, kind: str, name: str, version: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> dict[str, Any] | None:
-    """registry 流中该 (kind, name, version) 的既有发布（None=未发布过）。"""
-    for event in store.iter_run_events(_REGISTRY_RUN):
+    """registry 流中该 (kind, name, version) 的既有发布（None=未发布过；
+    F8：按作用域过滤——跨租户同键互为幻影）。"""
+    for event in store.iter_run_events(
+            _REGISTRY_RUN, tenant_id=tenant_id, project_id=project_id):
         if event.type != _event_type_of(kind):
             continue
         p = event.payload
@@ -140,7 +143,9 @@ async def _publish(
     import hashlib
 
     sha = hashlib.sha256(canonical).hexdigest()
-    existing = _existing_version(store, kind, name, version)
+    existing = _existing_version(store, kind, name, version,
+                                 tenant_id=tenant_id,
+                                 project_id=project_id)
     if existing is not None:
         if existing.get("sha256") == sha:
             return PublishedRef(kind=kind, name=name, version=version, sha256=sha)
@@ -221,7 +226,8 @@ async def version_as_of(
     type_ = _event_type_of(kind)
     latest: dict[str, Any] | None = None
     found = False
-    for event in store.iter_run_events(_REGISTRY_RUN):
+    for event in store.iter_run_events(
+            _REGISTRY_RUN, tenant_id=tenant_id, project_id=project_id):
         if as_of_seq is not None and event.seq > as_of_seq:
             continue
         if as_of_ts is not None and event.ts > as_of_ts:

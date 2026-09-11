@@ -73,17 +73,21 @@ class RollbackResult(BaseModel):
 
 
 def _replay(
-    store: Any, kind: str, name: str,
+    store: Any, kind: str, name: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> tuple[dict[str, str], list[str]]:
     """事件全量重放 → (按版本最新状态表, 去重活跃序)。
 
     评审修复 F4/M1/M3：放弃栈式 active_history（suspend→resume 同版本
     重复压栈、多次终态只弹一次——_active 可指向 revoked 版本且 rollback
     自回滚）。活跃序：版本进入 active 即入列（去重），离开 active
-    （挂起/终态/回滚）即从任意位置移除。"""
+    （挂起/终态/回滚）即从任意位置移除。
+    F8（10.8）：按信封作用域过滤——跨租户同 kind+name 不混流。"""
     state: dict[str, str] = {}
     active_order: list[str] = []
     for event in store.iter_run_events(_REGISTRY_RUN):
+        if event.tenant_id != tenant_id or event.project_id != project_id:
+            continue
         p = event.payload
         if event.type == "release.transition" and p.get("kind") == kind \
                 and p.get("name") == name:
@@ -102,17 +106,25 @@ def _replay(
     return state, active_order
 
 
-def _get_state_sync(store: Any, kind: str, name: str) -> dict[str, str]:
+def _get_state_sync(
+    store: Any, kind: str, name: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> dict[str, str]:
     """同步版状态重建（MVP 规模全量重放；``_active`` = 活跃序末位）。"""
-    state, active_order = _replay(store, kind, name)
+    state, active_order = _replay(store, kind, name, tenant_id=tenant_id,
+                                  project_id=project_id)
     if active_order:
         state["_active"] = active_order[-1]
     return state
 
 
-async def get_release_status(store: Any, kind: str, name: str) -> str:
+async def get_release_status(
+    store: Any, kind: str, name: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> str:
     """当前发布状态（active 版本的 status；无 active 则最新版本的 status）。"""
-    state = _get_state_sync(store, kind, name)
+    state = _get_state_sync(store, kind, name, tenant_id=tenant_id,
+                            project_id=project_id)
     active = state.get("_active")
     if active:
         return state.get(active, "active")
@@ -143,6 +155,7 @@ async def promote_release(
     store: Any, kind: str, name: str, version: str, *,
     to: str,
     approver: str | None = None,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ReleaseResult:
     """推进发布状态（逐级——跳级拒）。
 
@@ -153,7 +166,8 @@ async def promote_release(
     from .versioning import version_as_of
 
     try:
-        await version_as_of(store, kind, name, version=version)
+        await version_as_of(store, kind, name, version=version,
+                            tenant_id=tenant_id, project_id=project_id)
     except VastaError:
         raise VastaError(
             code="release.version_not_published",
@@ -161,7 +175,8 @@ async def promote_release(
                      "（先 publish——幻影版本不可入状态机）"),
         ) from None
 
-    state = _get_state_sync(store, kind, name)
+    state = _get_state_sync(store, kind, name, tenant_id=tenant_id,
+                            project_id=project_id)
     current = state.get(version, "candidate")
     if current == "active":
         raise VastaError(
@@ -203,8 +218,10 @@ async def promote_release(
         payload["approval_id"] = await _record_review(
             store, action="release.promote_active",
             detail={"kind": kind, "name": name, "version": version},
-            approver=approver)
-    sequencer = EventSequencer(store, _REGISTRY_RUN)
+            approver=approver, tenant_id=tenant_id, project_id=project_id)
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN,
+        tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("release.transition", payload)
     return ReleaseResult(kind=kind, name=name, version=version, status=to)
 
@@ -223,15 +240,18 @@ class RevocationResult(BaseModel):
 
 async def suspend_release(
     store: Any, kind: str, name: str, version: str, *, reason: str,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ReleaseResult:
     """挂起（active→suspended——漂移/事故临时下线；可 resume）。"""
     return await _lifecycle_step(store, kind, name, version,
-                                 to="suspended", reason=reason)
+                                 to="suspended", reason=reason,
+                                 tenant_id=tenant_id, project_id=project_id)
 
 
 async def _lifecycle_step(
     store: Any, kind: str, name: str, version: str, *,
     to: str, reason: str,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ReleaseResult:
     """suspend/resume/retire 共用迁移步（复核免——非上线/吊销门）。
 
@@ -241,13 +261,15 @@ async def _lifecycle_step(
     from .versioning import version_as_of
 
     try:
-        await version_as_of(store, kind, name, version=version)
+        await version_as_of(store, kind, name, version=version,
+                            tenant_id=tenant_id, project_id=project_id)
     except VastaError:
         raise VastaError(
             code="release.version_not_published",
             message=f"{kind} {name!r} v{version} 尚未发布",
         ) from None
-    state, active_order = _replay(store, kind, name)
+    state, active_order = _replay(store, kind, name, tenant_id=tenant_id,
+                                  project_id=project_id)
     current = state.get(version, "candidate")
     allowed = _VALID_TRANSITIONS.get(current, frozenset())
     if to not in allowed:
@@ -263,7 +285,9 @@ async def _lifecycle_step(
                      f"{[v for v in active_order if v != version]}"
                      "——先挂起/退役当前再 resume（防双 current）"),
         )
-    sequencer = EventSequencer(store, _REGISTRY_RUN)
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN,
+        tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("release.transition", {
         "kind": kind, "name": name, "version": version,
         "from": current, "to": to, "reason": reason,
@@ -273,25 +297,30 @@ async def _lifecycle_step(
 
 async def retire_release(
     store: Any, kind: str, name: str, version: str, *, reason: str,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ReleaseResult:
     """退役（active/suspended→retired——终态；新版本接替后下线）。"""
     return await _lifecycle_step(store, kind, name, version,
-                                 to="retired", reason=reason)
+                                 to="retired", reason=reason,
+                                 tenant_id=tenant_id, project_id=project_id)
 
 
 async def resume_release(
     store: Any, kind: str, name: str, version: str, *, reason: str,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ReleaseResult:
     """恢复（suspended→active——免复核：上线复核门已在首次
     canary→active 时通过，恢复不是新上线）。"""
     return await _lifecycle_step(store, kind, name, version,
-                                 to="active", reason=reason)
+                                 to="active", reason=reason,
+                                 tenant_id=tenant_id, project_id=project_id)
 
 
 async def revoke_release(
     store: Any, kind: str, name: str, version: str, *,
     reason: str, approver: str | None = None,
     plans_of_model: Any = None,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> RevocationResult:
     """吊销（任何活跃态→revoked——**终态不可逆**）。
 
@@ -302,7 +331,8 @@ async def revoke_release(
     from .versioning import version_as_of
 
     try:
-        await version_as_of(store, kind, name, version=version)
+        await version_as_of(store, kind, name, version=version,
+                            tenant_id=tenant_id, project_id=project_id)
     except VastaError:
         raise VastaError(
             code="release.version_not_published",
@@ -329,8 +359,10 @@ async def revoke_release(
         store, action="release.revoke",
         detail={"kind": kind, "name": name, "version": version,
                 "reason": reason},
-        approver=approver)
-    sequencer = EventSequencer(store, _REGISTRY_RUN)
+        approver=approver, tenant_id=tenant_id, project_id=project_id)
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN,
+        tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("release.transition", {
         "kind": kind, "name": name, "version": version,
         "from": current, "to": "revoked", "reason": reason,
@@ -338,7 +370,9 @@ async def revoke_release(
     })
     invalidated: list[str] = []
     if plans_of_model is not None:
-        bridge_seq = EventSequencer(store, "cognition")
+        bridge_seq = EventSequencer(
+            store, "cognition",
+            tenant_id=tenant_id, project_id=project_id)
         for plan_id in plans_of_model(version):
             await bridge_seq.emit("plan.invalidated", {
                 "plan_id": plan_id,
@@ -352,7 +386,8 @@ async def revoke_release(
 
 
 async def rollback_release(
-    store: Any, kind: str, name: str,
+    store: Any, kind: str, name: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> RollbackResult:
     """回滚到前一 active 版本。
 
@@ -360,7 +395,8 @@ async def rollback_release(
     resume 重复压栈——rollback 可自回滚到自身/以 revoked 为锚点抹掉
     吊销终态）；回滚目标须为**可服务**版本——终态（revoked/retired/
     rolled_back）与 suspended 版本拒。"""
-    state, active_order = _replay(store, kind, name)
+    state, active_order = _replay(store, kind, name, tenant_id=tenant_id,
+                                  project_id=project_id)
     current_active = active_order[-1] if active_order else None
     if not current_active:
         raise VastaError(
@@ -379,7 +415,9 @@ async def rollback_release(
             message=(f"回滚目标 v{previous} 现为 {state.get(previous)}"
                      "（不可服务——挂起/终态版本不能承接流量）"),
         )
-    sequencer = EventSequencer(store, _REGISTRY_RUN)
+    sequencer = EventSequencer(
+        store, _REGISTRY_RUN,
+        tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("release.rolled_back", {
         "kind": kind, "name": name,
         "rolled_back_from": current_active,
