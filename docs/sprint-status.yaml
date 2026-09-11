@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-09-2026 18:00
+last_updated: 09-11-2026 20:00
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -121,9 +121,21 @@ development_status:
   9-13-domain-studio: done
   9-14-sandbox-bridge-close: done
   epic-9-retrospective: done
-
-  epic-10: backlog
-  epic-10-retrospective: optional
+  epic-10: done
+  10-1-subpackage-refactor: done
+  10-2-test-hygiene: done
+  10-3-model-lifecycle: done
+  10-4-drift-alerting: done
+  10-5-cognition-operators: done
+  10-6-audit-export: done
+  10-7-open-schema: done
+  10-8-rbac: done
+  10-9-oidc-scim: done
+  10-10-audit-log: done
+  10-11-residency-retention: done
+  10-12-byok-airgap: done
+  10-13-usage-billing: done
+  epic-10-retrospective: done
 
   epic-11: backlog
   epic-11-retrospective: optional
@@ -236,3 +248,27 @@ action_items:
     owner: "用户"
     status: open
     ref: "docs/epic-9-retro-2026-09-09.md"
+  - id: "epic-10-retro-item-18-事件目录生成机制-schema_registry-目录从代码发射点生成-手工快照"
+    epic: 10
+    action: "事件目录生成机制：schema_registry 目录从代码发射点生成（手工快照必然漂移）"
+    owner: "架构"
+    status: open
+    ref: "docs/epic-10-retro-2026-09-11.md"
+  - id: "epic-10-retro-item-19-跨-story-组合测试惯例-同-epic-内新模块间官方接法必须有组合测试-装"
+    epic: 10
+    action: "跨 Story 组合测试惯例：同 Epic 内新模块间官方接法必须有组合测试（装配缝两连对策）"
+    owner: "全体"
+    status: open
+    ref: "docs/epic-10-retro-2026-09-11.md"
+  - id: "epic-10-retro-item-20-提交脚本化-story-提交前一键-pytest-ruff-lint-impor"
+    epic: 10
+    action: "提交脚本化：Story 提交前一键 pytest+ruff+lint-imports+sprint-status 回写（声明失实与回写断链的共同根治）"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-10-retro-2026-09-11.md"
+  - id: "epic-10-retro-item-21-stage-5-启动裁决-w-1-接入点评估-governance-内部分层评估"
+    epic: 10
+    action: "Stage 5 启动裁决：W-1 接入点评估 + governance 内部分层评估"
+    owner: "用户/架构"
+    status: open
+    ref: "docs/epic-10-retro-2026-09-11.md"
