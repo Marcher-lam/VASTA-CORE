@@ -72,7 +72,8 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "run": {
         "access_denied", "adopted", "bill_generated", "cancelled",
-        "completed", "cost_recorded", "created", "failed",
+        "completed", "cost_recorded", "created", "delegation_completed",
+        "delegation_created", "failed",
         "identity_asserted", "paused",
         "quota_configured", "resumed", "role_assigned", "role_revoked",
         "scim_synced", "secret_ref_configured", "started", "throttled",

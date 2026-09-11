@@ -67,8 +67,7 @@ def main() -> int:
         ("pytest 全量", [sys.executable, "-m", "pytest", "-q"]),
         ("ruff", [sys.executable, "-m", "ruff", "check",
                   "packages", "tests"]),
-        ("lint-imports", [sys.executable, "-m", "importlinter",
-                          "--config", str(ROOT / "pyproject.toml")]),
+        ("lint-imports", ["lint-imports"]),
     ]
     for name, cmd in steps:
         ok, _ = run(name, cmd)
