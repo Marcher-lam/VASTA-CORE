@@ -39,6 +39,17 @@ from .governance.audit_log import (
     query_audit_log,
 )
 from .governance.bridge_wiring import PropagationReport, refute_with_propagation
+from .governance.data_policy import (
+    DataPolicy,
+    DisposalCandidate,
+    JurisdictionRule,
+    RetentionRule,
+    configure_data_policy,
+    disposal_drill,
+    enforce_residency,
+    retention_due,
+    verify_residency,
+)
 from .governance.drift import (
     DriftMetrics,
     DriftPolicy,
@@ -155,6 +166,15 @@ __all__ = [
     "AuditLogQuery",
     "audit_log_integrity_statement",
     "query_audit_log",
+    "DataPolicy",
+    "DisposalCandidate",
+    "JurisdictionRule",
+    "RetentionRule",
+    "configure_data_policy",
+    "disposal_drill",
+    "enforce_residency",
+    "retention_due",
+    "verify_residency",
     "promote_release",
     "resume_release",
     "retire_release",
