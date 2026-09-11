@@ -47,7 +47,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "artifact": {
         "access_denied", "corrupted", "deletion_proved", "not_found",
-        "retention_configured",
+        "published", "retention_configured", "shared", "shared_revoked",
     },
     "claim": {
         "accepted", "annotated", "confidence_decayed",
@@ -77,18 +77,21 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "run": {
         "access_denied", "adopted", "bill_generated", "cancelled",
-        "completed", "cost_recorded", "created", "delegation_completed",
-        "delegation_created", "failed", "gap_detected",
+        "completed", "control_released", "cost_recorded", "created",
+        "delegation_completed", "delegation_created",
+        "deviation_context", "failed", "gap_detected",
         "agent_role_set", "autonomy_adjusted", "identity_asserted",
         "paused",
         "quota_configured", "resumed", "risk_budget_configured",
         "risk_budget_enforced", "risk_exposure_recorded",
         "role_assigned", "role_revoked",
         "role_violation",
-        "scim_synced", "secret_ref_configured", "started", "throttled",
+        "scim_synced", "secret_ref_configured", "started",
+        "takeover", "throttled",
     },
     "verification": {"deviated", "passed"},
-    "world_model": {"suspended", "updated", "validated"},
+    "world_model": {"meta_decision", "published", "suspended",
+                    "updated", "validated"},
 }
 
 

@@ -137,3 +137,48 @@ class TestRealAdapterIntegration:
         resp = asyncio.run(a.generate(ModelRequest(prompt="ping")))
         assert resp.content
 
+
+
+def _static_response(payload):
+    async def http_post(url, headers, body, timeout_s):
+        return payload
+    return http_post
+
+
+class TestRealAdapterReviewRegressions:
+    """Epic 11 评审修复回归（边界 RA-1/RA-2、盲审 L6/L7）。"""
+
+    async def test_non_dict_response_wrapped(self) -> None:
+        """RA-1：http_post 返回 None/list → 受控 VastaError（非裸
+        AttributeError）。"""
+        for bad in (None, ["choices"], 42):
+            a = adapter()
+            a._http_post = _static_response(bad)  # noqa: SLF001
+            with pytest.raises(VastaError) as err:
+                await a.generate(ModelRequest(prompt="hi"))
+            assert err.value.code == "real_adapter.invalid_response"
+
+    async def test_upstream_error_body_surfaces(self) -> None:
+        """RA-1：上游 error 体语义不再丢失（原先只报无 choices）。"""
+        a = adapter(response={"error": {"message": "quota exceeded"}})
+        with pytest.raises(VastaError) as err:
+            await a.generate(ModelRequest(prompt="hi"))
+        assert err.value.code == "real_adapter.upstream_error"
+        assert "quota" in err.value.message
+
+    async def test_none_content_wrapped(self) -> None:
+        """L7：content=None → 受控错误（非裸 pydantic ValidationError）。"""
+        a = adapter(response={"choices": [
+            {"message": {"role": "assistant", "content": None}}]})
+        with pytest.raises(VastaError) as err:
+            await a.generate(ModelRequest(prompt="hi"))
+        assert err.value.code == "real_adapter.empty_content"
+
+    async def test_seeds_results_reconciliation(self, store) -> None:
+        """L6/RA-3：seeds 与 task_results 键集不符——拒（事件不可
+        声称与实际计算不同的种子集）。"""
+        with pytest.raises(VastaError) as e:
+            await run_real_seed_ci(
+                store, adapter(), seeds=[1, 2, 3],
+                task_results={1: 0.9, 2: 0.8})
+        assert e.value.code == "real_adapter.seed_mismatch"

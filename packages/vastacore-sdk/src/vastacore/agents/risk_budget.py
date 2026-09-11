@@ -105,13 +105,26 @@ async def record_risk_exposure(
     is_high_risk: bool = False,
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> ExposureRecord:
-    """敞口累计（高危 × 权重）——留痕，返回新快照。"""
+    """敞口累计（高危 × 权重）——留痕，返回新快照。
+
+    评审修复（盲审 M2、边界 R-1）：risk_weight 须非负有限——负值
+    可把触顶敞口「洗白」回预算内、NaN 使 ``>=`` 比较恒 False 永不
+    触顶；``model_copy(update=)`` 不走 pydantic 校验，故更新后显式
+    重验（ge=0 约束不形同虚设）。"""
+    import math
+
+    if not math.isfinite(risk_weight) or risk_weight < 0:
+        raise VastaError(
+            code="riskbudget.bad_weight",
+            message=(f"risk_weight={risk_weight!r} 须为非负有限数"
+                     "（负值洗白敞口、NaN 解除预算闸）"),
+        )
     units = exposure.risk_units_used + (
         risk_weight if is_high_risk else 0.0)
     ops = exposure.high_risk_ops_used + (1 if is_high_risk else 0)
-    updated = exposure.model_copy(update={
+    updated = ExposureRecord.model_validate(exposure.model_copy(update={
         "risk_units_used": round(units, 6),
-        "high_risk_ops_used": ops})
+        "high_risk_ops_used": ops}))
     sequencer = EventSequencer(
         store, _BUDGET_RUN, tenant_id=tenant_id, project_id=project_id)
     await sequencer.emit("run.risk_exposure_recorded", {
@@ -130,7 +143,12 @@ def enforce_budget(
 
     - 敞口与高危配额均在预算内 → 预算 ceiling；
     - 任一触顶 → 降至 L0（组织级降自治——安全侧）；
+    - 敞口非有限（NaN——毒记录）→ fail-closed 降 L0；
     留痕由调用方接（enforce 与 trace 分离——同 11.5 模式）。"""
+    import math
+
+    if not math.isfinite(exposure.risk_units_used):
+        return AutonomyLevel.L0_OBSERVE  # 毒记录 fail-closed
     if exposure.risk_units_used >= budget.risk_units or \
             exposure.high_risk_ops_used >= budget.high_risk_ops:
         return AutonomyLevel.L0_OBSERVE  # 触顶降级

@@ -5,8 +5,10 @@
 - **AgentRole**：Actor（执行——全工具面）/ Observer（只读观察——
   仅观察与检索）/ Verifier（核验——核验工具面）/ Builder（构建
   ——模型/工件构建面）/ Curator（维护——认知资产维护面）；
-- **角色能力面**：每角色声明可调用工具类别与可发射事件面——
+- **角色能力面**：每角色声明可调用工具类别——
   ``validate_role_action`` 超面拒（``run.role_violation`` 留痕）；
+  （按角色限制事件发射面的机制未在本 Story 交付——SDK 积木
+  形态，接线属后续；见 docs/reviews/epic11-code-review.md 保留项）
 - **角色配置留痕**（configure_agent_role → ``run.agent_role_set``）。
 """
 

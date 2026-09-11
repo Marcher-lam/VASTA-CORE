@@ -100,3 +100,50 @@ class TestTournament:
 
         with pytest.raises(ValidationError):
             spec(candidates=[Candidate(name="solo")])
+
+
+class TestTournamentReviewRegressions:
+    """Epic 11 评审修复回归（盲审 M4、边界 T-1/T-2/T-3）。"""
+
+    async def test_missing_metric_candidate_fails(self, store) -> None:
+        """M4/T-2：缺指标的候选判失败——少报不再夺冠。"""
+        async def runner(name: str) -> dict[str, float]:
+            if name == "lazy":
+                return {"success_rate": 0.9}  # 缺 cost_efficiency
+            return {"success_rate": 0.9, "cost_efficiency": 0.5}
+
+        report = await run_tournament(store, spec(
+            candidates=[Candidate(name="lazy"),
+                        Candidate(name="honest")]), runner)
+        lazy = next(r for r in report.results if r.candidate == "lazy")
+        assert lazy.failed
+        assert "缺指标" in lazy.error
+        assert report.winner == "honest"
+
+    async def test_nan_metric_candidate_fails(self, store) -> None:
+        """T-1：NaN 指标候选判失败——不再成为 winner。"""
+        async def runner(name: str) -> dict[str, float]:
+            if name == "poison":
+                return {"success_rate": float("nan"),
+                        "cost_efficiency": 0.1}
+            return {"success_rate": 0.8, "cost_efficiency": 0.2}
+
+        report = await run_tournament(store, spec(
+            candidates=[Candidate(name="poison"),
+                        Candidate(name="clean")]), runner)
+        poison = next(r for r in report.results
+                      if r.candidate == "poison")
+        assert poison.failed
+        assert "非有限数" in poison.error
+        assert report.winner == "clean"
+
+    def test_duplicate_candidate_names_rejected(self) -> None:
+        """T-3：同名候选不唯一——规格期拒。"""
+        with pytest.raises(ValueError):
+            spec(candidates=[Candidate(name="dup"),
+                             Candidate(name="dup")])
+
+    def test_duplicate_metrics_rejected(self) -> None:
+        """T-3：重复指标项——规格期拒（权重翻倍）。"""
+        with pytest.raises(ValueError):
+            spec(metrics=["acc", "acc"])

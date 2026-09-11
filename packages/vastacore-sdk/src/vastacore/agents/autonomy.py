@@ -62,9 +62,27 @@ class AutonomyPolicy(BaseModel):
         description="升档需连续 N 次达标（防抖动）")
 
     def model_post_init(self, __context: Any) -> None:
-        if abs(sum(self.weights.values()) - 1.0) > 0.01:
+        import math
+
+        dimension_keys = {"environment", "tool", "operation", "data"}
+        if set(self.weights) != dimension_keys:
             raise ValueError(
-                f"权重和须为 1（得到 {sum(self.weights.values())}）")
+                f"权重键集须恰为四维 {sorted(dimension_keys)}"
+                f"（得到 {sorted(self.weights)}）")
+        for key, weight in self.weights.items():
+            if not math.isfinite(weight) or weight < 0:
+                raise ValueError(
+                    f"权重 {key}={weight!r} 须为非负有限数"
+                    "（负权重使风险方向反转、NaN 使档位静默失效）")
+        total = sum(self.weights.values())
+        if abs(total - 1.0) > 0.01:
+            raise ValueError(f"权重和须为 1（得到 {total}）")
+        t0, t1, t2 = self.thresholds
+        if not all(math.isfinite(t) for t in (t0, t1, t2)) \
+                or not t0 < t1 < t2:
+            raise ValueError(
+                f"阈值须严格递增且有限（得到 {self.thresholds}）"
+                "——非单调阈值使档位互斥失效")
 
 
 class AutonomyState(BaseModel):
@@ -112,9 +130,15 @@ def assess_autonomy(
     """评估 → 新状态（纯函数）：
 
     - 目标等级低于当前（降级）→ 即时生效，连胜清零；
-    - 目标等级高于当前（升级）→ 需连续 promote_streak 次达标
-      才生效（每次达标 streak+1，未达标清零）；
-    - 同级 → streak 递增（为将来升档蓄势）。"""
+    - 目标等级高于当前（升档蓄势）→ 仅「读数达到高于当前档」
+      的评估计连胜；连胜满 promote_streak 升**一级**（逐级推进
+      ——不跳级）；
+    - 同级 → 状态不变（同级读数不蓄势——升档连胜只由升档级
+      读数构成，单次低危读数不可携历史同级计数跳档）。
+
+    Epic 11 评审修复（盲审 H4/边界 A-4）：原实现同级评估也递增
+    streak，且升档直跳目标档——L1 上同级蓄势任意次后，单次低危
+    读数即 L1→L3，防抖动承诺失效。"""
     policy = policy or AutonomyPolicy()
     score = compute_score(inputs, policy)
     target = _level_for_score(score, policy)
@@ -127,10 +151,10 @@ def assess_autonomy(
         streak = state.promote_streak + 1
         if streak >= policy.promote_streak:
             return state.model_copy(update={
-                "level": target, "promote_streak": 0})
+                "level": _LEVEL_ORDER[current_idx + 1],
+                "promote_streak": 0})  # 逐级升档
         return state.model_copy(update={"promote_streak": streak})
-    return state.model_copy(update={
-        "promote_streak": state.promote_streak + 1})
+    return state.model_copy()  # 同级：不蓄势
 
 
 def required_approval_for(level: AutonomyLevel,

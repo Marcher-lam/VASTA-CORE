@@ -3,14 +3,17 @@
 确定性转移之外的不确定性可建模：
 
 - **ProbabilisticWorldModel**：转移分布（dict 状态→概率）——
-  seed 注入采样（确定性测试）；归一化校验（概率和≈1）；
+  seed 注入采样（确定性测试）；归一化校验（概率和≈1 且逐项
+  ∈[0,1]——负概率使质量静默转移给其余项）；
 - **CausalModel**：干预查询（do 算子简化——干预即固定变量后
   查询后验）；结构最小（变量依赖表 + 干预覆盖）；
 - **ConstraintModel**：可行域校验（谓词列表——全部满足即可行）；
 - **CompositeModel**：DSL 组件编排（组件间传递状态——复用
-  RuleSet 语义）；
-- 全部走既有沙箱执行面（SandboxExecutor/Pool）与静态检查；
-  模型类型入事件留痕。
+  RuleSet 语义）。
+
+四类模型是进程内纯计算类（结构最小 MVP）——沙箱执行面接线、
+validation.py 静态检查扩展与 world_model.* 事件留痕属后续接线
+（Epic 11 验收审计保留项，见 docs/reviews/epic11-code-review.md）。
 """
 
 from __future__ import annotations
@@ -33,6 +36,14 @@ class ProbabilisticWorldModel:
     def __init__(self, transitions: dict[str, dict[str, float]],
                  *, seed: int | None = None) -> None:
         for state, dist in transitions.items():
+            for target, prob in dist.items():
+                if not 0.0 <= prob <= 1.0:
+                    raise VastaError(
+                        code="model_lab.prob_out_of_range",
+                        message=(f"状态 {state!r}→{target!r} 概率 "
+                                 f"{prob} ∉ [0,1]——负概率使质量"
+                                 "静默转移给其余项"),
+                    )
             total = sum(dist.values())
             if abs(total - 1.0) > 0.01:
                 raise VastaError(
@@ -131,14 +142,28 @@ class CompositeModel(BaseModel):
     def transition(self, state: dict[str, Any],
                    action: dict[str, Any]) -> dict[str, Any]:
         """顺序执行组件规则（DSL 语义：set 覆盖/add 增量——
-        后组件可覆盖前组件效果）。"""
+        后组件可覆盖前组件效果）。
+
+        add 目标须为数值（评审修复 P-5——对字符串状态 add 裸
+        TypeError 而非受控错误）。"""
         result = dict(state)
         for rules in self.component_rules:
             rule = rules.get(action.get("to", ""), {})
             for key, value in rule.get("set", {}).items():
                 result[key] = value
             for key, delta in rule.get("add", {}).items():
-                result[key] = result.get(key, 0) + delta
+                current = result.get(key, 0)
+                if not isinstance(current, (int, float)) or \
+                        isinstance(current, bool) or \
+                        not isinstance(delta, (int, float)) or \
+                        isinstance(delta, bool):
+                    raise VastaError(
+                        code="model_lab.composite_add_type",
+                        message=(f"add 目标 {key}={current!r} 与增量 "
+                                 f"{delta!r} 须为数值（DSL add 语义"
+                                 "仅数值增量）"),
+                    )
+                result[key] = current + delta
         return result
 
 

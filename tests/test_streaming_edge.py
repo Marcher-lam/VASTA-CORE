@@ -108,3 +108,113 @@ class TestEdgeBuffer:
         assert await buf.flush(
             store, stream_env=env, frame_commit=cas_commit,
             tenant_id="t", project_id="p") == []
+
+
+class TestEdgeBufferRecovery:
+    """Epic 11 评审修复（盲审 H3/M5、边界 E-1/E-2、验证缺口 G1）。"""
+
+    async def test_second_flush_after_anchor_advance(self, store) -> None:
+        """H3：连续性锚随回传推进——第二次 flush 不误报缺口。"""
+        env = StreamingEnvironment(count_window=1, stream_id="s")
+        buf = EdgeBuffer("edge-r1")
+        for seq in range(3):
+            buf.buffer(frame(seq))
+        await buf.flush(store, stream_env=env, frame_commit=cas_commit,
+                        tenant_id="t", project_id="p")
+        # 断连-恢复-再断连：第二批帧序从 3 起
+        for seq in (3, 4):
+            buf.buffer(frame(seq))
+        committed = await buf.flush(
+            store, stream_env=env, frame_commit=cas_commit,
+            tenant_id="t", project_id="p")
+        assert [f.seq for f in committed] == [3, 4]
+        gaps = [e for e in store.iter_run_events(
+            "edge-stream", tenant_id="t", project_id="p")
+            if e.type == "run.gap_detected"]
+        assert gaps == []  # 无假缺口遥测
+
+    async def test_partial_commit_resume_no_duplicates(self, store) -> None:
+        """E-1：flush 中途失败 → 重试从失败帧续传（已提交帧不重复）。"""
+        env = StreamingEnvironment(count_window=1, stream_id="s")
+        buf = EdgeBuffer("edge-r2")
+        for seq in range(3):
+            buf.buffer(frame(seq))
+
+        calls: list[str] = []
+
+        async def fail_on_third(body: bytes, frame_id: str) -> str:
+            calls.append(frame_id)
+            if len(calls) == 3:
+                raise RuntimeError("edge commit interrupted")
+            return await cas_commit(body, frame_id)
+
+        with pytest.raises(RuntimeError):
+            await buf.flush(store, stream_env=env,
+                            frame_commit=fail_on_third,
+                            tenant_id="t", project_id="p")
+        # 重试：帧 0/1 已出队，只提交帧 2
+        committed = await buf.flush(
+            store, stream_env=env, frame_commit=cas_commit,
+            tenant_id="t", project_id="p")
+        assert [f.seq for f in committed] == [2]
+        assert calls == ["s:f0", "s:f1", "s:f2"]  # 失败帧前的全部调用
+        # 事件流帧序无重复
+        frame_events = [e for e in store.iter_run_events(
+            "edge-stream", tenant_id="t", project_id="p")
+            if e.type == "observation.stream_frame"]
+        frame_seqs = [e.payload["frame_seq"] for e in frame_events]
+        assert frame_seqs == [0, 1, 2]
+
+    async def test_duplicate_seq_different_digest_rejected(self) -> None:
+        """E-2：同 seq 不同 digest 的重复缓冲即拒（前帧不覆盖）。"""
+        buf = EdgeBuffer("edge-r3")
+        buf.buffer(frame(0))
+        import hashlib
+
+        other = StreamFrame(
+            frame_id="s:f0", seq=0, event_count=5,
+            payload_digest=hashlib.sha256(b"y").hexdigest())
+        with pytest.raises(VastaError) as e:
+            buf.buffer(other)
+        assert e.value.code == "run.duplicate_frame_seq"
+        # 同 digest 重复缓冲幂等
+        buf.buffer(frame(0))
+
+    async def test_frame_cas_body_anchored_to_frame(self, store) -> None:
+        """验证缺口 G1：CAS 提交体与帧字段一致、sha 为体内容真实
+        SHA-256（内容寻址锚定——不接收任意 sha）。"""
+        import hashlib
+        import json
+
+        env = StreamingEnvironment(count_window=2, stream_id="s")
+        env.push({"e": 1})
+        f = env.push({"e": 2})
+
+        seen: dict[str, bytes] = {}
+
+        async def capture_commit(body: bytes, frame_id: str) -> str:
+            seen[frame_id] = body
+            return "stub-sha"
+
+        with pytest.raises(VastaError) as e:
+            await env.commit_frame(
+                store, f, frame_commit=capture_commit,
+                tenant_id="t", project_id="p")
+        assert e.value.code == "stream.cas_mismatch"  # 存根哈希即拒
+        committed = await env.commit_frame(
+            store, f, frame_commit=cas_commit,
+            tenant_id="t", project_id="p")
+        body = seen[f.frame_id]
+        # 提交体由帧字段构成（frame_id/seq/event_count/payload_digest）
+        assert json.loads(body) == {
+            "frame_id": f.frame_id, "seq": f.seq,
+            "event_count": f.event_count,
+            "payload_digest": f.payload_digest,
+        }
+        # 真实内容寻址断言：sha 必须是提交体的 SHA-256（拒绝 stub）
+        assert committed.cas_sha256 == hashlib.sha256(body).hexdigest()
+        # 且 payload_digest 是帧内事件体的摘要（帧摘要链锚定）
+        frame_body = json.dumps([{"e": 1}, {"e": 2}], sort_keys=True,
+                                ensure_ascii=False).encode()
+        assert f.payload_digest == hashlib.sha256(
+            frame_body).hexdigest()

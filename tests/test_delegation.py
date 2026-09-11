@@ -106,3 +106,72 @@ class TestComplete:
         events = [e for e in store.iter_run_events("delegations")
                   if e.type == "run.delegation_completed"]
         assert events[-1].payload["missing"] == ["report_body"]
+
+
+class _ScopedAction:
+    """带输入引用的动作桩（input_scope 校验面——Action 协议无
+    inputs 字段时由执行器封装）。"""
+
+    def __init__(self, tool: str, inputs: dict | None = None) -> None:
+        self.tool = tool
+        self.inputs = inputs
+
+
+class TestReviewRegressions:
+    """Epic 11 评审修复回归（盲审 M1、边界 D-1/D-2/D-3/D-4）。"""
+
+    def test_nan_budget_rejected(self) -> None:
+        """D-1：NaN/inf 预算穿透三道校验——构造期拒。"""
+        import math
+
+        with pytest.raises(VastaError) as e:
+            contract(budget={"max_actions": math.nan})
+        assert e.value.code == "delegation.bad_budget"
+
+    async def test_unknown_parent_budget_dimension_rejected(
+            self, store) -> None:
+        """M1.2：父配额缺维度即拒（fail-closed——原缺键跳过即绕过）。"""
+        with pytest.raises(VastaError) as e:
+            await delegate(store,
+                           contract(budget={"max_wall_seconds": 99999}),
+                           parent_budget={"max_actions": 50})
+        assert e.value.code == "delegation.budget_dimension_unknown"
+
+    async def test_cumulative_overdraw_rejected(self, store) -> None:
+        """M1.1：多份委派合计透支父配额拒（committed_budget 对拍）。"""
+        with pytest.raises(VastaError) as e:
+            await delegate(store, contract(budget={"max_actions": 40}),
+                           parent_budget={"max_actions": 50},
+                           committed_budget={"max_actions": 40})
+        assert e.value.code == "delegation.budget_exceeded"
+
+    def test_input_scope_enforced(self) -> None:
+        """M1.3/D-3：input_scope 执行——契约外输入值拒。"""
+        validate_action(None, contract(),
+                        _ScopedAction("query", {"dataset": "sales-2026"}))
+        with pytest.raises(VastaError) as e:
+            validate_action(
+                None, contract(),
+                _ScopedAction("query", {"dataset": "hr-salaries"}))
+        assert e.value.code == "delegation.input_out_of_scope"
+
+    def test_input_scope_unknown_key_rejected(self) -> None:
+        """M1.3：契约作用域外的输入键拒。"""
+        with pytest.raises(VastaError) as e:
+            validate_action(
+                None, contract(),
+                _ScopedAction("query", {"secret_ref": "prod-db"}))
+        assert e.value.code == "delegation.input_out_of_scope"
+
+    def test_success_criteria_type_validated(self) -> None:
+        """D-2：success_criteria 非字符串列表——构造期拒。"""
+        with pytest.raises(VastaError) as e:
+            contract(output_contract={"success_criteria": "report"})
+        assert e.value.code == "delegation.bad_output_contract"
+
+    def test_negative_budget_used_rejected(self) -> None:
+        """D-4：负/NaN 预算用量拒。"""
+        with pytest.raises(VastaError) as e:
+            validate_action(None, contract(), Action(tool="query", args={}),
+                            budget_used={"max_actions": -3})
+        assert e.value.code == "delegation.bad_budget_usage"

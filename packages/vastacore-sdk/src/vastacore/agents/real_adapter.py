@@ -86,6 +86,19 @@ class OpenAICompatAdapter(ModelAdapter):
             body=body,
             timeout_s=self.config.timeout_s,
         )
+        if not isinstance(response, dict):
+            raise VastaError(
+                code="real_adapter.invalid_response",
+                message=(f"{self.config.name} 返回体须为对象（得到 "
+                         f"{type(response).__name__}——非 dict 响应"
+                         "不可裸 AttributeError 传播）"),
+            )
+        if "error" in response:
+            raise VastaError(
+                code="real_adapter.upstream_error",
+                message=(f"{self.config.name} 上游错误："
+                         f"{response['error']!r}"),
+            )
         choices = response.get("choices") or []
         if not choices:
             raise VastaError(
@@ -93,6 +106,12 @@ class OpenAICompatAdapter(ModelAdapter):
                 message=f"{self.config.name} 返回无 choices",
             )
         content = choices[0].get("message", {}).get("content", "")
+        if not isinstance(content, str) or not content:
+            raise VastaError(
+                code="real_adapter.empty_content",
+                message=(f"{self.config.name} 返回 content 空/非字符串"
+                         f"（{content!r}）——不可裸 ValidationError"),
+            )
         usage = response.get("usage") or {}
         return ModelResponse(content=content, detail={
             "usage": usage, "adapter": self.config.name,
@@ -114,9 +133,20 @@ async def run_real_seed_ci(
 
     task_results：seed → 成功率（真实评测产出——由调用方经
     adapter × VastaLab 跑出）；≥2 种子才产 CI（<2 拒——
-    seed_confidence_interval 契约）。"""
+    seed_confidence_interval 契约）。
+
+    评审修复（边界 RA-3）：``seeds`` 与 ``task_results`` 键集对账
+    ——事件声称的种子集必须与实际算 CI 的种子集一致（原先事件可
+    声称与计算不同的种子集）。"""
     from ..governance.revalidation import seed_confidence_interval
 
+    if set(task_results) != set(seeds):
+        raise VastaError(
+            code="real_adapter.seed_mismatch",
+            message=(f"seeds {sorted(seeds)} 与 task_results 键集 "
+                     f"{sorted(task_results)} 不符——事件声称的种子集"
+                     "须与实际计算一致"),
+        )
     if len(task_results) < 2:
         raise VastaError(
             code="real_adapter.needs_seeds",

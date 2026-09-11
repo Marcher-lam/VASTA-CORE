@@ -102,3 +102,23 @@ class TestComposite:
     def test_no_matching_rule_passthrough(self) -> None:
         comp = CompositeModel(component_rules=[{"right": {"set": {"x": 1}}}])
         assert comp.transition({"x": 0}, {"to": "left"}) == {"x": 0}
+
+
+class TestExtendedModelsReviewRegressions:
+    """Epic 11 评审修复回归（边界 P-1/P-5）。"""
+
+    def test_negative_probability_rejected(self) -> None:
+        """P-1：逐概率 ∈[0,1]——负概率不再静默转移质量。"""
+        with pytest.raises(VastaError) as e:
+            ProbabilisticWorldModel(
+                {"s": {"a": -0.5, "b": 1.5}}, seed=1)
+        assert e.value.code == "model_lab.prob_out_of_range"
+
+    def test_add_to_string_state_wrapped(self) -> None:
+        """P-5：对字符串状态 add → 受控 VastaError（非裸 TypeError）。"""
+        model = CompositeModel(component_rules=[
+            {"go": {"add": {"label": 1}}},  # label 被 set 为字符串后 add
+        ])
+        with pytest.raises(VastaError) as e:
+            model.transition({"label": "init"}, {"to": "go"})
+        assert e.value.code == "model_lab.composite_add_type"

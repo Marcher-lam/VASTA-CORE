@@ -10,6 +10,7 @@ from vastacore.agents.autonomy import (
     AutonomyLevel,
     AutonomyPolicy,
     AutonomyState,
+    _level_for_score,
     assess_autonomy,
     compute_score,
     required_approval_for,
@@ -80,14 +81,20 @@ class TestAsymmetry:
         assert s.level is AutonomyLevel.L0_OBSERVE
         assert s.promote_streak == 0
 
-    def test_promotion_needs_streak(self) -> None:
-        """升级需连续达标（防抖动）——一次不够。"""
+    def test_promotion_needs_streak_stepwise(self) -> None:
+        """升级需连续达标（防抖动）且逐级推进（评审修复 H4——
+        一次不够、两次升一级而非跳档）。"""
         s1 = assess_autonomy(state(AutonomyLevel.L1_SUGGEST),
                              inputs())  # target L3，streak=1
         assert s1.level is AutonomyLevel.L1_SUGGEST  # 未升
         assert s1.promote_streak == 1
-        s2 = assess_autonomy(s1, inputs())  # streak=2 → 升
-        assert s2.level is AutonomyLevel.L3_AUTONOMOUS
+        s2 = assess_autonomy(s1, inputs())  # streak=2 → 升一级
+        assert s2.level is AutonomyLevel.L2_ASSIST  # 不跳 L3
+        assert s2.promote_streak == 0
+        s3 = assess_autonomy(s2, inputs())  # streak=1 未满
+        assert s3.level is AutonomyLevel.L2_ASSIST
+        s4 = assess_autonomy(s3, inputs())
+        assert s4.level is AutonomyLevel.L3_AUTONOMOUS
 
     def test_promotion_streak_reset_on_miss(self) -> None:
         s1 = assess_autonomy(state(), inputs())  # 达标 streak=1
@@ -144,3 +151,70 @@ class TestTrace:
         await trace_adjustment(store, s, s, inputs=inputs(),
                                tenant_id="t", project_id="p")
         assert not list(store.iter_run_events("autonomy"))
+
+
+class TestReviewRegressions:
+    """Epic 11 评审修复回归（盲审 H4、边界 A-1/A-2/A-3/A-4、
+    验证缺口 G2 阈值边界）。"""
+
+    def test_same_level_readings_do_not_accumulate_streak(self) -> None:
+        """H4：同级读数不蓄势——L1 上 N 次同级读数后，单次低危
+        读数不可携历史计数跳档。"""
+        s = state(AutonomyLevel.L1_SUGGEST)
+        # score=0.7 → target L1（同级）——重复任意次
+        same = inputs(environment_risk=0.7, tool_risk=0.7,
+                      operation_risk=0.7, data_sensitivity=0.7)
+        for _ in range(5):
+            s = assess_autonomy(s, same)
+        assert s.level is AutonomyLevel.L1_SUGGEST
+        assert s.promote_streak == 0  # 同级不蓄势
+        # 单次低危读数（target L3）：streak=1 < 2 → 不升
+        s = assess_autonomy(s, inputs())
+        assert s.level is AutonomyLevel.L1_SUGGEST
+        assert s.promote_streak == 1
+
+    def test_no_skip_level_promotion(self) -> None:
+        """A-4：跨档读数不跳级——L0 上 target=L3 连胜满也只到 L1。"""
+        s = state(AutonomyLevel.L0_OBSERVE)
+        s = assess_autonomy(s, inputs())  # streak=1
+        s = assess_autonomy(s, inputs())  # streak=2 → L1（非 L3）
+        assert s.level is AutonomyLevel.L1_SUGGEST
+
+    def test_negative_weight_rejected(self) -> None:
+        """A-1：负权重使风险方向反转——构造期拒。"""
+        with pytest.raises(ValueError):
+            AutonomyPolicy(weights={"environment": -0.5, "tool": 0.5,
+                                    "operation": 0.5, "data": 0.5})
+
+    def test_nan_weight_rejected(self) -> None:
+        """A-1：NaN 权重静默失效——构造期拒。"""
+        with pytest.raises(ValueError):
+            AutonomyPolicy(weights={
+                "environment": float("nan"), "tool": 0.3,
+                "operation": 0.3, "data": 0.4})
+
+    def test_extra_weight_key_rejected(self) -> None:
+        """A-2：多余键不再静默忽略。"""
+        with pytest.raises(ValueError):
+            AutonomyPolicy(weights={"environment": 0.2, "tool": 0.3,
+                                    "operation": 0.3, "data": 0.1,
+                                    "bogus": 0.1})
+
+    def test_non_monotonic_thresholds_rejected(self) -> None:
+        """A-3：非单调阈值使档位互斥失效——构造期拒。"""
+        with pytest.raises(ValueError):
+            AutonomyPolicy(thresholds=(0.9, 0.1, 0.5))
+
+    def test_threshold_boundaries(self) -> None:
+        """G2：默认阈值边界分数的档位断言（< 语义锚定——
+        0.25/0.50/0.75 恰为边界时落入下一档）。"""
+        assert _level_for_score(0.25, AutonomyPolicy()) \
+            is AutonomyLevel.L2_ASSIST  # 恰 0.25 不属 L3
+        assert _level_for_score(0.50, AutonomyPolicy()) \
+            is AutonomyLevel.L1_SUGGEST
+        assert _level_for_score(0.75, AutonomyPolicy()) \
+            is AutonomyLevel.L0_OBSERVE
+        assert _level_for_score(0.2499, AutonomyPolicy()) \
+            is AutonomyLevel.L3_AUTONOMOUS  # 边界内侧
+        assert _level_for_score(0.0, AutonomyPolicy()) \
+            is AutonomyLevel.L3_AUTONOMOUS

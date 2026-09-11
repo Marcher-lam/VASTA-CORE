@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
 
 _TOURNAMENT_RUN = "evaluation"
@@ -51,6 +52,17 @@ class TournamentSpec(BaseModel):
         default_factory=dict,
         description="指标名 → 越大越好（缺省 True）")
 
+    def model_post_init(self, __context: Any) -> None:
+        names = [c.name for c in self.candidates]
+        if len(set(names)) != len(names):
+            duplicates = sorted({n for n in names
+                                 if names.count(n) > 1})
+            raise ValueError(
+                f"候选名不唯一 {duplicates}——winner 归属不可区分")
+        if len(set(self.metrics)) != len(self.metrics):
+            raise ValueError(
+                f"指标集含重复项 {self.metrics}——重复计分权重翻倍")
+
 
 class CandidateResult(BaseModel):
     """单候选竞赛结果。"""
@@ -74,6 +86,34 @@ class TournamentReport(BaseModel):
     winner: str | None = None
 
 
+def _validate_metrics(result: CandidateResult,
+                      spec: TournamentSpec) -> None:
+    """指标面核验（评审修复——盲审 M4、边界 T-1/T-2）：
+
+    - 缺任一 spec 指标 → 该候选 failed：缺失静默计 0.0 使「少报
+      指标」在越小越好维度必胜（0 是理论最优值）；
+    - 非有限值（NaN/inf）→ failed：NaN 与任何数比较恒 False，
+      排序未定义（实测 NaN 候选可居首）。
+    """
+    import math
+
+    missing = [m for m in spec.metrics if m not in result.metrics]
+    if missing:
+        raise VastaError(
+            code="tournament.missing_metrics",
+            message=(f"候选 {result.candidate!r} 缺指标 {missing}"
+                     "——少报指标即失败（不可静默计 0 分）"),
+        )
+    for metric, value in result.metrics.items():
+        if not isinstance(value, (int, float)) or \
+                isinstance(value, bool) or not math.isfinite(value):
+            raise VastaError(
+                code="tournament.non_finite_metric",
+                message=(f"候选 {result.candidate!r} 指标 {metric}="
+                         f"{value!r} 非有限数——排序未定义"),
+            )
+
+
 def _composite_score(result: CandidateResult,
                      spec: TournamentSpec) -> float:
     """综合分：各指标按方向归一后求和（失败候选 -inf 垫底）。"""
@@ -81,7 +121,7 @@ def _composite_score(result: CandidateResult,
         return float("-inf")
     score = 0.0
     for metric in spec.metrics:
-        value = result.metrics.get(metric, 0.0)
+        value = result.metrics[metric]  # _validate_metrics 已保证在
         higher_better = spec.metric_direction.get(metric, True)
         score += value if higher_better else -value
     return score
@@ -110,8 +150,10 @@ async def run_tournament(
     async def run_one(candidate: Candidate) -> CandidateResult:
         try:
             metrics = await runner(candidate.name)
-            return CandidateResult(candidate=candidate.name,
-                                  metrics=dict(metrics))
+            result = CandidateResult(candidate=candidate.name,
+                                     metrics=dict(metrics))
+            _validate_metrics(result, spec)
+            return result
         except Exception as exc:  # noqa: BLE001——单候选失败不毁整赛
             return CandidateResult(
                 candidate=candidate.name, failed=True,

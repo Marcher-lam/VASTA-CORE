@@ -48,20 +48,27 @@ class LeaderboardEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate: str
-    score: float
+    score: float = Field(allow_inf_nan=False,
+                         description="有限分值——NaN 使排序未定义"
+                                     "（不同输入序得到不同榜首）")
     evidence_run: str = Field(description="评测 Run id（证据可溯）")
     evidence_event_seq: int = Field(ge=0,
                                     description="评测事件 seq")
 
 
 class Leaderboard(BaseModel):
-    """排行榜（生成即留痕——不可变快照）。"""
+    """排行榜（生成即留痕——不可变快照）。
+
+    作用域绑定（评审修复 H2）：榜随生成作用域固化——private 校验
+    先比对榜归属与请求作用域，跨租户/项目主体不可读他人私榜。"""
 
     model_config = ConfigDict(extra="forbid")
 
     leaderboard_id: str
     metric: str
     visibility: str
+    tenant_id: str = "t-default"
+    project_id: str = "p-default"
     entries: list[LeaderboardEntry] = Field(
         description="按指标降序")
 
@@ -86,7 +93,8 @@ async def generate_leaderboard(
         key=lambda e: e.score, reverse=True)
     board = Leaderboard(
         leaderboard_id=spec.leaderboard_id, metric=spec.metric,
-        visibility=spec.visibility, entries=entries)
+        visibility=spec.visibility, tenant_id=spec.tenant_id,
+        project_id=spec.project_id, entries=entries)
     sequencer = EventSequencer(
         store, _LEADERBOARD_RUN,
         tenant_id=spec.tenant_id, project_id=spec.project_id)
@@ -109,6 +117,16 @@ def check_leaderboard_access(
     时 RBAC 评估——否则作用域字符串比对）。fail-closed。"""
     if board.visibility == "public":
         return
+    # 作用域绑定（H2）：榜归属作用域 ≠ 请求作用域即拒——原先校验的
+    # 是「主体能否读调用方传入的作用域」，从未校验榜属于该作用域
+    # （任意租户 auditor 传自己的作用域即可读全部 private 榜）
+    if board.tenant_id != tenant_id or board.project_id != project_id:
+        raise VastaError(
+            code="access.denied",
+            message=(f"榜 {board.leaderboard_id!r} 属作用域 "
+                     f"{board.tenant_id}:{board.project_id}——与请求"
+                     f"作用域 {tenant_id}:{project_id} 不符"),
+        )
     if principal is not None:
         from ..governance.rbac import evaluate_access
 

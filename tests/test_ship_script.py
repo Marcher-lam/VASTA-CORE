@@ -67,3 +67,62 @@ class TestGateShortCircuit:
 
         ok, _ = ship.run("必然成功", [sys.executable, "-c", "print(1)"])
         assert ok is True
+
+
+class TestShipReviewRegressions:
+    """Epic 11 评审修复回归（盲审 M6、边界 H-3）。"""
+
+    def test_duplicate_key_only_first_flipped(self, monkeypatch,
+                                              tmp_path) -> None:
+        """M6.2：同键两处（development_status + 规划区）——只翻转
+        development_status 的首个，规划区 backlog 不被连带改写。"""
+        from scripts import ship
+
+        fake = tmp_path / "sprint-status.yaml"
+        fake.write_text(
+            "development_status:\n"
+            "  epic-11: in-progress\n"
+            "\n"
+            "planned_epics:\n"
+            "  epic-11: backlog\n",
+            encoding="utf-8")
+        monkeypatch.setattr("scripts.ship.STATUS_FILE", fake)
+        assert ship.update_status("epic-11") is True
+        text = fake.read_text(encoding="utf-8")
+        assert "  epic-11: done" in text
+        assert "  epic-11: backlog" in text  # 规划区不动
+
+    def test_empty_value_key_still_recognized(self, monkeypatch,
+                                              tmp_path) -> None:
+        """H-3：键存在但值为空——不再误报「无键」。"""
+        from scripts import ship
+
+        fake = tmp_path / "sprint-status.yaml"
+        fake.write_text("development_status:\n  11-2-x:\n",
+                        encoding="utf-8")
+        monkeypatch.setattr("scripts.ship.STATUS_FILE", fake)
+        assert ship.update_status("11-2-x") is True
+        assert "11-2-x: done" in fake.read_text(encoding="utf-8")
+
+    def test_write_is_atomic_no_tmp_leftover(self, monkeypatch,
+                                             tmp_path) -> None:
+        """M6.3：原子替换——不留 .tmp 残留。"""
+        from scripts import ship
+
+        fake = tmp_path / "sprint-status.yaml"
+        fake.write_text("development_status:\n  k-1: backlog\n",
+                        encoding="utf-8")
+        monkeypatch.setattr("scripts.ship.STATUS_FILE", fake)
+        ship.update_status("k-1")
+        assert not list(tmp_path.glob("*.tmp"))
+
+    def test_pytest_trailer_from_output(self) -> None:
+        """M6.5/验收审计 5：计数尾行从 pytest 输出解析——不手写。"""
+        from scripts import ship
+
+        trailer = ship._pytest_trailer(
+            "...\n1004 passed, 4 skipped in 12.3s\n", True, True)
+        assert "1004 passed" in trailer
+        assert "4 skipped" in trailer
+        assert "ruff clean" in trailer
+        assert "lint-imports kept" in trailer

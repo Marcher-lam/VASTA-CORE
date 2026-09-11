@@ -105,3 +105,64 @@ class TestUnshare:
             "sharing", tenant_id="t-a", project_id="p-a")
             if e.type == "claim.shared_revoked"]
         assert events[-1].payload["asset_ref"] == "c1"
+
+
+class TestShareAssetArtifacts:
+    """验收审计补缝：artifact 分支共享/撤销留痕（11.1 盲区的对拍）。"""
+
+    async def test_artifact_share_traced(self, store) -> None:
+        r = await share_asset(store, grant(asset_kind="artifact",
+                                            asset_ref="sha256:abc"))
+        assert r["state"] == "active"
+        events = [e for e in store.iter_run_events("sharing")
+                  if e.type == "artifact.shared"]
+        assert events[-1].payload["asset_ref"] == "sha256:abc"
+
+    async def test_artifact_unshare_traced(self, store) -> None:
+        g = grant(asset_kind="artifact", asset_ref="sha256:abc")
+        await share_asset(store, g)
+        await unshare_asset(store, g, revoked_by="agent-x")
+        events = [e for e in store.iter_run_events("sharing")
+                  if e.type == "artifact.shared_revoked"]
+        assert events[-1].payload["revoked_by"] == "agent-x"
+
+
+class TestSharingReviewRegressions:
+    """Epic 11 评审修复回归（边界 S-1/S-2/S-3、盲审 L4）。"""
+
+    async def test_private_visibility_not_shareable(self, store) -> None:
+        """S-3/L4：PRIVATE 资产不可共享（原照发 claim.shared active）。"""
+        with pytest.raises(VastaError) as e:
+            await share_asset(store, grant(visibility=Visibility.PRIVATE))
+        assert e.value.code == "sharing.private_not_shareable"
+        events = [e for e in store.iter_run_events("sharing")
+                  if e.type == "claim.shared"]
+        assert events == []
+
+    async def test_acceptance_asset_ref_mismatch_rejected(self,
+                                                          store) -> None:
+        """S-2：他资产的接受不可激活本资产的跨组织共享。"""
+        from vastacore.agents.sharing import ShareAcceptance
+
+        with pytest.raises(VastaError) as e:
+            await share_asset(
+                store,
+                grant(visibility=Visibility.ORGANIZATION,
+                      asset_ref="asset-1"),
+                acceptance=ShareAcceptance(
+                    asset_ref="asset-OTHER", accepting_org="org-b",
+                    accepted_by="op-b"))
+        assert e.value.code == "sharing.acceptance_mismatch"
+
+    def test_org_same_name_cross_tenant_rejected(self) -> None:
+        """S-1：两租户同名 org 不互相穿透组织级共享。"""
+        g = grant(visibility=Visibility.ORGANIZATION)
+        # 读者自称 org-a（同发布 org）但租户是 t-B
+        with pytest.raises(VastaError) as e:
+            check_shared_access(None, g,
+                                reader=principal(tenant="t-B"),
+                                reader_org="org-a")
+        assert e.value.code == "access.denied"
+        # 同租户同组织照常放行
+        check_shared_access(None, g, reader=principal(),
+                            reader_org="org-a")

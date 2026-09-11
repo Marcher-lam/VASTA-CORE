@@ -114,3 +114,49 @@ class TestTrace:
             if e.type == "run.risk_budget_enforced"]
         assert events[-1].payload["breached"] is True
         assert events[-1].payload["allowed_level"] == "L0"
+
+
+class TestRiskBudgetReviewRegressions:
+    """Epic 11 评审修复回归（盲审 M2、边界 R-1）。"""
+
+    async def test_negative_risk_weight_rejected(self, store) -> None:
+        """R-1：负权重洗白触顶敞口——拒。"""
+        from vastacore.agents.risk_budget import ExposureRecord
+
+        exposure = ExposureRecord(scope="agent:a",
+                                  risk_units_used=100.0,
+                                  high_risk_ops_used=100)
+        with pytest.raises(VastaError) as e:
+            await record_risk_exposure(
+                store, exposure, risk_weight=-99.0, is_high_risk=True)
+        assert e.value.code == "riskbudget.bad_weight"
+
+    async def test_nan_risk_weight_rejected(self, store) -> None:
+        """R-1：NaN 权重使预算闸永不触顶——拒。"""
+        from vastacore.agents.risk_budget import ExposureRecord
+
+        exposure = ExposureRecord(scope="agent:a", risk_units_used=0.0,
+                                  high_risk_ops_used=0)
+        with pytest.raises(VastaError):
+            await record_risk_exposure(
+                store, exposure, risk_weight=float("nan"),
+                is_high_risk=True)
+
+    def test_enforce_budget_nonfinite_fail_closed(self) -> None:
+        """R-1：非有限敞口（万一入账）→ fail-closed 降 L0。"""
+        from vastacore.agents.autonomy import AutonomyLevel
+        from vastacore.agents.risk_budget import (
+            ExposureRecord,
+            RiskBudget,
+            enforce_budget,
+        )
+
+        # model_construct 绕过校验构造毒记录（模拟历史脏账——
+        # enforce 面对非有限值须自身 fail-closed）
+        poisoned = ExposureRecord.model_construct(
+            scope="agent:a", risk_units_used=float("nan"),
+            high_risk_ops_used=0)
+        budget = RiskBudget(scope="org:o", risk_units=100.0,
+                            high_risk_ops=100)
+        assert enforce_budget(poisoned, budget) \
+            is AutonomyLevel.L0_OBSERVE

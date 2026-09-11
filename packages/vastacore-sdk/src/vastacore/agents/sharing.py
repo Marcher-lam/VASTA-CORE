@@ -62,9 +62,24 @@ async def share_asset(
 ) -> dict[str, Any]:
     """发布共享：同组织直发；跨组织需 acceptance（双边）。
 
-    返回共享状态（active/pending bilateral）。"""
+    返回共享状态（active/pending bilateral）。PRIVATE 资产无可共享
+    面（语义矛盾拒——评审修复 S-3）；acceptance 的资产引用须与
+    grant 一致（他资产的接受不可激活本资产——S-2）。"""
     from vasta_protocols.sequencer import EventSequencer
 
+    if grant.visibility is Visibility.PRIVATE:
+        raise VastaError(
+            code="sharing.private_not_shareable",
+            message=(f"资产 {grant.asset_ref!r} 为 private——私有资产"
+                     "无可共享面（先变更可见性语义）"),
+        )
+    if acceptance is not None             and acceptance.asset_ref != grant.asset_ref:
+        raise VastaError(
+            code="sharing.acceptance_mismatch",
+            message=(f"接受引用资产 {acceptance.asset_ref!r} 与共享资产 "
+                     f"{grant.asset_ref!r} 不符——B 资产的接受不可激活 "
+                     "A 资产的跨组织共享"),
+        )
     # 组织级共享：接收方已接受（他组织）→ active；否则 pending
     state = "active"
     if grant.visibility is Visibility.ORGANIZATION \
@@ -122,9 +137,16 @@ def check_shared_access(
                 message=f"项目级共享——读者作用域不符（{decision.reason}）",
             )
         return
-    # organization
+    # organization：org 同名不跨租户（评审修复 S-1——组织面原先
+    # 只比 org 字符串，两租户同名 org 互相穿透）
+    if reader.tenant_id != grant.tenant_id:
+        raise VastaError(
+            code="access.denied",
+            message=(f"组织级共享跨租户拒——读者租户 {reader.tenant_id!r}"
+                     f" ≠ 共享租户 {grant.tenant_id!r}"),
+        )
     if reader_org == grant.publisher_org:
-        return  # 同组织
+        return  # 同组织（同租户内）
     if accepted_orgs and reader_org in accepted_orgs:
         return  # 接收方已接受
     raise VastaError(
