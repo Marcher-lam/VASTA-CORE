@@ -189,7 +189,7 @@ def compatibility_matrix(
     × 清单 compatibility——已注册版本全量）。"""
     entries, _ = _project_registry(
         store, tenant_id=tenant_id, project_id=project_id)
-    manifests = _registered_manifests(
+    manifests = registered_manifests(
         store, tenant_id=tenant_id, project_id=project_id)
     matrix: dict[str, dict[str, str]] = {}
     for (pid, version) in entries:
@@ -199,7 +199,7 @@ def compatibility_matrix(
     return matrix
 
 
-def _registered_manifests(
+def registered_manifests(
     store: Any, *, tenant_id: str, project_id: str,
 ) -> dict[tuple[str, str], dict[str, Any]]:
     result: dict[tuple[str, str], dict[str, Any]] = {}
@@ -219,7 +219,7 @@ def compatible_with(
     """与平台版本兼容的 (plugin_id, version) 清单（active 且约束满足）。"""
     entries, _ = _project_registry(
         store, tenant_id=tenant_id, project_id=project_id)
-    manifests = _registered_manifests(
+    manifests = registered_manifests(
         store, tenant_id=tenant_id, project_id=project_id)
     compatible: list[tuple[str, str]] = []
     for (pid, version), entry in entries.items():
@@ -233,5 +233,6 @@ def compatible_with(
 
 
 __all__ = ["PublisherVerification", "ScanResult",
-           "compatibility_matrix", "compatible_with", "is_publisher_verified",
-           "satisfies", "scan_passed", "security_scan", "verify_publisher"]
+           "compatibility_matrix", "compatible_with",
+           "is_publisher_verified", "registered_manifests", "satisfies",
+           "scan_passed", "security_scan", "verify_publisher"]
