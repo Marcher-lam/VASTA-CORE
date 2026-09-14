@@ -195,12 +195,13 @@ async def pull_plugin(
 
     entry = resolve_plugin(store, plugin_id, version=version,
                            tenant_id=tenant_id, project_id=project_id)
-    if entry.status != "active":
+    if entry.status == "revoked":
         raise VastaError(
             code="registry.not_active",
-            message=(f"插件 {plugin_id!r} 版本 {entry.version!r} 状态 "
-                     f"{entry.status!r}——不可拉取装配"),
+            message=(f"插件 {plugin_id!r} 版本 {entry.version!r} 已撤销"
+                     "——不可拉取装配（12.6 撤销语义）"),
         )
+    # deprecated 宽限：显式版本仍可拉（latest 解析已跳过——12.6）
     payload = await store.get_artifact(
         entry.content_sha256, tenant_id=tenant_id, project_id=project_id)
     if hashlib.sha256(payload).hexdigest() != entry.content_sha256:
