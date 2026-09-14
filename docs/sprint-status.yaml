@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-11-2026 20:00
+last_updated: 09-14-2026 09:13
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -136,7 +136,7 @@ development_status:
   10-12-byok-airgap: done
   10-13-usage-billing: done
   epic-10-retrospective: done
-  epic-11: in-progress
+  epic-11: done
   11-1-catalog-generation: done
   11-2-ship-script: done
   11-3-delegation-contract: done
@@ -150,10 +150,8 @@ development_status:
   11-11-real-adapter: done
   11-12-leaderboard: done
   11-13-streaming-edge: done
-  epic-11-retrospective: optional
+  epic-11-retrospective: done
 
-  epic-11: backlog
-  epic-11-retrospective: optional
 
   epic-12: backlog
   epic-12-retrospective: optional
@@ -267,7 +265,7 @@ action_items:
     epic: 10
     action: "事件目录生成机制：schema_registry 目录从代码发射点生成（手工快照必然漂移）"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-10-retro-2026-09-11.md"
   - id: "epic-10-retro-item-19-跨-story-组合测试惯例-同-epic-内新模块间官方接法必须有组合测试-装"
     epic: 10
@@ -279,11 +277,49 @@ action_items:
     epic: 10
     action: "提交脚本化：Story 提交前一键 pytest+ruff+lint-imports+sprint-status 回写（声明失实与回写断链的共同根治）"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-10-retro-2026-09-11.md"
   - id: "epic-10-retro-item-21-stage-5-启动裁决-w-1-接入点评估-governance-内部分层评估"
     epic: 10
     action: "Stage 5 启动裁决：W-1 接入点评估 + governance 内部分层评估"
     owner: "用户/架构"
-    status: open
+    status: done
     ref: "docs/epic-10-retro-2026-09-11.md"
+  - id: "epic-11-retro-item-22-stage-6-组装前置-agents-enforcement-面接线-exec"
+    epic: 11
+    action: "Stage 6 组装前置：agents/ enforcement 面接线（executor/router/服务层调用 validate_action/check_shared_access/enforce_budget/assess_autonomy/required_approval_for
+      官方接法 + 组合测试，含 tournament→leaderboard 点名缝）"
+    owner: "架构/开发"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
+  - id: "epic-11-retro-item-23-system_streams-生成守卫-流清单从代码-_run-常量生成-同-d"
+    epic: 11
+    action: "SYSTEM_STREAMS 生成守卫：流清单从代码 _RUN 常量生成（同 D1 模式），补 7 个缺失流（delegations/memory/sharing/agent-roles/autonomy/risk-budgets/edge-stream），守卫测试入套件"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
+  - id: "epic-11-retro-item-24-11-9-三-ac-子句裁决-extended_models-接线-沙箱-静态检"
+    epic: 11
+    action: "11.9 三 AC 子句裁决：extended_models 接线（沙箱/静态检查/事件留痕）或 AC 改口——Stage 6 规划期裁决"
+    owner: "用户/架构"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
+  - id: "epic-11-retro-item-25-w-1-复评维持-stage-6-适配器-story-补齐-适配器-vastal"
+    epic: 11
+    action: "W-1 复评维持：Stage 6 适配器 Story 补齐（适配器×VastaLab 执行路径、≥10 种子门槛、CI 并入评测报告结构），届时复评解除"
+    owner: "用户/开发"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
+  - id: "epic-11-retro-item-26-数值守卫-helper-收口-require_finite-一类共享-helpe"
+    epic: 11
+    action: "数值守卫 helper 收口：require_finite 一类共享 helper 替换 4 模块 7 处散布 isfinite（随接线
+      Story 顺手做）"
+    owner: "开发"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
+  - id: "epic-11-retro-item-27-流程惯例-守卫事后抓-先改发射点-守卫抓-当场回写-撤预同步-新系统流先入-sy"
+    epic: 11
+    action: "流程惯例：守卫事后抓（先改发射点→守卫抓→当场回写，撤预同步）+ 新系统流先入 SYSTEM_STREAMS 再用"
+    owner: "全体会话"
+    status: open
+    ref: "docs/epic-11-retro-2026-09-14.md"
