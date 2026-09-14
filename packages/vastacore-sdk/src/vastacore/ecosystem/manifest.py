@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -32,6 +33,10 @@ SIGNATURE_ALGORITHM = "hmac-sha256"
 
 #: 签名密钥解析器：key_id → bytes（BYOK 注入——密钥不落库不进清单）。
 KeyResolver = Callable[[str], bytes]
+
+#: 兼容面 platform 约束形态（与 trust._CONSTRAINT 同口径——构造期拒
+#: 不可解析/空约束，评审修复 L4：discover 与 compatible_with 两面口径）。
+_CONSTRAINT_FORM = re.compile(r"^(>=|<=|>|<|==|!=)\s*\d+(?:\.\d+)*$")
 
 
 class PluginManifest(BaseModel):
@@ -57,15 +62,24 @@ class PluginManifest(BaseModel):
         description="依赖插件 id 清单（12.6 撤销闭包检查用）")
 
     def model_post_init(self, __context: Any) -> None:
-        if not self.permissions:
+        if any(not perm for perm in self.permissions):
             raise VastaError(
                 code="plugin.empty_permissions",
-                message="权限面不可为空（插件须显式声明可调用面）",
+                message="权限项不可为空串（须显式命名可调用面）",
             )
         if "platform" not in self.compatibility:
             raise VastaError(
                 code="plugin.missing_compatibility",
                 message="兼容面缺 platform 约束（缺面拒——FR-080）",
+            )
+        if not _CONSTRAINT_FORM.match(
+                self.compatibility["platform"].strip()):
+            raise VastaError(
+                code="plugin.bad_platform_constraint",
+                message=(f"兼容面 platform 约束 "
+                         f"{self.compatibility['platform']!r} 不可解析"
+                         "（须 >=/<=/>/</==/!= 点分数字——构造期拒，"
+                         "读侧不再两面口径相反）"),
             )
         if "egress" not in self.network:
             raise VastaError(
@@ -132,7 +146,16 @@ def verify_plugin(
             message=(f"签名算法 {signed.algorithm!r} 不受支持"
                      f"（当前 {SIGNATURE_ALGORITHM!r}）"),
         )
-    key = key_resolver(signed.key_id)
+    try:
+        key = key_resolver(signed.key_id)
+    except VastaError:
+        raise
+    except Exception as exc:
+        raise VastaError(
+            code="plugin.key_unresolvable",
+            message=(f"签名密钥 {signed.key_id!r} 不可解析"
+                     f"（{type(exc).__name__}: {exc}）——fail-closed"),
+        ) from exc
     expected = hmac.new(
         key, canonical_manifest_bytes(signed.manifest),
         hashlib.sha256).hexdigest()

@@ -58,7 +58,7 @@ async def register_extended_model(
 
     await emit_world_model_event(store, "world_model.registered", {
         "kind": model_kind_of(model), "name": name,
-    })
+    }, tenant_id=tenant_id, project_id=project_id)
 
 
 def _validate_model(model: Any) -> tuple[bool, dict[str, Any]]:
@@ -111,7 +111,7 @@ async def validate_extended_model(
     await emit_world_model_event(store, "world_model.validated", {
         "kind": model_kind_of(model), "name": name,
         "passed": passed, "detail": detail,
-    })
+    }, tenant_id=tenant_id, project_id=project_id)
     return passed
 
 
@@ -130,7 +130,7 @@ async def trace_extended_model_use(
         )
     await emit_world_model_event(store, "world_model.used", {
         "kind": model_kind_of(model), "name": name, "phase": phase,
-    })
+    }, tenant_id=tenant_id, project_id=project_id)
 
 
 __all__ = ["model_kind_of", "register_extended_model",

@@ -247,3 +247,156 @@ class TestFiniteHelperAdoption:
     def test_guard_config_bad_weight(self) -> None:
         with pytest.raises(VastaError):
             config(risk_weight=float("nan"))
+
+
+class TestReviewRegressions:
+    """Epic 12 评审修复回归（边界 2-1/2-6、盲审 L2、缺口 M09）。"""
+
+    async def test_concurrent_guards_do_not_lose_exposure(
+            self, store) -> None:
+        """GR-1：同一 GuardState 并发闸门不丢敞口更新（4 并发高危
+        动作 → 敞口 4.0，此前交错丢失恒 ≈1——FR-077 绕过）。"""
+        import asyncio
+
+        cfg = config(risk_budget=RiskBudget(
+            scope="agent:agent-1", risk_units=100.0, high_risk_ops=100))
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L3_AUTONOMOUS})
+
+        async def one(i: int):
+            return await guard_action(
+                store, cfg, st, Action(tool="set_status", args={"i": i}),
+                tool_category="action", operation_risk=0.6)
+
+        await asyncio.gather(*(one(i) for i in range(4)))
+        assert st.exposure.risk_units_used == pytest.approx(4.0)
+        assert st.exposure.high_risk_ops_used == 4
+
+    async def test_rejected_action_does_not_commit_state(
+            self, store) -> None:
+        """GR-3：被拒动作不推进自治连胜/不计量敞口（此前被拒读数
+        蓄势、被拒动作计敞口）。"""
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L0_OBSERVE})
+        with pytest.raises(VastaError):
+            await guard_action(store, config(), st, ACTION,
+                               tool_category="action",
+                               operation_risk=0.5)  # L0×0.5 → forbidden
+        assert st.autonomy.promote_streak == 0  # 被拒不蓄势
+        assert st.exposure.risk_units_used == 0.0  # 被拒不计量
+        assert st.exposure.high_risk_ops_used == 0
+
+    async def test_inputs_operation_risk_single_source(
+            self, store) -> None:
+        """GR-3：inputs 给定时 operation_risk 以 inputs 为准（两口径
+        合一——此前审批矩阵与自治评估互不校验）。"""
+        from vastacore.agents.autonomy import AutonomyInputs
+
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L0_OBSERVE})
+        with pytest.raises(VastaError) as e:
+            await guard_action(
+                store, config(), st, ACTION, tool_category="action",
+                operation_risk=0.05,  # 入参低危
+                inputs=AutonomyInputs(  # 四维口径高危 → forbidden
+                    environment_risk=0.0, tool_risk=0.0,
+                    operation_risk=0.5, data_sensitivity=0.0))
+        assert e.value.code == "guardrails.operation_forbidden"
+
+    async def test_non_finite_operation_risk_rejected(self, store) -> None:
+        """M09（G1）：NaN/负 operation_risk 在闸门入口拒——此前直灌
+        审批矩阵使 forbidden 判对 NaN 恒 False（禁批可翻放行）。"""
+        for bad in (float("nan"), float("inf"), -0.1):
+            with pytest.raises(VastaError) as e:
+                await guard_action(store, config(), state(), ACTION,
+                                   tool_category="action",
+                                   operation_risk=bad)
+            assert e.value.code == "guardrails.bad_operation_risk"
+
+    async def test_runtime_guard_rejects_nan_risk(self, tmp_path,
+                                                  store) -> None:
+        """M09 运行时路径：operation_risk_of 产 NaN → AgentSession
+        拒（action.executed 不发生）。"""
+        from tests.test_agent_sdk import STATUS_CONTRACT, SetStatusTool, TodoEnv
+        from vastacore.execution.agent import AgentSession
+
+        guard = make_action_guard(
+            store, config(), state(),
+            tool_category_of=lambda _t: "action",
+            operation_risk_of=lambda _t: float("nan"))
+        session = await AgentSession.create(
+            env=TodoEnv(), tools=[SetStatusTool()],
+            contracts={"set_status": STATUS_CONTRACT},
+            root=tmp_path / "store", seed=7, action_guard=guard)
+        async with session:
+            await session.start()
+            await session.reset()
+            with pytest.raises(VastaError):
+                await session.act(ACTION)
+            assert "action.executed" not in [
+                ev.type for ev in session.events()]
+
+    async def test_budget_channel_in_official_guard(self, store) -> None:
+        """GR-2：官方接法 make_action_guard 下委派预算腿生效（此前
+        该腿无参数通道、永不触发）。"""
+        guard = make_action_guard(
+            store,
+            config(contract=contract(budget={"max_actions": 5})), state(),
+            tool_category_of=lambda _t: "action",
+            budget_used_of=lambda _t: {"max_actions": 5})  # 已用满
+        with pytest.raises(VastaError) as e:
+            await guard(ACTION)
+        assert e.value.code == "delegation.budget_exhausted"
+
+    async def test_unknown_tool_category_rejected(self, store) -> None:
+        """2-5：类别映射缺键 → 受控 VastaError（非裸 KeyError）。"""
+        guard = make_action_guard(
+            store, config(), state(),
+            tool_category_of=lambda tool: {
+                "known": "action"}[tool])  # 只有 known
+        with pytest.raises(VastaError) as e:
+            await guard(Action(tool="unknown", args={}))
+        assert e.value.code == "guardrails.bad_tool_category"
+
+
+class TestSharedReadFace:
+    """验收保留项 1 清偿：check_shared_access 官方接线面。"""
+
+    async def test_shared_read_gate_denied_traced(self, store) -> None:
+        """越权读共享资产 → 拒 + run.access_denied 留痕（11.6 defer
+        #5 部分清偿）。"""
+        from vastacore.agents.guardrails import guard_shared_asset_read
+        from vastacore.agents.sharing import ShareGrant, Visibility
+        from vastacore.governance.rbac import Principal, Role
+
+        grant = ShareGrant(asset_ref="c1", asset_kind="claim",
+                           visibility=Visibility.PROJECT,
+                           publisher_org="org-a", publisher_agent="a",
+                           tenant_id="t", project_id="p-a")
+        outsider = Principal(user="x", role=Role.OPERATOR,
+                             tenant_id="t", project_id="p-other")
+        with pytest.raises(VastaError):
+            await guard_shared_asset_read(store, grant, reader=outsider,
+                                          reader_org="org-a",
+                                          tenant_id="t", project_id="p-a")
+        events = [e for e in store.iter_run_events("sharing")
+                  if e.type == "run.access_denied"]
+        assert events and events[-1].payload["asset_ref"] == "c1"
+
+    async def test_shared_read_gate_allows_authorized(self, store) -> None:
+        from vastacore.agents.guardrails import guard_shared_asset_read
+        from vastacore.agents.sharing import ShareGrant, Visibility
+        from vastacore.governance.rbac import Principal, Role
+
+        grant = ShareGrant(asset_ref="c1", asset_kind="claim",
+                           visibility=Visibility.PROJECT,
+                           publisher_org="org-a", publisher_agent="a",
+                           tenant_id="t", project_id="p-a")
+        insider = Principal(user="ok", role=Role.OPERATOR,
+                            tenant_id="t", project_id="p-a")
+        await guard_shared_asset_read(store, grant, reader=insider,
+                                      reader_org="org-a",
+                                      tenant_id="t", project_id="p-a")

@@ -93,6 +93,7 @@ class ScanResult(BaseModel):
     plugin_id: str
     version: str
     passed: bool
+    content_sha256: str = ""
     violations: list[str] = Field(default_factory=list)
 
 
@@ -106,7 +107,8 @@ def _scans(
             p = event.payload
             result[(p["plugin_id"], p["version"])] = ScanResult(
                 plugin_id=p["plugin_id"], version=p["version"],
-                passed=p["passed"], violations=p.get("violations", []))
+                passed=p["passed"], violations=p.get("violations", []),
+                content_sha256=p.get("content_sha256", ""))
     return result
 
 
@@ -117,13 +119,27 @@ async def security_scan(
 
     依赖面：清单 depends_on 的每个插件至少有一个注册版本；airgap
     面：清单 egress 复扫（10.12）。任一违例即 passed=False——12.8
-    公开发现面据此拒公开。"""
+    公开发现面据此拒公开。
+
+    评审修复（SCAN-1，盲审 H3/边界 8-3/8-4）：扫描对象必须在册且
+    事件携带 **content_sha256**——扫描结果与被扫内容密码学绑定
+    （替扫/陈旧扫描两链封死：scan_passed 比对当前注册条目哈希）。"""
     _require_registry_write(principal)
     manifest = signed.manifest
     entries, _ = _project_registry(
         store, tenant_id=principal.tenant_id,
         project_id=principal.project_id)
+    entry = entries.get((manifest.plugin_id, manifest.version))
+    if entry is None:
+        raise VastaError(
+            code="trust.scan_target_not_registered",
+            message=(f"插件 {manifest.plugin_id!r}@{manifest.version} "
+                     "未注册——扫描对象以注册表为准（不可替扫未入册"
+                     "内容）"),
+        )
     violations: list[str] = []
+    if signed.content_sha256() != entry.content_sha256:
+        violations.append("扫描对象与注册条目内容不符（哈希不匹配）")
     for dep in manifest.depends_on:
         if not any(pid == dep for (pid, _v) in entries):
             violations.append(f"依赖插件未注册：{dep}")
@@ -132,13 +148,15 @@ async def security_scan(
     violations.extend(report.violations)
     result = ScanResult(plugin_id=manifest.plugin_id,
                         version=manifest.version,
-                        passed=not violations, violations=violations)
+                        passed=not violations, violations=violations,
+                        content_sha256=entry.content_sha256)
     sequencer = EventSequencer(
         store, _REGISTRY_RUN,
         tenant_id=principal.tenant_id, project_id=principal.project_id)
     await sequencer.emit("artifact.security_scanned", {
         "plugin_id": manifest.plugin_id, "version": manifest.version,
         "passed": result.passed, "violations": violations,
+        "content_sha256": entry.content_sha256,
         "scanned_by": principal.user,
     })
     return result
@@ -148,24 +166,30 @@ def scan_passed(
     store: Any, plugin_id: str, version: str, *,
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> bool:
-    """扫描门投影：该版本最近一次扫描通过（未扫描即不通过——
-    fail-closed，公开面不列）。"""
-    return _scans(store, tenant_id=tenant_id,
-                  project_id=project_id).get(
-        (plugin_id, version), ScanResult(
-            plugin_id=plugin_id, version=version,
-            passed=False, violations=["never scanned"])).passed
+    """扫描门投影：该版本最近一次扫描通过，**且扫描锚定的
+    content_sha256 与当前注册条目一致**（内容漂移即失效——
+    fail-closed；未扫描/未注册同样不通过，公开面不列）。"""
+    scan = _scans(store, tenant_id=tenant_id,
+                  project_id=project_id).get((plugin_id, version))
+    if scan is None:
+        return False
+    entries, _ = _project_registry(
+        store, tenant_id=tenant_id, project_id=project_id)
+    entry = entries.get((plugin_id, version))
+    if entry is None or scan.content_sha256 != entry.content_sha256:
+        return False
+    return scan.passed
 
 
 _CONSTRAINT = re.compile(r"^(>=|<=|>|<|==|!=)\s*(\d+(?:\.\d+)*)$")
 
 
-def _version_tuple(version: str) -> tuple[int, ...]:
-    return tuple(int(p) for p in version.split("."))
-
-
 def satisfies(platform_version: str, constraint: str) -> bool:
-    """平台版本是否满足约束（点分数字版本比较）。"""
+    """平台版本是否满足约束（点分数字——右补零对齐比较，评审修复
+    VER-1：1.0.0 ≡ 1.0；platform_version 非数字形态抛 VastaError
+    而非裸 ValueError）。"""
+    from ._versions import compare_versions, parse_version
+
     m = _CONSTRAINT.match(constraint.strip())
     if m is None:
         raise VastaError(
@@ -173,11 +197,14 @@ def satisfies(platform_version: str, constraint: str) -> bool:
             message=(f"兼容约束 {constraint!r} 不可解析"
                      "（支持 >=/<=/>/</==/!= 点分数字）"),
         )
-    op, ref = m.group(1), _version_tuple(m.group(2))
-    actual = _version_tuple(platform_version)
+    op = m.group(1)
+    ref = parse_version(m.group(2), field="constraint",
+                        code="trust.bad_constraint")
+    actual = parse_version(platform_version, field="platform_version")
+    cmp = compare_versions(actual, ref)
     return {
-        ">=": actual >= ref, "<=": actual <= ref, ">": actual > ref,
-        "<": actual < ref, "==": actual == ref, "!=": actual != ref,
+        ">=": cmp >= 0, "<=": cmp <= 0, ">": cmp > 0,
+        "<": cmp < 0, "==": cmp == 0, "!=": cmp != 0,
     }[op]
 
 

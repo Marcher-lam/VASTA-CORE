@@ -33,10 +33,14 @@ def sandbox_subprocess_env() -> dict[str, str]:
 
 
 async def emit_world_model_event(
-    store: Any, type_: str, payload: dict[str, Any]
+    store: Any, type_: str, payload: dict[str, Any], *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> EventEnvelope:
     """以 cognition run 落 world_model.* 事件（因果链续接）。
 
-    统一序列器（Story 9.1）：系统流模式——与 CognitionService 并发写安全。"""
-    sequencer = EventSequencer(store, "cognition")
+    统一序列器（Story 9.1）：系统流模式——与 CognitionService 并发写
+    安全。tenant/project 可透传（评审修复 TRC-1——此前固定默认作用
+    域，多租户留痕落错租户流）；缺省保持向后兼容。"""
+    sequencer = EventSequencer(store, "cognition", tenant_id=tenant_id,
+                               project_id=project_id)
     return await sequencer.emit(type_, payload)

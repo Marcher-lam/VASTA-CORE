@@ -148,7 +148,7 @@ class TestDeprecate:
             await deprecate_plugin(store, "lib-a", "1.0.0",
                                    principal=publisher(),
                                    successor="9.9.9")
-        assert e.value.code == "registry.successor_not_registered"
+        assert e.value.code == "registry.successor_not_active"
 
     async def test_deprecate_requires_registry_write(self, store) -> None:
         await publish(store, "lib-a", "1.0.0")

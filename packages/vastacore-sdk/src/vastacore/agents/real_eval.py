@@ -72,6 +72,12 @@ async def run_real_seed_eval(
             code="real_eval.duplicate_seeds",
             message="种子集含重复项（独立采样要求去重）",
         )
+    if ci_level not in (0.90, 0.95, 0.99):
+        # 前置校验（评审修复 4-3）：不跑完 10 个种子才在 CI 层拒
+        raise VastaError(
+            code="revalidation.bad_ci_level",
+            message=f"level 支持 0.90/0.95/0.99（得到 {ci_level}）",
+        )
     rates = [await run_adapter_tasks(adapter, tasks=tasks, judge=judge,
                                      seed=seed) for seed in seeds]
     ci = seed_confidence_interval(rates, level=ci_level)

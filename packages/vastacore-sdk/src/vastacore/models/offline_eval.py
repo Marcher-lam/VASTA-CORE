@@ -68,7 +68,26 @@ def attach_seed_ci(report: OfflineEvalReport, ci: dict[str, float],
             code="eval.bad_seed_ci",
             message=f"CI 缺契约字段 {sorted(missing)}（不齐不入报告）",
         )
-    return report.model_copy(update={"seed_ci": dict(ci)})
+    extra = set(ci) - required
+    if extra:
+        raise VastaError(
+            code="eval.bad_seed_ci",
+            message=f"CI 含契约外字段 {sorted(extra)}（不携带多余键）",
+        )
+    import math
+
+    for key in ("n", "mean", "half_width", "low", "high", "level"):
+        value = ci[key]
+        if isinstance(value, bool) \
+                or not isinstance(value, (int, float)) \
+                or not math.isfinite(value):
+            raise VastaError(
+                code="eval.bad_seed_ci",
+                message=f"CI 字段 {key}={value!r} 须为有限数"
+                        "（model_copy 绕过校验——显式值校验）",
+            )
+    return OfflineEvalReport.model_validate(
+        report.model_copy(update={"seed_ci": dict(ci)}))
 
 
 #: 事件后缀 → 核验结果词表（VerificationOutcome）。

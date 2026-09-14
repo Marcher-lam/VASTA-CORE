@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,6 +56,13 @@ def sign_evidence_set(
             code="evidence.empty_set",
             message="证据集不可为空（空集签名无意义）",
         )
+    _HASH = re.compile(r"^[0-9a-f]{64}$")
+    for h in hashes:
+        if not _HASH.match(h):
+            raise VastaError(
+                code="evidence.bad_hash_format",
+                message=f"证据哈希 {h!r} 非 64 位小写十六进制形态",
+            )
     if not key:
         raise VastaError(
             code="evidence.empty_signing_key",
@@ -86,7 +94,16 @@ def verify_evidence_set(
             code="evidence.unknown_algorithm",
             message=f"签名算法 {signed.algorithm!r} 不受支持",
         )
-    key = key_resolver(signed.key_id)
+    try:
+        key = key_resolver(signed.key_id)
+    except VastaError:
+        raise
+    except Exception as exc:
+        raise VastaError(
+            code="evidence.key_unresolvable",
+            message=(f"签名密钥 {signed.key_id!r} 不可解析"
+                     f"（{type(exc).__name__}: {exc}）——fail-closed"),
+        ) from exc
     expected = hmac.new(key, canonical_hash_set(signed.hashes),
                         hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, signed.signature):

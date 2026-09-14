@@ -37,8 +37,10 @@ _EXCLUDE_PARTS = {"tests", "scripts", "examples", ".review-tmp",
                   "__pycache__", "node_modules"}
 
 #: 系统流命名约束（与 EventEnvelope run_id 校验对齐——小写字母/
-#: 数字/连字符；排除路径分隔符形态）。
-_STREAM_NAME_OK = re.compile(r"^[a-z][a-z0-9-]*$")
+#: 数字/连字符/下划线；排除路径分隔符形态。注意：envelope 的 run_id
+#: 本体只校验 min_length——本约束是流清单自己的治理口径，非 envelope
+#: 对齐（评审修复 1-4：注释失实改口）。
+_STREAM_NAME_OK = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 def _func_name(call: ast.Call) -> str | None:
@@ -68,13 +70,19 @@ def _streams_of(tree: ast.Module) -> set[str]:
             for name in targets:
                 if name.endswith("_RUN") or name.endswith("_STREAM"):
                     found.add(value.value)
-        # ② EventSequencer(store, "字面量", …)
+        # ② EventSequencer(store, "字面量", …)——位置参与 run_id=
+        # 关键字两种形态（评审修复 1-2：关键字传参漏扫）
         if isinstance(node, ast.Call) \
-                and _func_name(node) == "EventSequencer" \
-                and len(node.args) >= 2 \
-                and isinstance(node.args[1], ast.Constant) \
-                and isinstance(node.args[1].value, str):
-            found.add(node.args[1].value)
+                and _func_name(node) == "EventSequencer":
+            if len(node.args) >= 2 \
+                    and isinstance(node.args[1], ast.Constant) \
+                    and isinstance(node.args[1].value, str):
+                found.add(node.args[1].value)
+            for kw in node.keywords:
+                if kw.arg == "run_id" \
+                        and isinstance(kw.value, ast.Constant) \
+                        and isinstance(kw.value.value, str):
+                    found.add(kw.value.value)
     return {s for s in found if _STREAM_NAME_OK.match(s)}
 
 

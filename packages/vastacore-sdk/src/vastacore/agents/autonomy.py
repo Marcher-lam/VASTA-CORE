@@ -77,6 +77,9 @@ class AutonomyPolicy(BaseModel):
         if abs(total - 1.0) > 0.01:
             raise ValueError(f"权重和须为 1（得到 {total}）")
         t0, t1, t2 = self.thresholds
+        for i, t in enumerate((t0, t1, t2)):
+            require_finite(t, field=f"阈值[{i}]",
+                           code="autonomy.bad_threshold")
         if not t0 < t1 < t2:
             raise ValueError(
                 f"阈值须严格递增（得到 {self.thresholds}）"

@@ -27,6 +27,7 @@ from vasta_protocols.sequencer import EventSequencer
 from ..agents.streaming_edge import StreamFrame, StreamingEnvironment
 from ..governance.rbac import Principal
 from .registry import _project_registry, _require_registry_write
+from .trust import scan_passed
 
 _EDGE_RUN = "edge-orchestration"
 
@@ -104,6 +105,17 @@ async def deploy_edge_group(
                      f"@{deployment.version} 不在注册表或非 active"
                      "——编组下发以注册表为准"),
         )
+    # 评审修复（L6 组合链）：编组下发同样过扫描门——未扫描/内容
+    # 漂移的插件不可直达边缘（与公开发现面同门槛）
+    if not scan_passed(store, deployment.plugin_id, deployment.version,
+                       tenant_id=principal.tenant_id,
+                       project_id=principal.project_id):
+        raise VastaError(
+            code="edge.plugin_not_scanned",
+            message=(f"插件 {deployment.plugin_id!r}"
+                     f"@{deployment.version} 扫描门未通过——编组下发"
+                     "与公开发现面同门槛（fail-closed）"),
+        )
     regions = _region_projection(
         store, tenant_id=principal.tenant_id,
         project_id=principal.project_id)
@@ -141,15 +153,21 @@ async def _trace_unreachable(store: Any, region_id: str, *,
 async def return_frames_cross_region(
     store: Any, frames: list[StreamFrame], *, source_region: str,
     target_region: str, frame_commit: Any,
-    tenant_id: str = "t-default", project_id: str = "p-default",
+    principal: Principal,
 ) -> list[StreamFrame]:
     """跨区证据回传（复用 11.13 帧级 CAS + 完整性校验）。
 
     - 源区 ``open``：整帧逐帧 CAS 提交至目标区
       （``observation.stream_frame`` 留痕）；
     - 源区 ``in-region``：**仅回传 digest 清单帧**（原始帧体留源域
-      CAS——数据不出域），清单帧同样走帧级 CAS；
-    - 目标区域不可达：``run.region_unreachable`` 留痕并拒。"""
+      CAS——数据不出域），清单帧同样走帧级 CAS，帧身份含清单摘要
+      前缀（重复回传可区分——评审修复 L1）；
+    - 同 seq 重复帧去重（同 digest 幂等、异 digest 拒——11-3）；
+    - 目标区域不可达：``run.region_unreachable`` 留痕并拒；
+    - 回传是治理动作（评审修复 M6）：principal 必填走 registry write。"""
+    _require_registry_write(principal)
+    tenant_id = principal.tenant_id
+    project_id = principal.project_id
     regions = _region_projection(store, tenant_id=tenant_id,
                                  project_id=project_id)
     source = regions.get(source_region)
@@ -168,6 +186,20 @@ async def return_frames_cross_region(
             code="edge.source_region_unknown",
             message=f"源区域 {source_region!r} 未注册——回传无从路由",
         )
+    # 11-3：同 seq 去重（同 digest 幂等；异 digest 即拒）
+    by_seq: dict[int, StreamFrame] = {}
+    for frame in sorted(frames, key=lambda f: f.seq):
+        existing = by_seq.get(frame.seq)
+        if existing is not None:
+            if existing.payload_digest != frame.payload_digest:
+                raise VastaError(
+                    code="run.duplicate_frame_seq",
+                    message=(f"回传帧序 {frame.seq} 重复且 digest 不符"
+                             "——前帧不可静默覆盖"),
+                )
+            continue  # 同 digest 幂等去重
+        by_seq[frame.seq] = frame
+    frames = list(by_seq.values())
     env = StreamingEnvironment(count_window=1,
                                stream_id=f"{source_region}-return")
     import hashlib
@@ -185,14 +217,14 @@ async def return_frames_cross_region(
             json.dumps(manifest, sort_keys=True,
                        ensure_ascii=False).encode()).hexdigest()
         manifest_frame = StreamFrame(
-            frame_id=f"{source_region}:manifest", seq=0,
+            frame_id=f"{source_region}:manifest:{digest[:8]}", seq=0,
             event_count=len(frames), payload_digest=digest)
         committed = [await env.commit_frame(
             store, manifest_frame, frame_commit=frame_commit,
             tenant_id=tenant_id, project_id=project_id)]
         return committed
     committed = []
-    for frame in sorted(frames, key=lambda f: f.seq):
+    for frame in frames:
         committed.append(await env.commit_frame(
             store, frame, frame_commit=frame_commit,
             tenant_id=tenant_id, project_id=project_id))

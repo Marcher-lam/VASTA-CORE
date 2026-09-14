@@ -102,3 +102,32 @@ class TestScannerSurface:
         """10.7 手收集的保留声明（import/bridge）经补充表入册。"""
         emitted = collect_stream_names(ROOT)
         assert {"import", "bridge"} <= emitted
+
+
+# ==================== Epic 12 评审修复回归 ====================
+
+class TestScannerShapeAnchors:
+    """缺口 M01/M03：扫描器命名形态约定锚定（后缀 $ 与 _RUN 下划线）。"""
+
+    def test_path_form_rejected_full_match(self) -> None:
+        """M01：`api/v2` 前缀合法名不可收册（$ 锚定——突变去掉 $ 后
+        `ok/../bad` 形态会被静默收进清单）。"""
+        tree = ast.parse('_X_RUN = "ok/../bad"')
+        assert _streams_of(tree) == set()
+        tree = ast.parse('_X_RUN = "api/v2"')
+        assert _streams_of(tree) == set()
+
+    def test_run_suffix_requires_underscore(self) -> None:
+        """M03：`LEGACYRUN`（无下划线）不是系统流约定。"""
+        tree = ast.parse('LEGACYRUN = "legacy"')
+        assert _streams_of(tree) == set()
+
+    def test_keyword_run_id_captured(self) -> None:
+        """1-2：`EventSequencer(store, run_id="字面量")` 关键字形态。"""
+        tree = ast.parse(
+            'EventSequencer(store, run_id="kw-stream")')
+        assert _streams_of(tree) == {"kw-stream"}
+
+    def test_underscore_names_allowed(self) -> None:
+        tree = ast.parse('_X_RUN = "edge_stream"')
+        assert _streams_of(tree) == {"edge_stream"}

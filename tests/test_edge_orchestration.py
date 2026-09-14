@@ -18,6 +18,7 @@ from vastacore.ecosystem.edge_orchestration import (
 )
 from vastacore.ecosystem.manifest import PluginManifest, sign_manifest
 from vastacore.ecosystem.registry import register_plugin
+from vastacore.ecosystem.trust import security_scan
 from vastacore.governance.rbac import Principal, Role
 
 
@@ -50,17 +51,18 @@ def frame(seq: int) -> StreamFrame:
         payload_digest=hashlib.sha256(f"frame-{seq}".encode()).hexdigest())
 
 
-async def publish_plugin(store) -> None:
-    await register_plugin(
-        store,
-        sign_manifest(
-            PluginManifest(plugin_id="collector", version="1.0.0",
-                           name="collector", permissions=["query"],
-                           data={}, network={"egress": []},
-                           resources={"max_actions": 1},
-                           compatibility={"platform": ">=0.1.0"}),
-            key_id="k", key=KEY),
-        principal=operator(), key_resolver=key_resolver)
+async def publish_plugin(store, *, scanned: bool = True) -> None:
+    signed = sign_manifest(
+        PluginManifest(plugin_id="collector", version="1.0.0",
+                       name="collector", permissions=["query"],
+                       data={}, network={"egress": []},
+                       resources={"max_actions": 1},
+                       compatibility={"platform": ">=0.1.0"}),
+        key_id="k", key=KEY)
+    await register_plugin(store, signed, principal=operator(),
+                          key_resolver=key_resolver)
+    if scanned:
+        await security_scan(store, signed, principal=operator())
 
 
 class TestRegionRegistration:
@@ -99,7 +101,7 @@ class TestEdgeDeployment:
 
     async def test_deploy_unknown_region_fail_closed(self, store) -> None:
         """AC：区域不可达 fail-closed + run.region_unreachable 留痕。"""
-        await publish_plugin(store)
+        await publish_plugin(store)  # 注册 + 扫描通过
         with pytest.raises(VastaError) as e:
             await deploy_edge_group(
                 store,
@@ -110,6 +112,20 @@ class TestEdgeDeployment:
         events = [ev for ev in store.iter_run_events("edge-orchestration")
                   if ev.type == "run.region_unreachable"]
         assert events[-1].payload["region"] == "mars-1"
+
+    async def test_deploy_unscanned_plugin_rejected(self, store) -> None:
+        """评审修复：编组下发同样过扫描门（未扫描即拒）。"""
+        await publish_plugin(store, scanned=False)
+        await register_region(
+            store, RegionSpec(region_id="eu-1", data_residency="open"),
+            principal=operator())
+        with pytest.raises(VastaError) as e:
+            await deploy_edge_group(
+                store,
+                EdgeDeployment(group="g", plugin_id="collector",
+                               version="1.0.0", regions=["eu-1"]),
+                principal=operator())
+        assert e.value.code == "edge.plugin_not_scanned"
 
     async def test_deploy_unregistered_plugin_rejected(
             self, store) -> None:
@@ -135,7 +151,7 @@ class TestCrossRegionReturn:
         committed = await return_frames_cross_region(
             store, [frame(0), frame(1)], source_region="edge-1",
             target_region="hub", frame_commit=cas_commit,
-            tenant_id="t", project_id="p")
+            principal=operator())
         assert [f.seq for f in committed] == [0, 1]
         assert all(f.cas_sha256 for f in committed)
         events = [e for e in store.iter_run_events("edge-stream")
@@ -152,12 +168,12 @@ class TestCrossRegionReturn:
         frames = [frame(0), frame(1)]
         committed = await return_frames_cross_region(
             store, frames, source_region="eu-1", target_region="hub",
-            frame_commit=cas_commit, tenant_id="t", project_id="p")
+            frame_commit=cas_commit, principal=operator())
         assert len(committed) == 1  # 单清单帧
         events = [e for e in store.iter_run_events("edge-stream")
                   if e.type == "observation.stream_frame"]
         # 目标区只见清单帧（event_count=帧数），原始帧摘要入清单
-        assert events[-1].payload["frame_id"] == "eu-1:manifest"
+        assert events[-1].payload["frame_id"].startswith("eu-1:manifest:")
         assert events[-1].payload["event_count"] == 2
         assert len(events) == 1  # 无原始帧体回传
 
@@ -175,7 +191,7 @@ class TestCrossRegionReturn:
             await return_frames_cross_region(
                 store, [frame(0)], source_region="edge-1",
                 target_region="hub", frame_commit=cas_commit,
-                tenant_id="t", project_id="p")
+                principal=operator())
         assert e.value.code == "edge.region_unreachable"
         events = [ev for ev in store.iter_run_events("edge-orchestration")
                   if ev.type == "run.region_unreachable"]
@@ -189,5 +205,23 @@ class TestCrossRegionReturn:
             await return_frames_cross_region(
                 store, [frame(0)], source_region="ghost-region",
                 target_region="hub", frame_commit=cas_commit,
-                tenant_id="t", project_id="p")
+                principal=operator())
         assert e.value.code == "edge.source_region_unknown"
+        # 评审修复 M6：回传是治理动作——无 principal 面不可达
+        # （auditor 无 registry write 拒）
+        await register_region(
+            store, RegionSpec(region_id="eu-9", data_residency="open"),
+            principal=operator())
+        await register_region(
+            store, RegionSpec(region_id="hub-9", data_residency="open"),
+            principal=operator())
+        from vastacore.governance.rbac import Role
+
+        auditor = Principal(user="a", role=Role.AUDITOR,
+                            tenant_id="t", project_id="p")
+        with pytest.raises(VastaError) as denied:
+            await return_frames_cross_region(
+                store, [frame(0)], source_region="eu-9",
+                target_region="hub-9", frame_commit=cas_commit,
+                principal=auditor)
+        assert denied.value.code == "access.denied"

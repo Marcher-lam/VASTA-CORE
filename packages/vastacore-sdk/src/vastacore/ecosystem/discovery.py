@@ -48,7 +48,14 @@ def discover_plugins(
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> list[DiscoveredPlugin]:
     """公开发现面：active + 扫描门通过（未扫描即不公开——fail-closed）
-    + 可选平台兼容过滤；弃用版本带后继标记列示。"""
+    + 可选平台兼容过滤；弃用版本带后继标记列示。
+
+    评审修复（VER-1 联动）：platform_version 非法形态入口即拒
+    （VastaError——此前裸 ValueError 逃逸）。"""
+    if platform_version is not None:
+        from ._versions import parse_version
+
+        parse_version(platform_version, field="platform_version")
     entries, _ = _project_registry(
         store, tenant_id=tenant_id, project_id=project_id)
     manifests = registered_manifests(
@@ -97,9 +104,27 @@ async def rate_plugin(
     evidence_run: str, evidence_event_seq: int,
     principal: Principal,
 ) -> PluginRating:
-    """评分留痕：引用 (run, seq) 处的评测事件——被引事件必须真实
-    存在且属 evaluation 族（引用失效即拒——评分不可凭空捏造）。"""
+    """评分留痕：引用 (run, seq) 处的评测事件。
+
+    评审修复（RATE-1，盲审 M3/边界 9-1/9-5/9-6）四道绑定：
+
+    - 被评插件版本必须在册且 active（不可给幽灵插件刷分）；
+    - 被引事件必须真实存在且属 evaluation 族（引用失效即拒）；
+    - 被引事件**写时预验分值可解析**（毒评分不再瘫痪聚合读取）；
+    - 被引事件的 ranking/entries 候选须含该 plugin_id（评测与被评
+      对象绑定——任何无关评测事件不可刷分）；
+    - 同 (plugin, version, run, seq, metric) 重放即拒（幂等）。"""
     _require_registry_write(principal)
+    entries, _ = _project_registry(
+        store, tenant_id=principal.tenant_id,
+        project_id=principal.project_id)
+    entry = entries.get((plugin_id, version))
+    if entry is None or entry.status != "active":
+        raise VastaError(
+            code="discovery.plugin_not_active",
+            message=(f"被评插件 {plugin_id!r}@{version} 不在注册表或"
+                     "非 active——评分对象以注册表为准"),
+        )
     referenced = None
     for event in store.iter_run_events(
             evidence_run, tenant_id=principal.tenant_id,
@@ -115,6 +140,24 @@ async def rate_plugin(
                      f"{evidence_event_seq}) 不存在或非 evaluation 族"
                      "事件——评分必须锚定真实评测证据"),
         )
+    _score_of(referenced.payload)  # 写时预验（毒评分拒于门外）
+    if not _event_mentions_plugin(referenced.payload, plugin_id):
+        raise VastaError(
+            code="discovery.evidence_not_about_plugin",
+            message=(f"被引评测事件不含候选 {plugin_id!r}——评分证据"
+                     "与被评对象必须绑定（不可借他者评测刷分）"),
+        )
+    for prior in store.iter_run_events(
+            _REGISTRY_RUN, tenant_id=principal.tenant_id,
+            project_id=principal.project_id):
+        if event_is_same_rating(prior, plugin_id, version, metric,
+                                evidence_run, evidence_event_seq):
+            raise VastaError(
+                code="discovery.duplicate_rating",
+                message=(f"评分 (plugin={plugin_id!r}, run={evidence_run!r}"
+                         f", seq={evidence_event_seq}, metric={metric!r})"
+                         "已存在——评分不可重放"),
+            )
     rating = PluginRating(
         plugin_id=plugin_id, version=version, metric=metric,
         evidence_run=evidence_run, evidence_event_seq=evidence_event_seq,
@@ -131,16 +174,49 @@ async def rate_plugin(
     return rating
 
 
+def event_is_same_rating(event: Any, plugin_id: str, version: str,
+                         metric: str, evidence_run: str,
+                         evidence_event_seq: int) -> bool:
+    """重放判定：已存在的同引用评分事件。"""
+    return event.type == "artifact.rated" \
+        and event.payload.get("plugin_id") == plugin_id \
+        and event.payload.get("version") == version \
+        and event.payload.get("metric") == metric \
+        and event.payload.get("evidence_run") == evidence_run \
+        and event.payload.get("evidence_event_seq") == evidence_event_seq
+
+
+def _event_mentions_plugin(payload: dict[str, Any],
+                           plugin_id: str) -> bool:
+    """被引评测事件与被评插件的绑定：ranking/entries 候选名（生态
+    评测约定候选名 = plugin_id）或 adapter 名含该插件。"""
+    for key in ("ranking", "entries"):
+        items = payload.get(key)
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and \
+                        item.get("candidate") == plugin_id:
+                    return True
+    return payload.get("adapter") == plugin_id
+
+
 def plugin_rating(
     store: Any, plugin_id: str, *,
+    version: str | None = None,
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> float | None:
-    """聚合评分：逐条回读被引事件解析分值求均（引用失效即拒）。"""
+    """聚合评分：逐条回读被引事件解析分值求均（引用失效即拒）。
+
+    ``version=None`` 为插件级均值（跨版本——口径在 docstring 明示；
+    版本级聚合传显式 version）。"""
     scores: list[float] = []
     for event in store.iter_run_events(
             _REGISTRY_RUN, tenant_id=tenant_id, project_id=project_id):
         if event.type != "artifact.rated" \
                 or event.payload["plugin_id"] != plugin_id:
+            continue
+        if version is not None \
+                and event.payload.get("version") != version:
             continue
         referenced = None
         for ev in store.iter_run_events(
@@ -164,16 +240,19 @@ def plugin_rating(
 
 def _score_of(payload: dict[str, Any]) -> float:
     """从被引评测事件 payload 解析分值（ranking 首位 score /
-    leaderboard 首条 / 显式 score 字段——评测面约定）。"""
-    if isinstance(payload.get("ranking"), list) and payload["ranking"]:
-        top = payload["ranking"][0]
-        if isinstance(top.get("score"), (int, float)):
-            return float(top["score"])
-    if isinstance(payload.get("entries"), list) and payload["entries"]:
-        top = payload["entries"][0]
-        if isinstance(top.get("score"), (int, float)):
-            return float(top["score"])
-    if isinstance(payload.get("score"), (int, float)):
+    leaderboard 首条 / 显式 score 字段——评测面约定；非 dict 条目
+    跳过而非裸 AttributeError）。"""
+    for key in ("ranking", "entries"):
+        items = payload.get(key)
+        if isinstance(items, list) and items:
+            top = items[0]
+            if isinstance(top, dict) and \
+                    isinstance(top.get("score"), (int, float)) \
+                    and not isinstance(top["score"], bool):
+                return float(top["score"])
+            continue
+    if isinstance(payload.get("score"), (int, float)) \
+            and not isinstance(payload["score"], bool):
         return float(payload["score"])
     if isinstance(payload.get("ci"), dict) and \
             isinstance(payload["ci"].get("mean"), (int, float)):

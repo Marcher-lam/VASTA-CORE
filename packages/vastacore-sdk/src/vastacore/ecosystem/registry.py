@@ -95,8 +95,22 @@ async def register_plugin(
     store: Any, signed: SignedPlugin, *, principal: Principal,
     key_resolver: KeyResolver,
 ) -> RegistryEntry:
-    """发布插件版本：RBAC + 验签 + CAS + 留痕。"""
+    """发布插件版本：RBAC + 验签 + CAS + 留痕。
+
+    评审修复（REG-1，盲审 H2/边界 6-1）：**(plugin_id, version) 不可
+    变**——同版本重注册即拒（否则撤销终态可被同字节重放洗白回
+    active、锁定引用被同版本换内容漂移）。新内容走新版本号。"""
     _require_registry_write(principal)
+    entries, _ = _project_registry(
+        store, tenant_id=principal.tenant_id,
+        project_id=principal.project_id)
+    key = (signed.manifest.plugin_id, signed.manifest.version)
+    if key in entries:
+        raise VastaError(
+            code="registry.version_exists",
+            message=(f"插件 {key[0]!r} 版本 {key[1]!r} 已注册——注册表"
+                     "条目不可变（重注册即洗白/漂移），新内容走新版本号"),
+        )
     verify_plugin(signed, key_resolver=key_resolver)
     sha = await store.save_artifact(
         signed.canonical_bytes(), mime="application/json",
@@ -172,16 +186,22 @@ def resolve_plugin(
                 message=f"插件 {plugin_id!r} 版本 {version!r} 不在注册表",
             )
         return entry
-    candidates = sorted(
-        (v for (pid, v) in entries if pid == plugin_id
-         and entries[(pid, v)].status == "active"),
-        reverse=True)
+    # 评审修复（VER-1，盲审 M1）：latest 用数值序（此前字典序使
+    # 1.9.0 战胜 1.10.0）——点分数字解析，非法版本号即拒
+    from ._versions import parse_version
+
+    candidates = [
+        v for (pid, v) in entries if pid == plugin_id
+        and entries[(pid, v)].status == "active"]
     if not candidates:
         raise VastaError(
             code="registry.not_found",
             message=f"插件 {plugin_id!r} 无 active 版本",
         )
-    return entries[(plugin_id, candidates[0])]
+    latest = max(candidates,
+                 key=lambda v: parse_version(v, field="插件版本号",
+                                             code="registry.bad_version"))
+    return entries[(plugin_id, latest)]
 
 
 async def pull_plugin(
