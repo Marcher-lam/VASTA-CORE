@@ -32,6 +32,25 @@ from .ids import new_event_id, now_utc
 #: 超出视为真并发异常上抛）。
 _MAX_COLLISION_RETRIES = 8
 
+#: 同流跨实例共享锁注册表（item-30 根治）：per-instance 锁不跨实例
+#: ——同进程内多 Sequencer 实例并发写同一 (store, 租户, 项目, run)
+#: 流时，seq 分配在 sync↔append 的 await 窗口交错 → duplicate_seq
+#: 误拒。键含 id(store)；条目数 = 活跃流数（系统流 ~21 + 活跃 run）。
+_STREAM_LOCKS: dict[tuple[int, str, str, str], asyncio.Lock] = {}
+
+
+def _stream_lock(store: Any, tenant: str, project: str,
+                 run_id: str) -> asyncio.Lock:
+    """取（或建）同流共享锁——跨实例串行化 emit 的 sync+append 段。"""
+    key = (id(store), tenant, project, run_id)
+    lock = _STREAM_LOCKS.get(key)
+    if lock is None:
+        import asyncio
+
+        lock = asyncio.Lock()
+        _STREAM_LOCKS[key] = lock
+    return lock
+
 
 class EventSequencer:
     """统一信封构造 + seq 分配（AD-2：事件追加唯一写路径的构造侧）。"""
@@ -117,6 +136,8 @@ class EventSequencer:
             pass  # 端口不支持——退化为内存序（FakeStore 最小实现）
 
     def _build(self, type_: str, payload: dict[str, Any]) -> EventEnvelope:
+        from .telemetry import current_trace_id
+
         return EventEnvelope.model_validate({
             "run_id": self._run_id,
             "seq": self._last_seq + 1,
@@ -126,6 +147,7 @@ class EventSequencer:
             "tenant_id": self._tenant,
             "project_id": self._project,
             "event_id": self._new_id(),
+            "trace_id": current_trace_id(),  # NFR-010：span 内自动注入
             "payload": payload,
         })
 
@@ -139,8 +161,14 @@ class EventSequencer:
         并发写同一系统流不再随机裸抛 duplicate_seq）；二次仍撞上抛。
         **rerun 例外**：本地一无所知（last_seq<0）即撞号 = 声称空流
         对非空流从头重放（同 run_id 重跑）——上抛不自愈
-        （quickstart.rerun_conflict 检测依赖此路径）。"""
-        async with self._emit_lock:
+        （quickstart.rerun_conflict 检测依赖此路径）。
+
+        跨实例根治（item-30）：emit 持**同流共享锁**——同进程内不同
+        Sequencer 实例并发写同一 (store, 作用域, run) 流时整段串行化
+        （此前 per-instance 锁只保护单实例，多实例交错耗尽有界重试
+        后 duplicate_seq 误拒）。"""
+        async with _stream_lock(self._store, self._tenant, self._project,
+                                self._run_id), self._emit_lock:
             if self._resync:
                 await self._sync_from_store()
             for _attempt in range(_MAX_COLLISION_RETRIES + 1):

@@ -180,7 +180,8 @@ async def assemble_plugin(
 
     verify_plugin(signed, key_resolver=key_resolver)
     report = airgap_check(
-        model_base_urls=tuple(signed.manifest.network["egress"]))
+        model_base_urls=tuple(signed.manifest.network["egress"]),
+        strict_local=True)  # item-29：插件出站面不吃 localhost 白名单
     sha = await store.save_artifact(
         signed.canonical_bytes(), mime="application/json",
         source=f"plugin:{signed.manifest.plugin_id}",

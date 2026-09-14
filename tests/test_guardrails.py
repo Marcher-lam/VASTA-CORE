@@ -400,3 +400,85 @@ class TestSharedReadFace:
         await guard_shared_asset_read(store, grant, reader=insider,
                                       reader_org="org-a",
                                       tenant_id="t", project_id="p-a")
+
+
+class TestSessionLevelFourFaces:
+    """item-35：enforcement 四面在 AgentSession 真实执行路径的正反例
+    （角色面已有——此处补齐委派/自治审批/风险预算三面）。"""
+
+    async def _session(self, tmp_path, store, config, state,
+                       operation_risk_of=None):
+        from tests.test_agent_sdk import STATUS_CONTRACT, SetStatusTool, TodoEnv
+        from vastacore.execution.agent import AgentSession
+
+        guard = make_action_guard(
+            store, config, state,
+            tool_category_of=lambda _t: "action",
+            operation_risk_of=operation_risk_of or (lambda _t: 0.3))
+        return await AgentSession.create(
+            env=TodoEnv(), tools=[SetStatusTool()],
+            contracts={"set_status": STATUS_CONTRACT},
+            root=tmp_path / "store", seed=7, action_guard=guard)
+
+    async def test_session_delegation_face(self, tmp_path, store) -> None:
+        """委派面：契约外工具经 act() 拒——action.executed 不发生。"""
+        cfg = config(contract=contract(permissions=["other_tool"]))
+        session = await self._session(tmp_path, store, cfg, state())
+        async with session:
+            await session.start()
+            await session.reset()
+            with pytest.raises(VastaError) as e:
+                await session.act(ACTION)
+            assert e.value.code == "delegation.tool_not_permitted"
+            assert "action.executed" not in [
+                ev.type for ev in session.events()]
+
+    async def test_session_approval_face(self, tmp_path, store) -> None:
+        """自治×审批面：L0 禁批档经 act() 拒。"""
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L0_OBSERVE})
+        session = await self._session(tmp_path, store, config(), st,
+                                      operation_risk_of=lambda _t: 0.5)
+        async with session:
+            await session.start()
+            await session.reset()
+            with pytest.raises(VastaError) as e:
+                await session.act(ACTION)
+            assert e.value.code == "guardrails.operation_forbidden"
+            assert "action.executed" not in [
+                ev.type for ev in session.events()]
+
+    async def test_session_budget_face(self, tmp_path, store) -> None:
+        """风险预算面：敞口触顶经 act() 拒 + breached 留痕。"""
+        cfg = config(risk_budget=RiskBudget(
+            scope="agent:agent-1", risk_units=1.0, high_risk_ops=10))
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L3_AUTONOMOUS})
+        session = await self._session(tmp_path, store, cfg, st,
+                                      operation_risk_of=lambda _t: 0.6)
+        async with session:
+            await session.start()
+            await session.reset()
+            with pytest.raises(VastaError) as e:
+                await session.act(ACTION)  # 高危 1.0 → 触顶
+            assert e.value.code == "guardrails.risk_budget_breached"
+            events = [ev for ev in store.iter_run_events("risk-budgets")
+                      if ev.type == "run.risk_budget_enforced"]
+            assert events[-1].payload["breached"] is True
+
+    async def test_session_all_faces_pass_path(self, tmp_path,
+                                               store) -> None:
+        """四面全过：Actor 无契约 L3 低危——六段链照常走完。"""
+        st = state()
+        st.autonomy = st.autonomy.model_copy(
+            update={"level": AutonomyLevel.L3_AUTONOMOUS})
+        session = await self._session(tmp_path, store, config(), st)
+        async with session:
+            await session.start()
+            await session.reset()
+            observations = await session.act(ACTION)
+            assert observations
+            assert "action.executed" in [
+                ev.type for ev in session.events()]

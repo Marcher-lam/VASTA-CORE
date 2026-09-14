@@ -118,9 +118,13 @@ def _event_type_of(kind: str) -> str:
         return "world_model.published"
     if kind == "policy":
         return "artifact.published"
+    if kind == "prompt":
+        # 终检 §六-1：FR-075 四类资产补齐——prompt 与 plugin。
+        # plugin 版本化由 Epic 12 12.5 私有注册表承载（FR-082）。
+        return "artifact.published"
     raise VastaError(
         code="versioning.unknown_kind",
-        message=f"未知版本化对象类型 {kind!r}（支持: model/policy）",
+        message=f"未知版本化对象类型 {kind!r}（支持: model/policy/prompt）",
     )
 
 
@@ -212,6 +216,25 @@ async def publish_policy_snapshot(
     )
 
 
+async def publish_prompt_version(
+    store: Any, name: str, version: str, prompt_text: str, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> PublishedRef:
+    """发布 prompt 资产版本（终检 §六-1：FR-075 补齐——四类资产之一）。
+
+    prompt_text 原文入 bundle（与 policy 快照同形态——CAS + 发布
+    事件 + as_of 回溯）。"""
+    if not prompt_text:
+        raise VastaError(
+            code="versioning.bad_prompt",
+            message="prompt 原文不可为空（空 prompt 不构成资产版本）",
+        )
+    return await _publish(
+        store, "prompt", name, version, {"prompt_text": prompt_text},
+        tenant_id=tenant_id, project_id=project_id,
+    )
+
+
 async def version_as_of(
     store: Any, kind: str, name: str, *,
     version: str | None = None,
@@ -261,4 +284,5 @@ async def version_as_of(
 
 
 __all__ = ["PublishedRef", "VersionRecord", "publish_model_version",
-           "publish_policy_snapshot", "version_as_of"]
+           "publish_policy_snapshot", "publish_prompt_version",
+           "version_as_of"]

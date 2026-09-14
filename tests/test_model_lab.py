@@ -470,3 +470,48 @@ class TestAcceptanceGaps:
         assert emitted and emitted[0][0] == "incident.opened"
         assert emitted[0][1]["reason"] == "model_lab.forbidden_import"
         assert emitted[0][1]["source"] == "sandbox"
+
+
+class TestPlanRiskDimension:
+    """终检 §六-2：FR-047 规划五约束补齐风险维。"""
+
+    def test_max_risk_prunes_risky_branches(self) -> None:
+        """高危动作路径被剪、低危路径可达（第五维生效）。"""
+        from vasta_model_lab import DSLWorldModel, RuleSet, WorldModelManifest
+        from vasta_model_lab.planner import PlanCaps, plan_bfs
+
+        manifest = WorldModelManifest(
+            name="risk-model", version="1.0", scope="测试",
+            assumptions=[], unknowns=["未知"], coverage=["go"])
+        # go_safe: 低危到目标；go_risky: 高危到目标
+        rules = RuleSet(
+            rules={
+                "go_safe": {"set": {"done": True, "mark": "safe"}},
+                "go_risky": {"set": {"done": True, "mark": "risky"}},
+            },
+            goal_check="done")
+        model = DSLWorldModel(manifest, rules)
+        actions = [
+            {"tool": "go_risky", "risk": 0.9, "cost": 1.0},
+            {"tool": "go_safe", "risk": 0.1, "cost": 1.0},
+        ]
+        plan = plan_bfs(
+            model, {"detail": {}}, actions=actions,
+            caps=PlanCaps(max_risk=0.5, max_depth=3))
+        assert plan and plan[0]["tool"] == "go_safe"
+
+    def test_max_risk_inf_default_allows_all(self) -> None:
+        from vasta_model_lab import DSLWorldModel, RuleSet, WorldModelManifest
+        from vasta_model_lab.planner import PlanCaps, plan_bfs
+
+        manifest = WorldModelManifest(
+            name="risk-model", version="1.0", scope="测试",
+            assumptions=[], unknowns=["未知"], coverage=["go"])
+        rules = RuleSet(
+            rules={"go": {"set": {"done": True}}}, goal_check="done")
+        model = DSLWorldModel(manifest, rules)
+        plan = plan_bfs(
+            model, {"detail": {}},
+            actions=[{"tool": "go", "risk": 5.0}],
+            caps=PlanCaps(max_depth=3))
+        assert plan and plan[0]["tool"] == "go"

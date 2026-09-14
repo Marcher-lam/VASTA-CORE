@@ -78,8 +78,28 @@ async def run_real_seed_eval(
             code="revalidation.bad_ci_level",
             message=f"level 支持 0.90/0.95/0.99（得到 {ci_level}）",
         )
-    rates = [await run_adapter_tasks(adapter, tasks=tasks, judge=judge,
-                                     seed=seed) for seed in seeds]
+    # item-32：评测中断进度留痕——逐种子执行，异常时已跑种子的进度
+    # 入事件（evaluation.eval_interrupted）后原样上抛（fail-closed
+    # 不吞异常，审计面不留空白）
+    rates: list[float] = []
+    completed: list[int] = []
+    for seed in seeds:
+        try:
+            rates.append(await run_adapter_tasks(
+                adapter, tasks=tasks, judge=judge, seed=seed))
+            completed.append(seed)
+        except Exception as exc:
+            sequencer = EventSequencer(
+                store, "evaluation", tenant_id=tenant_id,
+                project_id=project_id)
+            await sequencer.emit("evaluation.eval_interrupted", {
+                "adapter": getattr(getattr(adapter, "config", None),
+                                   "name", "adapter"),
+                "failed_seed": seed,
+                "completed_seeds": completed,
+                "error": f"{type(exc).__name__}: {exc}"[:200],
+            })
+            raise
     ci = seed_confidence_interval(rates, level=ci_level)
     sequencer = EventSequencer(
         store, "evaluation", tenant_id=tenant_id, project_id=project_id)

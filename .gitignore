@@ -17,3 +17,6 @@ VASTA-BRAINSTORM-PLAN.zip
 
 # 评审临时文件
 .review-tmp/
+
+# flake 遥测（item-33）
+.flake/

@@ -185,3 +185,40 @@ class TestRunReferencesVersion:
                                      as_of_seq=run_seq)
         assert record.version == "1.0.0"  # 回放不串版
         assert record.rebuild_dsl().ruleset.rules["right"]["add"]["col"] == 1
+
+
+class TestPromptVersioning:
+    """FR-075 补齐：prompt 资产版本化（四类资产第三类）。"""
+
+    async def test_publish_and_as_of_roundtrip(self, store) -> None:
+        from vastacore.governance.versioning import (
+            publish_prompt_version,
+            version_as_of,
+        )
+
+        await publish_prompt_version(
+            store, "summarizer", "1.0.0",
+            "总结以下内容并引用证据：{{text}}",
+            tenant_id="t", project_id="p")
+        await publish_prompt_version(
+            store, "summarizer", "2.0.0",
+            "更严格的总结指令 v2",
+            tenant_id="t", project_id="p")
+        latest = await version_as_of(store, "prompt", "summarizer",
+                                     tenant_id="t", project_id="p")
+        assert latest.bundle["prompt_text"] == "更严格的总结指令 v2"
+        v1 = await version_as_of(store, "prompt", "summarizer",
+                                 version="1.0.0",
+                                 tenant_id="t", project_id="p")
+        assert "总结以下内容" in v1.bundle["prompt_text"]
+        events = [e for e in store.iter_run_events("registry")
+                  if e.type == "artifact.published"]
+        assert len(events) == 2  # 发布留痕
+
+    async def test_empty_prompt_rejected(self, store) -> None:
+        from vastacore.governance.versioning import publish_prompt_version
+
+        with pytest.raises(VastaError) as e:
+            await publish_prompt_version(store, "x", "1.0.0", "",
+                                         tenant_id="t", project_id="p")
+        assert e.value.code == "versioning.bad_prompt"

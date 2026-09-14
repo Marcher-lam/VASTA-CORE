@@ -77,6 +77,10 @@ class EventEnvelope(BaseModel):
     project_id: str = Field(min_length=1, description="项目作用域键（AD-7）")
     event_id: str = Field(min_length=1, description="全局唯一事件 ID（UUIDv7）")
     schema_version: str = Field(default=ENVELOPE_SCHEMA_VERSION)
+    trace_id: str | None = Field(
+        default=None,
+        description="NFR-010：分布式追踪关联（OTel 兼容——由 trace 上下文"
+                    "自动注入；可选字段，schema 兼容性=可选新增非破坏）")
     payload: dict[str, object] = Field(default_factory=dict)
 
     @field_validator("type")

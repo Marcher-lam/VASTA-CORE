@@ -11,12 +11,14 @@ from .manifest import PartialWorldModel
 
 @dataclass
 class PlanCaps:
-    """规划约束（FR-047：超任一即止）。"""
+    """规划约束（FR-047：超任一即止——五维：深度/节点/时间/成本/
+    风险。风险维为终检补齐（此前四维）。）"""
 
     max_depth: int = 10
     max_nodes: int = 1000
     max_time_s: float = 2.0
     max_cost: float = float("inf")
+    max_risk: float = float("inf")
 
 
 def plan_bfs(
@@ -27,6 +29,7 @@ def plan_bfs(
     caps: PlanCaps | None = None,
     clock: Any = None,
     cost_fn: Callable[[dict[str, Any]], float] | None = None,
+    risk_fn: Callable[[dict[str, Any]], float] | None = None,
 ) -> list[dict[str, Any]]:
     """BFS 首版：模拟内搜索，超限终止。现实执行由调用方逐步核验（FR-048）。
 
@@ -42,9 +45,11 @@ def plan_bfs(
     monotonic = clock or default_monotonic
     caps = caps or PlanCaps()
     cost_of = cost_fn or (lambda a: float(a.get("cost", 1.0)))
+    risk_of = risk_fn or (lambda a: float(a.get("risk", 0.0)))
     start = monotonic()
     state0 = model.init_state(initial_observation)
-    frontier: list[tuple[dict[str, Any], list[dict[str, Any]], float]] = [(state0, [], 0.0)]
+    frontier: list[tuple[dict[str, Any], list[dict[str, Any]], float,
+                        float]] = [(state0, [], 0.0, 0.0)]
     nodes = 0
     best: list[dict[str, Any]] = []
     while frontier:
@@ -53,7 +58,7 @@ def plan_bfs(
             return best  # 上限即止（返回已达最佳）
         if monotonic() - start > caps.max_time_s:
             return best
-        state, path, cost = frontier.pop(0)
+        state, path, cost, risk = frontier.pop(0)
         if model.outcome(state) == "goal":
             return path  # 找到目标（含 depth == max_depth 的终态）
         if len(path) >= caps.max_depth:
@@ -63,8 +68,12 @@ def plan_bfs(
             next_cost = cost + cost_of(action)
             if next_cost > caps.max_cost:
                 continue  # 成本剪枝
+            next_risk = risk + risk_of(action)
+            if next_risk > caps.max_risk:
+                continue  # 风险剪枝（FR-047 第五维）
             next_state = model.transition(state, action)
-            frontier.append((next_state, path + [action], next_cost))
+            frontier.append((next_state, path + [action], next_cost,
+                             next_risk))
     return best
 
 

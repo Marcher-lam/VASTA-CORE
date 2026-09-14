@@ -134,9 +134,15 @@ def airgap_check(
     pg_dsns: tuple[str, ...] = (),
     model_base_urls: tuple[str, ...] = (),
     external_http: bool = False,
+    strict_local: bool = False,
 ) -> AirgapReport:
-    """外网依赖扫描（静态配置面——违规即清单；file:// 与 localhost
-    白名单）。"""
+    """外网依赖扫描（静态配置面——违规即清单）。
+
+    **分面白名单（item-29）**：默认面（模型 base_url——10.12 语义）
+    file:// 与 localhost 白名单（本地模型服务是合法形态）；
+    ``strict_local=True`` 面仅 file:// 白名单、**localhost 也计违例**
+    ——插件出站声明（egress）等「本地代理即现实外传通道」的面用此
+    口径（回环地址不等于出站意图可信）。"""
     violations: list[str] = []
     for endpoint in s3_endpoints:
         if not (endpoint.startswith("file://") or _is_local_host(
@@ -146,8 +152,11 @@ def airgap_check(
         if not _is_local_host(_host_of_pg(dsn)):
             violations.append(f"PG DSN 非本地主机：{_mask_pg(dsn)}")
     for url in model_base_urls:
-        if not _is_local_host(_host_of(url)):
-            violations.append(f"模型 base_url 非本地：{url}")
+        local_ok = url.startswith("file://") or (
+            _is_local_host(_host_of(url)) and not strict_local)
+        if not local_ok:
+            face = "插件出站" if strict_local else "模型 base_url"
+            violations.append(f"{face}非白名单端点：{url}")
     if external_http:
         violations.append("配置了外部 HTTP fetcher（外网依赖）")
     return AirgapReport(

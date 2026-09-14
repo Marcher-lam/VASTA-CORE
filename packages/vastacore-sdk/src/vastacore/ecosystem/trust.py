@@ -144,7 +144,8 @@ async def security_scan(
         if not any(pid == dep for (pid, _v) in entries):
             violations.append(f"依赖插件未注册：{dep}")
     report = airgap_check(
-        model_base_urls=tuple(manifest.network["egress"]))
+        model_base_urls=tuple(manifest.network["egress"]),
+        strict_local=True)  # item-29：插件出站面不吃 localhost 白名单
     violations.extend(report.violations)
     result = ScanResult(plugin_id=manifest.plugin_id,
                         version=manifest.version,

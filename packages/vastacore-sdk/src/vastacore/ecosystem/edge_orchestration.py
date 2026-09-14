@@ -207,15 +207,25 @@ async def return_frames_cross_region(
 
     if source.data_residency == "in-region":
         # 数据不出域：清单帧 = 帧摘要集（无原始帧体）
-        manifest = {
+        manifest_bytes = json.dumps({
             "source_region": source_region,
             "frame_ids": [f.frame_id for f in frames],
             "digests": [f.payload_digest for f in frames],
             "seqs": [f.seq for f in frames],
-        }
-        digest = hashlib.sha256(
-            json.dumps(manifest, sort_keys=True,
-                       ensure_ascii=False).encode()).hexdigest()
+        }, sort_keys=True, ensure_ascii=False).encode()
+        digest = hashlib.sha256(manifest_bytes).hexdigest()
+        # item-31：清单本体入 CAS（内容寻址——接收方可凭 digest 复核
+        # 被签清单内容；此前只有摘要无处取原文）
+        cas_sha = await store.save_artifact(
+            manifest_bytes, mime="application/json",
+            source=f"edge-manifest:{source_region}",
+            tenant_id=tenant_id, project_id=project_id)
+        if cas_sha != digest:  # 内容寻址自证（防御存储面异常）
+            raise VastaError(
+                code="edge.manifest_cas_mismatch",
+                message=(f"清单 CAS 哈希 {cas_sha} ≠ 清单摘要 {digest}"
+                         "——内容寻址自证失败"),
+            )
         manifest_frame = StreamFrame(
             frame_id=f"{source_region}:manifest:{digest[:8]}", seq=0,
             event_count=len(frames), payload_digest=digest)

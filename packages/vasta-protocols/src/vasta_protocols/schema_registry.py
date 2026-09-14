@@ -66,7 +66,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "episode": set(),  # 族在封闭集内、当前无事件（保留声明）
     "evaluation": {
-        "env_upgraded", "leaderboard_generated",
+        "env_upgraded", "eval_interrupted", "leaderboard_generated",
         "model_drift_measured",
         "real_seed_ci", "model_revalidated",
         "tournament_settled", "tournament_started",

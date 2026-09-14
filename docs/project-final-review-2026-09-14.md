@@ -206,13 +206,41 @@ SM-1/SM-2：MVP（§6.1 34 条 ★FR）全 delivered（FR-047 为 partial——
 1. **两条「拆解层收窄」首次补记**（FR-071 SAML、FR-075 prompt 版本化
    ——历次 Story 评审/复盘未标记，本终检跨 Epic 视角抓出）：入
    「后续拆解候选」，不追溯改 AC（交付物自洽）。
+   **→ 已补齐（同日）**：FR-071 以「最小工程内实现 + 注入式验签」
+   交付（governance/saml.py——协议解析 stdlib + XXE 拒收 + 验签器
+   注入，8 测）；FR-075 补 prompt 资产类（versioning publish_prompt_
+   version + as_of 回溯，2 测）——§二 partial 计数更新为
+   **FR-071/075 → delivered，partial 余 5**。
 2. **FR-047 风险维度**：唯一实现侧 partial——PlanCaps 补 max_risk 一
    维即可闭环（小时级工作量，随下一轮开发带出）。
+   **→ 已补齐（同日）**：PlanCaps 第五维 max_risk + 风险剪枝 +
+   risk_fn 注入（2 测）——**partial 余 4（FR-002/015/016/084，
+   均为拆解层有意留白）**。
 3. **两个未接线工程面**（NFR-005 性能断言、NFR-010 OTel trace）：属
    生产化前置项，与 Epic 12 open items 同池排期。
+   **→ 已补齐（同日）**：NFR-010 交付 telemetry.py（contextvar 传播
+   + OTel provider 绑定点）+ envelope 可选 trace_id 字段（schema
+   兼容性=可选新增非破坏）+ sequencer 自动注入（3 测）；NFR-005
+   交付工程内护栏档（六段链 20 动作量级护栏 + 追加吞吐护栏——
+   非达标断言，达标属地化负载验证——2 测）。
 4. **覆盖缝隙方法论提示**：三段并行审计的号段交界漏了 18 条 FR——
    多审计员分段必须做「全集对账」（本终检以两轮封口补齐并按
    82=18+31+16+12+6-1（FR-085 双计）对账闭合）。
+5. **Epic 12 七项 open 精化（同日收口）**：item-28 投影状态机惯例
+   入 epics.md D2 检查项；item-29 airgap 分面白名单（strict_local
+   面——插件出站不吃 localhost 白名单，4 测）；item-30 Sequencer
+   同流跨实例共享锁（20 实例并发测试）；item-31 清单帧本体入 CAS
+   （digest 可复核，1 测）；item-32 评测中断进度留痕
+   （evaluation.eval_interrupted 新事件 + 目录入册，1 测）；
+   item-33 flake 遥测（tests/conftest.py 钩子——失败用例结构化落
+   .flake/telemetry.jsonl，探针实测闭环；迁仓腿留用户决策）；
+   item-35 session 级四面正反例（4 测）+ 评分 public/private 机制
+   字段（2 测）。七项全部翻 done——**sprint-status 在册 open 归零**。
+
+**补齐后终态**：FR 82 条——delivered 78 / partial 4（FR-002/015/016/
+084，均为拆解层有意留白且在册）；NFR partial 由 6 降至 4（005/010
+工程面已接线——005 工程护栏档交付、010 trace 贯穿交付；余 004/006/
+013/014 属地运营与 UI 面）；门禁 1249 passed + 5 skipped。
 
 ## 七、收口判定
 

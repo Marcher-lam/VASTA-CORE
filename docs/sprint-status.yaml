@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-14-2026 13:41
+last_updated: 09-14-2026 14:25
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -338,37 +338,37 @@ action_items:
     epic: 12
     action: "投影状态机对抗测试惯例：同 Epic 新增事件流投影模块时，终态不可逆/同键重放/覆盖语义三件套对抗测试入 D2 组合检查项（F1 三连根治）"
     owner: "全体"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-29-airgap-分面白名单策略-model_base_urls-与插件-egres"
     epic: 12
     action: "airgap 分面白名单策略：model_base_urls 与插件 egress 两面口径分离（localhost 代理对插件出站是现实外传通道）"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-30-sequencer-系统流跨实例并发根治-event-duplicate_seq"
     epic: 12
     action: "Sequencer 系统流跨实例并发根治：event.duplicate_seq 误拒的存储层根因（同流多实例 seq 分配竞态）"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-31-in-region-清单帧本体入-cas-跨区回传清单-bytes-存档-接收方"
     epic: 12
     action: "in-region 清单帧本体入 CAS：跨区回传清单 bytes 存档，接收方可凭 digest 复核"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-32-评测中断进度留痕-run_real_seed_ci-类长跑面-judge-异常时"
     epic: 12
     action: "评测中断进度留痕：run_real_seed_ci 类长跑面 judge 异常时已跑种子的审计事件"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-33-仓库迁出-desktop-或加-flake-遥测-两-epic-连续环境偶发的判"
     epic: 12
     action: "仓库迁出 Desktop 或加 flake 遥测：两 Epic 连续环境偶发的判定性处置"
     owner: "用户/全体"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-34-行动项簿记一次性清偿-epic-1-10-的-16-个-open-项逐一证据核销"
     epic: 12
@@ -380,5 +380,5 @@ action_items:
     epic: 12
     action: "session 级 enforcement 四面正反例 + 评分 public/private 可见性机制字段"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"

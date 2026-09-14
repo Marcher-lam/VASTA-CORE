@@ -217,3 +217,29 @@ class TestConstructionSitesConverged:
             text = Path(site).read_text(encoding="utf-8")
             hits = re.findall(r"EventEnvelope\.model_validate", text)
             assert not hits, f"{site} 仍有 {len(hits)} 处手工构造"
+
+
+class TestCrossInstanceStreamLock:
+    """Epic 12 复盘 item-30 根治：同流跨实例并发不再 duplicate_seq。"""
+
+    async def test_many_instances_concurrent_emit_all_succeed(
+            self, tmp_path) -> None:
+        import asyncio
+
+        from vasta_storage import SqliteStorage
+
+        store = SqliteStorage(tmp_path / "s")
+        try:
+            async def one(i: int) -> None:
+                seq = EventSequencer(store, "shared-stream",
+                                     tenant_id="t", project_id="p")
+                await seq.emit("run.created", {"who": i})
+
+            await asyncio.gather(*(one(i) for i in range(20)))
+            events = list(store.iter_run_events("shared-stream",
+                                                tenant_id="t",
+                                                project_id="p"))
+            assert len(events) == 20
+            assert sorted(e.seq for e in events) == list(range(20))
+        finally:
+            store.close()

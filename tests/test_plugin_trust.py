@@ -244,3 +244,39 @@ class TestClosureTermination:
         closure = dependent_closure(store, "a", tenant_id="t",
                                     project_id="p")
         assert closure == ["a", "b"]
+
+
+class TestAirgapFaces:
+    """item-29：分面白名单——插件出站面 localhost 也计违例。"""
+
+    def test_default_face_allows_localhost(self) -> None:
+        from vastacore.governance.byok import airgap_check
+
+        report = airgap_check(
+            model_base_urls=("http://localhost:8080/v1",))
+        assert report.violations == []  # 模型面：本地服务合法
+
+    def test_strict_face_flags_localhost(self) -> None:
+        from vastacore.governance.byok import airgap_check
+
+        report = airgap_check(
+            model_base_urls=("http://localhost:8080/proxy",),
+            strict_local=True)
+        assert any("localhost:8080" in v for v in report.violations)
+
+    def test_strict_face_still_allows_file(self) -> None:
+        from vastacore.governance.byok import airgap_check
+
+        report = airgap_check(model_base_urls=("file:///data",),
+                              strict_local=True)
+        assert report.violations == []
+
+    async def test_scan_uses_strict_face(self, store) -> None:
+        """security_scan 走 strict 面——localhost 代理插件扫描不过。"""
+        proxy = sign_manifest(manifest(network={"egress": [
+            "http://localhost:8080/proxy"]}), key_id="k", key=KEY)
+        await register_plugin(store, proxy, principal=publisher(),
+                              key_resolver=key_resolver)
+        result = await security_scan(store, proxy, principal=publisher())
+        assert not result.passed
+        assert any("localhost:8080" in v for v in result.violations)

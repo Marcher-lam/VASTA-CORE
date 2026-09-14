@@ -87,7 +87,10 @@ def discover_plugins(
 
 
 class PluginRating(BaseModel):
-    """评分引用（不复制数值——分值从被引事件解析）。"""
+    """评分引用（不复制数值——分值从被引事件解析）。
+
+    item-35：可见性为机制字段——public（缺省，入公开聚合面）/
+    private（仅作用域内可见，公开聚合面排除）。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,12 +100,15 @@ class PluginRating(BaseModel):
     evidence_run: str
     evidence_event_seq: int = Field(ge=0)
     rated_by: str
+    visibility: str = Field(pattern="^(public|private)$",
+                            default="public")
 
 
 async def rate_plugin(
     store: Any, plugin_id: str, version: str, *, metric: str,
     evidence_run: str, evidence_event_seq: int,
     principal: Principal,
+    visibility: str = "public",
 ) -> PluginRating:
     """评分留痕：引用 (run, seq) 处的评测事件。
 
@@ -161,7 +167,7 @@ async def rate_plugin(
     rating = PluginRating(
         plugin_id=plugin_id, version=version, metric=metric,
         evidence_run=evidence_run, evidence_event_seq=evidence_event_seq,
-        rated_by=principal.user)
+        rated_by=principal.user, visibility=visibility)
     sequencer = EventSequencer(
         store, _REGISTRY_RUN,
         tenant_id=principal.tenant_id, project_id=principal.project_id)
@@ -169,7 +175,7 @@ async def rate_plugin(
         "plugin_id": plugin_id, "version": version, "metric": metric,
         "evidence_run": evidence_run,
         "evidence_event_seq": evidence_event_seq,
-        "rated_by": principal.user,
+        "rated_by": principal.user, "visibility": visibility,
     })
     return rating
 
@@ -203,12 +209,15 @@ def _event_mentions_plugin(payload: dict[str, Any],
 def plugin_rating(
     store: Any, plugin_id: str, *,
     version: str | None = None,
+    visibility: str | None = "public",
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> float | None:
     """聚合评分：逐条回读被引事件解析分值求均（引用失效即拒）。
 
     ``version=None`` 为插件级均值（跨版本——口径在 docstring 明示；
-    版本级聚合传显式 version）。"""
+    版本级聚合传显式 version）。``visibility``（item-35 机制化）：
+    缺省 ``"public"``——公开聚合面只计 public 评分（private 仅作用
+    域内可见）；``None`` 计全部（作用域内读全量）。"""
     scores: list[float] = []
     for event in store.iter_run_events(
             _REGISTRY_RUN, tenant_id=tenant_id, project_id=project_id):
@@ -217,6 +226,9 @@ def plugin_rating(
             continue
         if version is not None \
                 and event.payload.get("version") != version:
+            continue
+        if visibility is not None \
+                and event.payload.get("visibility", "public") != visibility:
             continue
         referenced = None
         for ev in store.iter_run_events(

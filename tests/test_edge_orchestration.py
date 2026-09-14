@@ -225,3 +225,66 @@ class TestCrossRegionReturn:
                 target_region="hub-9", frame_commit=cas_commit,
                 principal=auditor)
         assert denied.value.code == "access.denied"
+
+
+class TestManifestCasAndInterruption:
+    """item-31 清单帧入 CAS + item-32 评测中断留痕。"""
+
+    async def test_manifest_bytes_fetchable_by_digest(self, store) -> None:
+        """item-31：接收方可凭 digest 从 CAS 取回清单原文。"""
+        import json as json_mod
+
+        for rid, residency in (("eu-1", "in-region"), ("hub", "open")):
+            await register_region(
+                store, RegionSpec(region_id=rid, data_residency=residency),
+                principal=operator())
+        frames = [frame(0), frame(1)]
+        committed = await return_frames_cross_region(
+            store, frames, source_region="eu-1", target_region="hub",
+            frame_commit=cas_commit, principal=operator())
+        digest = committed[0].payload_digest
+        fetched = await store.get_artifact(digest, tenant_id="t",
+                                           project_id="p")
+        manifest = json_mod.loads(fetched)
+        assert manifest["source_region"] == "eu-1"
+        assert manifest["seqs"] == [0, 1]
+
+    async def test_eval_interruption_traced(self, store) -> None:
+        """item-32：judge 中途异常 → 已跑种子进度留痕 + 原样上抛。"""
+        from vastacore.agents.real_adapter import (
+            OpenAICompatAdapter,
+            RealAdapterConfig,
+        )
+        from vastacore.agents.real_eval import run_real_seed_eval
+        from vastacore.governance.byok import SecretRef
+
+        calls = {"n": 0}
+
+        async def http_post(url, headers, body, timeout_s):
+            calls["n"] += 1
+            if calls["n"] > 6:  # 第 4 个种子中途炸
+                raise RuntimeError("upstream quota exceeded")
+            return {"choices": [{"message": {"content": "right"}}]}
+
+        async def resolver(ref):
+            return "sk"
+
+        cfg = RealAdapterConfig(
+            name="flaky", base_url="https://unit.invalid/v1",
+            api_key_ref=SecretRef(provider="kms", key_id="k"),
+            model_id="m")
+        adapter = OpenAICompatAdapter(cfg, http_post=http_post,
+                                      api_key_resolver=resolver)
+
+        async def judge(task, reply):
+            return True
+
+        with pytest.raises(RuntimeError):
+            await run_real_seed_eval(
+                store, adapter, tasks=["q1", "q2"], judge=judge,
+                seeds=list(range(10)), tenant_id="t", project_id="p")
+        events = [e for e in store.iter_run_events("evaluation")
+                  if e.type == "evaluation.eval_interrupted"]
+        assert events[-1].payload["completed_seeds"] == [0, 1, 2]
+        assert events[-1].payload["failed_seed"] == 3
+        assert "quota" in events[-1].payload["error"]

@@ -8,6 +8,7 @@ from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
 from vasta_storage import SqliteStorage
 from vastacore.ecosystem.discovery import (
+    PluginRating,
     discover_plugins,
     plugin_rating,
     rate_plugin,
@@ -316,3 +317,40 @@ class TestResourcesFace:
         with pytest.raises(VastaError) as e:
             manifest(permissions=[""])
         assert e.value.code == "plugin.empty_permissions"
+
+
+class TestRatingVisibility:
+    """item-35：评分可见性机制（public/private 字段 + 聚合过滤）。"""
+
+    async def test_private_rating_excluded_from_public_aggregate(
+            self, store) -> None:
+        await publish_scanned(store)
+        _, seq1 = await seed_eval_event(store, 0.8)
+        _, seq2 = await seed_eval_event(store, 0.4)
+        await rate_plugin(store, "csv", "1.0.0", metric="m",
+                          evidence_run="evaluation", evidence_event_seq=seq1,
+                          principal=publisher())  # 缺省 public
+        await rate_plugin(store, "csv", "1.0.0", metric="m",
+                          evidence_run="evaluation", evidence_event_seq=seq2,
+                          principal=publisher(), visibility="private")
+        # 公开聚合面只计 public
+        assert plugin_rating(store, "csv", tenant_id="t",
+                             project_id="p") == pytest.approx(0.8)
+        # 作用域内全量读（None = 不过滤）
+        assert plugin_rating(store, "csv", visibility=None,
+                             tenant_id="t", project_id="p") \
+            == pytest.approx(0.6)
+        # 事件携带机制字段
+        events = [e for e in store.iter_run_events("registry")
+                  if e.type == "artifact.rated"]
+        assert events[-1].payload["visibility"] == "private"
+
+    async def test_invalid_visibility_rejected(self, store) -> None:
+        from pydantic import ValidationError
+
+        await publish_scanned(store)
+        _, seq = await seed_eval_event(store, 0.8)
+        with pytest.raises(ValidationError):
+            PluginRating(plugin_id="csv", version="1.0.0", metric="m",
+                         evidence_run="evaluation", evidence_event_seq=seq,
+                         rated_by="op", visibility="secret")
