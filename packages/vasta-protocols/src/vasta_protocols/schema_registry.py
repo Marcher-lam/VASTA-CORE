@@ -51,8 +51,9 @@ _EVENT_CATALOG: dict[str, set[str]] = {
     },
     "artifact": {
         "access_denied", "corrupted", "deprecated", "deletion_proved",
-        "locked", "not_found", "published", "registered",
-        "retention_configured", "revoked", "shared", "shared_revoked",
+        "locked", "not_found", "published", "publisher_verified",
+        "registered", "retention_configured", "revoked",
+        "security_scanned", "shared", "shared_revoked",
     },
     "claim": {
         "accepted", "annotated", "confidence_decayed",

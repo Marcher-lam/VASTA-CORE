@@ -159,7 +159,7 @@ development_status:
   12-4-plugin-manifest-signing: done
   12-5-private-registry: done
   12-6-registry-revocation: done
-  12-7-verified-publisher: backlog
+  12-7-verified-publisher: done
   12-8-public-discovery: backlog
   12-9-evidence-signing: backlog
   12-10-real-adapter-w1: backlog
