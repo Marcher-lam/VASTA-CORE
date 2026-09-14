@@ -94,8 +94,8 @@ _EVENT_CATALOG: dict[str, set[str]] = {
         "takeover", "throttled",
     },
     "verification": {"deviated", "passed"},
-    "world_model": {"meta_decision", "published", "suspended",
-                    "updated", "validated"},
+    "world_model": {"meta_decision", "published", "registered",
+                    "suspended", "updated", "used", "validated"},
 }
 
 

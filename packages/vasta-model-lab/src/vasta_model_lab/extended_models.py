@@ -11,9 +11,11 @@
 - **CompositeModel**：DSL 组件编排（组件间传递状态——复用
   RuleSet 语义）。
 
-四类模型是进程内纯计算类（结构最小 MVP）——沙箱执行面接线、
-validation.py 静态检查扩展与 world_model.* 事件留痕属后续接线
-（Epic 11 验收审计保留项，见 docs/reviews/epic11-code-review.md）。
+四类模型是进程内纯计算类（结构最小 MVP）——生命周期事件留痕已
+经 ``extended_tracing`` 接线（Story 12.3：registered/validated/
+used）；沙箱执行面接线与 validation.py 静态检查扩展仍为后续接线
+（Stage 6 启动裁决改口——见 docs/epics.md Story 11.9 AC 与
+docs/reviews/epic11-code-review.md defer 表）。
 """
 
 from __future__ import annotations
