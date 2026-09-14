@@ -61,6 +61,7 @@ _CAPABILITIES: dict[Role, frozenset[tuple[str, str]]] = {
         ("runs", "read"), ("runs", "write"),
         ("evidence", "read"), ("evidence", "write"),
         ("cognition", "read"), ("cognition", "write"),
+        ("registry", "write"),  # 12.5：插件注册表发布面
         ("ops", "read"),
     }),
     Role.AUDITOR: frozenset({

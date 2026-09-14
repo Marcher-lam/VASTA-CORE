@@ -112,9 +112,11 @@ class SignedPlugin(BaseModel):
     algorithm: str = Field(default=SIGNATURE_ALGORITHM)
 
     def canonical_bytes(self) -> bytes:
-        """装配/入 CAS 的对象：清单规范形 + 签名头。"""
-        return canonical_manifest_bytes(self.manifest) + \
-            b"\n# signature:" + self.signature.encode()
+        """装配/入 CAS 的对象：清单规范形 + 签名/密钥尾行（拉取侧
+        据此重建可验签对象）。"""
+        return (canonical_manifest_bytes(self.manifest)
+                + b"\n# signature:" + self.signature.encode()
+                + b"\n# key-id:" + self.key_id.encode())
 
     def content_sha256(self) -> str:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
