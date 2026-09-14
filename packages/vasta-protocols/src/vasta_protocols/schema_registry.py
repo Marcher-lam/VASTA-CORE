@@ -33,7 +33,8 @@ CURRENT_VERSION = ENVELOPE_SCHEMA_VERSION
 #: 收集的保留声明（无字面量发射面——见 _DECLARED_SUPPLEMENT）。
 SYSTEM_STREAMS: tuple[str, ...] = (
     "access", "agent-roles", "approvals", "autonomy", "billing",
-    "bridge", "cognition", "delegations", "edge-stream", "environment",
+    "bridge", "cognition", "delegations", "edge-orchestration",
+    "edge-stream", "environment",
     "evaluation", "import", "incidents", "lifecycle", "memory",
     "quotas", "registry", "risk-budgets", "schedules", "sharing",
 )
@@ -85,10 +86,12 @@ _EVENT_CATALOG: dict[str, set[str]] = {
         "access_denied", "adopted", "bill_generated", "cancelled",
         "completed", "control_released", "cost_recorded", "created",
         "delegation_completed", "delegation_created",
-        "deviation_context", "failed", "gap_detected",
+        "deviation_context", "edge_group_deployed", "failed",
+        "gap_detected",
         "agent_role_set", "autonomy_adjusted", "identity_asserted",
         "paused",
-        "quota_configured", "resumed", "risk_budget_configured",
+        "quota_configured", "region_registered", "region_unreachable",
+        "resumed", "risk_budget_configured",
         "risk_budget_enforced", "risk_exposure_recorded",
         "role_assigned", "role_revoked",
         "role_violation",

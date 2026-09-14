@@ -163,7 +163,7 @@ development_status:
   12-8-public-discovery: done
   12-9-evidence-signing: done
   12-10-real-adapter-w1: done
-  12-11-edge-orchestration: backlog
+  12-11-edge-orchestration: done
   epic-12: backlog
   epic-12-retrospective: optional
 action_items:
