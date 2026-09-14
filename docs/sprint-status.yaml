@@ -156,7 +156,7 @@ development_status:
   12-1-stream-registry-guard: done
   12-2-enforcement-wiring: done
   12-3-model-event-tracing: done
-  12-4-plugin-manifest-signing: backlog
+  12-4-plugin-manifest-signing: done
   12-5-private-registry: backlog
   12-6-registry-revocation: backlog
   12-7-verified-publisher: backlog
