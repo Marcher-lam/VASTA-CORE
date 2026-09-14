@@ -115,12 +115,16 @@ def main() -> int:
     if not update_status(args.story):
         return 1
 
-    # 显式路径 add：已跟踪变更 + 显式新文件（禁 -A 兜底——工作区
-    # 垃圾/评审临时物不入档）
-    add_paths = ["docs/sprint-status.yaml", *args.paths]
-    ok, _ = run("git add", ["git", "add", "-u", *add_paths])
+    # 显式路径 add：已跟踪变更（-u 不带 pathspec——它只处理已跟踪
+    # 文件，对 untracked pathspec 报错）+ 显式新文件（禁 -A 兜底
+    # ——工作区垃圾/评审临时物不入档）
+    ok, _ = run("git add tracked", ["git", "add", "-u"])
     if not ok:
         return 1
+    if args.paths:
+        ok, _ = run("git add new files", ["git", "add", *args.paths])
+        if not ok:
+            return 1
     message = args.message + _pytest_trailer(
         outputs["pytest 全量"], True, True)
     ok, _ = run("git commit", [

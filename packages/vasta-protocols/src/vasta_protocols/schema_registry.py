@@ -27,11 +27,15 @@ from .envelope import ENVELOPE_SCHEMA_VERSION, EVENT_FAMILIES, EventEnvelope
 #: 当前信封 Schema 版本（迁移目标默认值）。
 CURRENT_VERSION = ENVELOPE_SCHEMA_VERSION
 
-#: 已知系统流（治理/审计面 run 命名——与 sdk 侧使用保持同步）。
+#: 已知系统流（治理/审计面 run 命名）。Story 12.1 起由
+#: stream_catalog_gen 从代码发射点生成并对拍（零漂移守卫
+#: tests/test_stream_catalog_guard.py）；import/bridge 为 10.7 手
+#: 收集的保留声明（无字面量发射面——见 _DECLARED_SUPPLEMENT）。
 SYSTEM_STREAMS: tuple[str, ...] = (
-    "cognition", "registry", "import", "bridge", "access", "lifecycle",
-    "approvals", "quotas", "billing", "schedules", "incidents",
-    "environment", "evaluation",
+    "access", "agent-roles", "approvals", "autonomy", "billing",
+    "bridge", "cognition", "delegations", "edge-stream", "environment",
+    "evaluation", "import", "incidents", "lifecycle", "memory",
+    "quotas", "registry", "risk-budgets", "schedules", "sharing",
 )
 
 # ---- 事件类型目录（按实现源码收集；动态注册供扩展） ----
