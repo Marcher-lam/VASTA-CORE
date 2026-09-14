@@ -47,6 +47,28 @@ class OfflineEvalReport(BaseModel):
         default_factory=list, description="偏差清单（含事件定位）"
     )
     unchanged: int = Field(ge=0, description="新旧一致或新判定通过（无切换影响）")
+    seed_ci: dict[str, float] | None = Field(
+        default=None,
+        description="多种子置信区间（Story 12.10——W-1：CI 并入报告"
+                    "结构（seed_confidence_interval 契约字段），"
+                    "真实适配器评测路径产出；None 即未跑多种子面)",
+    )
+
+
+def attach_seed_ci(report: OfflineEvalReport, ci: dict[str, float],
+                   ) -> OfflineEvalReport:
+    """把多种子 CI 并入报告（W-1——报告结构一等公民）。
+
+    ci 须为 seed_confidence_interval 契约形（n/mean/half_width/low/
+    high/level 键齐——不齐即拒，报告不携带半吊子区间）。"""
+    required = {"n", "mean", "half_width", "low", "high", "level"}
+    missing = required - set(ci)
+    if missing:
+        raise VastaError(
+            code="eval.bad_seed_ci",
+            message=f"CI 缺契约字段 {sorted(missing)}（不齐不入报告）",
+        )
+    return report.model_copy(update={"seed_ci": dict(ci)})
 
 
 #: 事件后缀 → 核验结果词表（VerificationOutcome）。

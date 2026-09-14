@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-14-2026 09:13
+last_updated: 09-14-2026 11:24
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
@@ -162,7 +162,7 @@ development_status:
   12-7-verified-publisher: done
   12-8-public-discovery: done
   12-9-evidence-signing: done
-  12-10-real-adapter-w1: backlog
+  12-10-real-adapter-w1: done
   12-11-edge-orchestration: backlog
   epic-12: backlog
   epic-12-retrospective: optional
@@ -319,7 +319,7 @@ action_items:
     epic: 11
     action: "W-1 复评维持：Stage 6 适配器 Story 补齐（适配器×VastaLab 执行路径、≥10 种子门槛、CI 并入评测报告结构），届时复评解除"
     owner: "用户/开发"
-    status: open
+    status: done
     ref: "docs/epic-11-retro-2026-09-14.md"
   - id: "epic-11-retro-item-26-数值守卫-helper-收口-require_finite-一类共享-helpe"
     epic: 11
