@@ -153,6 +153,17 @@ development_status:
   epic-11-retrospective: done
 
 
+  12-1-stream-registry-guard: backlog
+  12-2-enforcement-wiring: backlog
+  12-3-model-event-tracing: backlog
+  12-4-plugin-manifest-signing: backlog
+  12-5-private-registry: backlog
+  12-6-registry-revocation: backlog
+  12-7-verified-publisher: backlog
+  12-8-public-discovery: backlog
+  12-9-evidence-signing: backlog
+  12-10-real-adapter-w1: backlog
+  12-11-edge-orchestration: backlog
   epic-12: backlog
   epic-12-retrospective: optional
 action_items:

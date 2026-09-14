@@ -550,8 +550,8 @@ So that 确定性转移之外的不确定性可建模（FR-042）。
 
 **Given** model-lab（DSL/受限 Python）与性质测试底座
 **When** 定义概率模型（转移分布）/因果模型（干预查询）/约束模型（可行域）/组合模型（模型编排）
-**Then** 概率模型转移采样可注入 seed（确定性测试）；约束模型可行域校验；组合模型按 DSL 组件编排——全部入沙箱执行
-**And** 静态检查扩展（概率/因果语法白名单）；模型类型入事件留痕
+**Then** 概率模型转移采样可注入 seed（确定性测试）；约束模型可行域校验；组合模型按 DSL 组件编排——进程内纯计算（**Stage 6 启动裁决 2026-09-14 改口**：沙箱执行接线与静态检查扩展为后续接线，accepted deviation——原「全部入沙箱执行」子句登记于 Epic 11 评审报告 defer 表）
+**And** 模型类型入事件留痕（**接线腿移 Story 12.3**——11.9 拆分裁决）
 
 ### Story 11.10: 并行探索与候选竞赛（G4）
 
@@ -605,8 +605,164 @@ So that 流式输入与近数据端执行可用（FR-009）。
 **Then** 流式观察按窗口成帧入证据库（帧级 CAS+引用）；边缘节点执行时本地缓冲、连通后证据回传合并（完整性校验）
 **And** 断连恢复语义（复用 9.10 接管底座）；流式与批量路径共存（同一 Run 可混）
 
-### Epic 12: 开放生态（Stage 6，仅 Epic 级）
+### Epic 12: 开放生态（Stage 6，2026-09-14 增量拆解）
 插件清单与签名、私有注册表与撤销、验证发布者、公开分发、证据第三方验证、跨区域/边缘编排。**FRs covered:** FR-019, FR-079, FR-080, FR-082, FR-083, FR-084
+
+#### Epic 12 内部能力分组（2026-09-14 拆解）
+
+| 组 | 用户价值 | FR | 带入项 |
+|---|---|---|---|
+| G0 组装与清偿 | 开放生态生长在**已接线**的平台上：agents/ enforcement 面组装接线（Epic 11 复盘 items 22/26——「组件齐组合碎」三连根治）+ SYSTEM_STREAMS 生成守卫（item 23）+ 扩展模型事件留痕（11.9 拆分裁决接线腿） | —（Epic 11 复盘） | 11.9 AC 改口同步落地（沙箱/静态检查 → 进程内纯计算 + 后续接线，accepted deviation） |
+| G1 插件清单 | 生态的第一道治理面：插件声明自己（权限/数据/网络/资源/兼容六面）且清单签名可验——未验签的插件不装配 | FR-080 | 复用 BYOK/airgap（10.12）与签名原语（FR-011 CAS 哈希链） |
+| G2 私有注册表 | 企业内插件的唯一可信来源：版本锁定、撤销与弃用是治理动作（留痕 + 依赖闭包检查——吊销不静默破坏下游） | FR-082 | 注册表事件族复用 registry 流（既有系统流）；撤销语义对齐 claim.retired 终态模式 |
+| G3 信任与分发 | 安装前可判别：验证发布者、安全扫描门、兼容矩阵；公开发现与评分（复用 11.12 证据引用排行榜语义——评分引用评测事件） | FR-083 + FR-084 | RBAC/Principal（10.8）为发布者验证底座 |
+| G4 证据第三方验证 | 证据链对外可证：证据签名 + 第三方独立验证（不接触租户数据也能验完整性） | FR-019 | CAS 哈希（FR-011）+ 审计导出（10.6）为底座 |
+| G5 真实适配器与跨区域 | W-1 豁免清偿（适配器×VastaLab 执行路径、≥10 种子、CI 并入评测报告——复评解除，豁免清零）；跨区域数据面与边缘编排（与 11.13 流式/边缘底座整合） | —（W-1）+ FR-079 | 11.11 适配器机制 + 11.13 EdgeBuffer/流式帧为底座 |
+
+**Stage 6 启动裁决（2026-09-14，用户确认）**：① enforcement 接线以 **G0 组装 Story** 形态进 Epic 12（不分散不另立 Epic）；② 11.9 三 AC 子句**拆分处置**——事件留痕接线进 G0，沙箱执行/静态检查扩展改口为「进程内纯计算 + 后续接线」（accepted deviation 登记）；③ W-1 补齐 Story 进 Epic 12，FR-019/079/084 三个 Could 档**全量纳入**。
+
+### Story 12.1: SYSTEM_STREAMS 生成守卫（G0）
+
+As a 平台工程师,
+I want 系统流清单从代码发射点自动生成并有零漂移守卫,
+So that 流清单不再手工维护漂移（Epic 11 复盘 F3——7 个新流缺册的同型第二处根治）。
+
+**Acceptance Criteria:**
+
+**Given** schema_registry.SYSTEM_STREAMS 与各模块 `_RUN` 常量/EventSequencer 构造点
+**When** 运行流清单生成器（同 11.1 D1 模式：扫描代码 → 与注册表对拍）
+**Then** 7 个缺失流（delegations/memory/sharing/agent-roles/autonomy/risk-budgets/edge-stream）补入注册表；守卫测试入套件（零漂移——missing/extra 双向空）
+**And** 生成器可一键回写（generate 输出与注册表同形态）
+
+### Story 12.2: agents/ enforcement 组装接线（G0）
+
+As a 平台架构师,
+I want executor/router/服务层实际调用 agents/ 的全部 enforcement 面,
+So that 委派/共享/自治/风险预算边界从「可调用的积木」变成「被强制的闸门」（「组件齐组合碎」三连根治）。
+
+**Acceptance Criteria:**
+
+**Given** agents/ 的 validate_action/validate_role_action/check_shared_access/enforce_budget/assess_autonomy/required_approval_for（全部零入向调用——Epic 11 评审实测）
+**When** 装配层（runner 决策路径/工具执行前/资源访问口）接入官方接法
+**Then** 每个 enforcement 面至少一条**被运行时路径强制**的组合测试（拒绝路径真实发生——非仅函数级）；tournament→leaderboard 点名缝补组合测试（11.12 AC 遗留）
+**And** 数值守卫收口：require_finite 共享 helper 替换 4 模块 7 处散布 isfinite（Epic 11 复盘 F4）
+
+### Story 12.3: 扩展模型事件留痕（G0——11.9 拆分裁决接线腿）
+
+As a 模型研究者,
+I want 四类扩展模型（概率/因果/约束/组合）的模型类型与生命周期入事件留痕,
+So that 模型创建/校验/使用对下游可溯（11.9 三个未交付 AC 子句的接线腿）。
+
+**Acceptance Criteria:**
+
+**Given** model-lab extended_models（进程内纯计算——沙箱执行/静态检查扩展已按启动裁决改口为后续接线）
+**When** 创建/校验/使用扩展模型
+**Then** 模型类型入 world_model.* 事件（经既有 emit_world_model_event 面）；事件类型入目录（11.1 AST 守卫零漂移）
+**And** docstring 与 AC 口径一致（「进程内纯计算 + 事件留痕已接线；沙箱/静态检查后续接线」）
+
+### Story 12.4: 插件清单与签名（G1）
+
+As a 插件开发者,
+I want 插件清单（权限/数据/网络/资源/兼容六面）与清单签名机制,
+So that 平台与使用者可在装配前判别插件边界（FR-080）。
+
+**Acceptance Criteria:**
+
+**Given** 插件协议（清单 schema + 签名原语）
+**When** 插件作者发布插件（清单 + 内容寻址包）
+**Then** 清单六面（权限/数据/网络/资源/兼容/签名）全量显式——缺面拒；签名可验证（未验签插件拒装配，fail-closed）
+**And** 清单哈希入 CAS；airgap 依赖清单（10.12）自动并入网络面
+
+### Story 12.5: 私有注册表与版本锁定（G2）
+
+As a 企业平台运营者,
+I want 私有插件注册表与版本锁定,
+So that 企业内插件有唯一可信来源且装配可复现（FR-082）。
+
+**Acceptance Criteria:**
+
+**Given** 私有注册表（registry 流——既有系统流）
+**When** 发布/拉取/锁定插件版本
+**Then** 发布留痕（清单+签名+哈希）；版本锁定后装配精确解析（不可变引用）；拉取校验签名与哈希
+**And** 注册表操作走 RBAC（10.8 Principal——发布者须 registry write）
+
+### Story 12.6: 撤销与弃用生命周期（G2）
+
+As a 企业平台运营者,
+I want 插件撤销（revocation）与弃用（deprecation）生命周期,
+So that 问题插件可下架且下游不静默破坏（FR-082）。
+
+**Acceptance Criteria:**
+
+**Given** 注册表中的插件版本
+**When** 撤销（安全原因——立即生效）或弃用（预告迁移——宽限生效）
+**Then** 撤销后新装配拒（已运行实例留处置决策记录）；弃用带后继版本指引；两者均留痕（registry 族事件）
+**And** 依赖闭包检查：撤销前列出下游依赖（对齐删除证明的依赖检查语义——FR-017 模式）
+
+### Story 12.7: 验证发布者、安全扫描与兼容矩阵（G3）
+
+As a 插件使用者,
+I want 验证发布者标记、安全扫描门与兼容矩阵,
+So that 安装前可判别插件可信度与兼容性（FR-083）。
+
+**Acceptance Criteria:**
+
+**Given** 注册表与发布者身份（Principal/组织）
+**When** 发布者申请验证/插件提交扫描/查询兼容性
+**Then** 验证发布者标记留痕（身份绑定——BYOK/IdP 语义）；扫描门（静态依赖面 + airgap 违例）不通过即拒公开；兼容矩阵按平台版本×插件版本查询
+**And** 判别结果入事件（可审计的信任决策）
+
+### Story 12.8: 公开发现与评分（G3）
+
+As a 生态参与者,
+I want 插件公开发现与评分,
+So that 好插件可被找到、质量信号可比较（FR-084）。
+
+**Acceptance Criteria:**
+
+**Given** 注册表（公开面）与评测事件流
+**When** 搜索/浏览/评分插件
+**Then** 发现面按清单六面/兼容性过滤；评分**引用评测事件而非复制数值**（复用 11.12 证据引用语义——条目不可篡改）
+**And** 评分留痕；可见性复用 public/private 语义（11.6/11.12 模式）
+
+### Story 12.9: 证据签名与第三方独立验证（G4）
+
+As a 外部审计者,
+I want 证据签名与第三方独立验证机制,
+So that 不接触租户数据也能验证证据链完整性（FR-019）。
+
+**Acceptance Criteria:**
+
+**Given** 证据库（CAS 哈希链）与审计导出（10.6）
+**When** 对导出证据包签名 / 第三方独立验证
+**Then** 签名覆盖证据哈希集（内容寻址——签名可独立复算）；第三方验证不接触租户数据（仅哈希+签名+清单）
+**And** 验证结果留痕（verification 族事件）
+
+### Story 12.10: W-1 适配器补齐与复评解除（G5）
+
+As a 平台运营者,
+I want 真实适配器 × VastaLab 的完整执行路径与 CI 并入评测报告,
+So that 真实模型多种子置信区间成为评测报告的一等公民（W-1 解除条件——豁免清零）。
+
+**Acceptance Criteria:**
+
+**Given** 11.11 适配器机制（OpenAICompatAdapter + SecretRef + 门控测试）与 9.11 CI 契约
+**When** 真实适配器 × VastaLab 任务集跑 ≥10 种子
+**Then** 执行路径端到端（adapter 驱动评测——非调用方自备结果）；≥10 种子门槛接线层强制（<10 拒）；CI **并入评测报告结构**（OfflineEvalReport 字段——非独立事件）
+**And** W-1 复评解除（豁免在册清零）；门控集成测试（VASTA_REAL_ADAPTER）覆盖新路径
+
+### Story 12.11: 跨区域数据面与边缘编排（G5）
+
+As a 边缘场景负责人,
+I want 跨区域数据面与边缘设备编排,
+So that 数据驻留边界内就近执行、证据跨区域回传（FR-079）。
+
+**Acceptance Criteria:**
+
+**Given** 11.13 流式/边缘底座（StreamingEnvironment/EdgeBuffer/帧 CAS）与 10.11 驻留
+**When** 跨区域部署（区域注册 + 边缘设备编组 + 跨区证据回传）
+**Then** 区域数据面声明（数据不出区域——驻留策略延伸）；边缘编组下发（清单化编排）；跨区回传复用帧 CAS + 完整性校验（11.13 恢复语义）
+**And** 跨区事件族留痕；区域路由 fail-closed（区域不可达不静默降级）
 
 ## Epic 1: 可记录的 Agent Run（观察即证据）
 
