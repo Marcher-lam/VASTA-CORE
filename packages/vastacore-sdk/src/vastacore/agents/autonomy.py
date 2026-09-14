@@ -62,7 +62,7 @@ class AutonomyPolicy(BaseModel):
         description="升档需连续 N 次达标（防抖动）")
 
     def model_post_init(self, __context: Any) -> None:
-        import math
+        from ._finite import require_finite
 
         dimension_keys = {"environment", "tool", "operation", "data"}
         if set(self.weights) != dimension_keys:
@@ -70,18 +70,16 @@ class AutonomyPolicy(BaseModel):
                 f"权重键集须恰为四维 {sorted(dimension_keys)}"
                 f"（得到 {sorted(self.weights)}）")
         for key, weight in self.weights.items():
-            if not math.isfinite(weight) or weight < 0:
-                raise ValueError(
-                    f"权重 {key}={weight!r} 须为非负有限数"
-                    "（负权重使风险方向反转、NaN 使档位静默失效）")
+            require_finite(
+                weight, field=f"权重 {key}",
+                code="autonomy.bad_weight", non_negative=True)
         total = sum(self.weights.values())
         if abs(total - 1.0) > 0.01:
             raise ValueError(f"权重和须为 1（得到 {total}）")
         t0, t1, t2 = self.thresholds
-        if not all(math.isfinite(t) for t in (t0, t1, t2)) \
-                or not t0 < t1 < t2:
+        if not t0 < t1 < t2:
             raise ValueError(
-                f"阈值须严格递增且有限（得到 {self.thresholds}）"
+                f"阈值须严格递增（得到 {self.thresholds}）"
                 "——非单调阈值使档位互斥失效")
 
 

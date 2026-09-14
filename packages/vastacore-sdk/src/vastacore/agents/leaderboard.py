@@ -108,8 +108,43 @@ async def generate_leaderboard(
     return board
 
 
+async def leaderboard_from_tournament(
+    store: Any, report: Any, spec: LeaderboardSpec, *,
+    tenant_id: str = "t-default", project_id: str = "p-default",
+) -> Leaderboard:
+    """竞赛 → 榜单的官方聚合缝（Story 12.2——11.12 AC 点名）。
+
+    条目从 ``evaluation.tournament_settled`` 事件**回读**构造（证据
+    引用语义：evidence_event_seq 即 settled 事件的流内序号，分值取
+    事件 payload 记录——非调用方转述）；失败候选不入榜（分值
+    非有限/缺省）。"""
+    settled = None
+    for event in store.iter_run_events(
+            _LEADERBOARD_RUN, tenant_id=tenant_id, project_id=project_id):
+        if event.type == "evaluation.tournament_settled" \
+                and event.payload.get("tournament_id") \
+                == report.tournament_id:
+            settled = event  # 取最新一条（同 id 复跑以后者为准）
+    if settled is None:
+        raise VastaError(
+            code="leaderboard.tournament_not_settled",
+            message=(f"竞赛 {report.tournament_id!r} 无 settled 事件——"
+                     "先跑 run_tournament 再聚合"),
+        )
+    results: list[tuple[str, float, str, int]] = []
+    for rank in settled.payload.get("ranking", []):
+        if rank.get("failed") or not isinstance(rank.get("score"),
+                                                (int, float)):
+            continue
+        results.append((
+            rank["candidate"], float(rank["score"]),
+            _LEADERBOARD_RUN, settled.seq))
+    return await generate_leaderboard(store, spec, results=results)
+
+
 def check_leaderboard_access(
-    board: Leaderboard, *,
+    board: Leaderboard,
+    *,
     tenant_id: str, project_id: str,
     principal: Any = None,
 ) -> None:
@@ -147,4 +182,5 @@ def check_leaderboard_access(
 
 
 __all__ = ["Leaderboard", "LeaderboardEntry", "LeaderboardSpec",
-           "check_leaderboard_access", "generate_leaderboard"]
+           "check_leaderboard_access", "generate_leaderboard",
+           "leaderboard_from_tournament"]

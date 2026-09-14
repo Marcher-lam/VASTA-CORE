@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -45,6 +46,11 @@ from .._version import __version__
 
 #: 契约模板：必填段齐全的普通字典（args/tool 由每次调用覆写）。
 ContractTemplate = dict[str, Any]
+
+#: 动作闸钩子（Story 12.2 组装接线）：``async (Action) -> None``——
+#: 拒绝即抛（动作不执行）。依赖倒置：本模块不 import agents 子包，
+#: 由装配方注入 ``vastacore.agents.guardrails.make_action_guard`` 产物。
+ActionGuard = Callable[[Action], Awaitable[None]]
 
 
 class SessionSummary(BaseModel):
@@ -77,12 +83,17 @@ class AgentSession:
         gateway: ToolGateway,
         contracts: dict[str, ContractTemplate],
         run_id: str,
+        action_guard: ActionGuard | None = None,
     ) -> None:
         self._engine = engine
         self._store = store
         self._gateway = gateway
         self._contracts = dict(contracts)
         self._run_id = run_id
+        # enforcement 闸（Story 12.2 组装接线）：注入式钩子——execution
+        # 不 import agents（层契约），装配方注入
+        # vastacore.agents.guardrails.make_action_guard 的产物。
+        self._action_guard = action_guard
         self._closed = False
 
     # ---- 组装 ----
@@ -98,6 +109,7 @@ class AgentSession:
         run_id: str | None = None,
         budget: dict[str, int] | None = None,
         max_actions: int = 50,
+        action_guard: ActionGuard | None = None,
     ) -> AgentSession:
         """从零装配一个可回放会话（外部团队接入的主入口）。"""
         store_root = Path(root) / "store"
@@ -119,7 +131,8 @@ class AgentSession:
         except Exception:
             store.close()
             raise
-        return cls(engine, store, gateway, contracts or {}, effective_run_id)
+        return cls(engine, store, gateway, contracts or {},
+                   effective_run_id, action_guard=action_guard)
 
     # ---- 生命周期（RunEngine 透传）----
     async def start(self) -> None:
@@ -195,7 +208,11 @@ class AgentSession:
         - 工具已注册网关且 use_gateway=True（默认）：契约模板构造 →
           execute_contracted 六段链（写动作核验自动走）；
         - 未注册或显式 use_gateway=False：env.step 观察路径。
-        - 注册工具缺模板：fail-closed 拒执行（AD-12）。"""
+        - 注册工具缺模板：fail-closed 拒执行（AD-12）。
+        - action_guard 注入时（12.2 组装接线）：闸门先行——拒绝即抛，
+          动作不进入任何执行路径（enforcement 面被运行时强制）。"""
+        if self._action_guard is not None:
+            await self._action_guard(action)
         registered = action.tool in self._gateway.registered_tools()
         if use_gateway and registered:
             template = self._contracts.get(action.tool)

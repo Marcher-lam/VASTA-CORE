@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
 
+from ._finite import require_finite
 from .autonomy import AutonomyLevel
 
 _BUDGET_RUN = "risk-budgets"
@@ -111,14 +112,10 @@ async def record_risk_exposure(
     可把触顶敞口「洗白」回预算内、NaN 使 ``>=`` 比较恒 False 永不
     触顶；``model_copy(update=)`` 不走 pydantic 校验，故更新后显式
     重验（ge=0 约束不形同虚设）。"""
-    import math
-
-    if not math.isfinite(risk_weight) or risk_weight < 0:
-        raise VastaError(
-            code="riskbudget.bad_weight",
-            message=(f"risk_weight={risk_weight!r} 须为非负有限数"
-                     "（负值洗白敞口、NaN 解除预算闸）"),
-        )
+    require_finite(
+        risk_weight, field="risk_weight",
+        code="riskbudget.bad_weight", non_negative=True,
+        message="risk_weight 须为非负有限数（负值洗白敞口、NaN 解除预算闸）")
     units = exposure.risk_units_used + (
         risk_weight if is_high_risk else 0.0)
     ops = exposure.high_risk_ops_used + (1 if is_high_risk else 0)
@@ -147,6 +144,7 @@ def enforce_budget(
     留痕由调用方接（enforce 与 trace 分离——同 11.5 模式）。"""
     import math
 
+    # 非抛出语义（返回 L0 而非 raise）——不入 require_finite 家族
     if not math.isfinite(exposure.risk_units_used):
         return AutonomyLevel.L0_OBSERVE  # 毒记录 fail-closed
     if exposure.risk_units_used >= budget.risk_units or \

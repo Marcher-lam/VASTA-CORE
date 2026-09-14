@@ -95,7 +95,7 @@ def _validate_metrics(result: CandidateResult,
     - 非有限值（NaN/inf）→ failed：NaN 与任何数比较恒 False，
       排序未定义（实测 NaN 候选可居首）。
     """
-    import math
+    from ._finite import require_finite
 
     missing = [m for m in spec.metrics if m not in result.metrics]
     if missing:
@@ -105,13 +105,11 @@ def _validate_metrics(result: CandidateResult,
                      "——少报指标即失败（不可静默计 0 分）"),
         )
     for metric, value in result.metrics.items():
-        if not isinstance(value, (int, float)) or \
-                isinstance(value, bool) or not math.isfinite(value):
-            raise VastaError(
-                code="tournament.non_finite_metric",
-                message=(f"候选 {result.candidate!r} 指标 {metric}="
-                         f"{value!r} 非有限数——排序未定义"),
-            )
+        require_finite(
+            value, field=f"指标 {metric}",
+            code="tournament.non_finite_metric",
+            message=(f"候选 {result.candidate!r} 指标 {metric}="
+                     f"{value!r} 非有限数——排序未定义"))
 
 
 def _composite_score(result: CandidateResult,

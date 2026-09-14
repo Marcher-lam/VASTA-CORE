@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from vasta_protocols.errors import VastaError
 from vasta_storage import SqliteStorage
 from vastacore.agents.autonomy import (
     AutonomyInputs,
@@ -181,14 +182,15 @@ class TestReviewRegressions:
         assert s.level is AutonomyLevel.L1_SUGGEST
 
     def test_negative_weight_rejected(self) -> None:
-        """A-1：负权重使风险方向反转——构造期拒。"""
-        with pytest.raises(ValueError):
+        """A-1：负权重使风险方向反转——构造期拒（12.2 起 VastaError
+        统一错误信封口径）。"""
+        with pytest.raises(VastaError):
             AutonomyPolicy(weights={"environment": -0.5, "tool": 0.5,
                                     "operation": 0.5, "data": 0.5})
 
     def test_nan_weight_rejected(self) -> None:
         """A-1：NaN 权重静默失效——构造期拒。"""
-        with pytest.raises(ValueError):
+        with pytest.raises(VastaError):
             AutonomyPolicy(weights={
                 "environment": float("nan"), "tool": 0.3,
                 "operation": 0.3, "data": 0.4})

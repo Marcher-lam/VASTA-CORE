@@ -27,13 +27,14 @@ Epic 11 评审修复（盲审 M1、边界 D-1/D-2/D-3/D-4）：
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from vasta_protocols.errors import VastaError
 from vasta_protocols.sequencer import EventSequencer
+
+from ._finite import require_finite
 
 _DELEGATION_RUN = "delegations"
 
@@ -61,14 +62,9 @@ class DelegationContract(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         for key, value in self.budget.items():
-            if not isinstance(value, (int, float)) \
-                    or isinstance(value, bool) or not value >= 0 \
-                    or not math.isfinite(value):
-                raise VastaError(
-                    code="delegation.bad_budget",
-                    message=(f"预算 {key}={value!r} 须为非负有限数"
-                             "（NaN/inf 使全部比较判失效）"),
-                )
+            require_finite(
+                value, field=f"预算 {key}",
+                code="delegation.bad_budget", non_negative=True)
         criteria = self.output_contract.get("success_criteria")
         if not criteria:
             raise VastaError(
@@ -171,12 +167,9 @@ def validate_action(
     _check_input_scope(contract, action)
     if budget_used is not None:
         for key, used in budget_used.items():
-            if not math.isfinite(used) or used < 0:
-                raise VastaError(
-                    code="delegation.bad_budget_usage",
-                    message=(f"预算用量 {key}={used!r} 须为非负有限数"
-                             "（自报口径也守非负）"),
-                )
+            require_finite(
+                used, field=f"预算用量 {key}",
+                code="delegation.bad_budget_usage", non_negative=True)
             limit = contract.budget.get(key)
             if limit is not None and used >= limit:
                 raise VastaError(
