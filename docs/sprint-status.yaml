@@ -29,80 +29,80 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 17:35
-last_updated: 09-14-2026 13:34
+last_updated: 09-14-2026 13:41
 project: VastaCore
 project_key: NOKEY
 tracking_system: file-system
 story_location: docs/stories
 development_status:
-  epic-1: in-progress
-  1-1-monorepo-骨架与协议基座: review
-  1-2-run-生命周期与预算: review
-  1-3-五类-observation-采集: review
-  1-4-原始证据内容寻址入库: review
-  1-5-runcontext-确定性注入: review
-  1-6-supervisor-循环与预算监控: review
-  1-7-示例环境与端到端首跑: review
+  epic-1: done
+  1-1-monorepo-骨架与协议基座: done
+  1-2-run-生命周期与预算: done
+  1-3-五类-observation-采集: done
+  1-4-原始证据内容寻址入库: done
+  1-5-runcontext-确定性注入: done
+  1-6-supervisor-循环与预算监控: done
+  1-7-示例环境与端到端首跑: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
-  2-1-多维检索索引: review
-  2-2-图像回看工具集: review
-  2-3-派生血缘与回链校验: review
+  epic-2: done
+  2-1-多维检索索引: done
+  2-2-图像回看工具集: done
+  2-3-派生血缘与回链校验: done
   epic-2-retrospective: done
 
-  epic-3: in-progress
-  3-1-actioncontract-模型与缺段拒执行: review
-  3-2-工具清单与-tool-gateway: review
-  3-3-策略引擎四态与-fail-closed: review
-  3-4-执行后组合核验: review
-  3-5-偏差失效与有界恢复: review
-  3-6-人工暂停-接管-批准-撤销: review
+  epic-3: done
+  3-1-actioncontract-模型与缺段拒执行: done
+  3-2-工具清单与-tool-gateway: done
+  3-3-策略引擎四态与-fail-closed: done
+  3-4-执行后组合核验: done
+  3-5-偏差失效与有界恢复: done
+  3-6-人工暂停-接管-批准-撤销: done
   epic-3-retrospective: done
 
-  epic-4: in-progress
-  4-1-因果时间线投影: review
-  4-2-首个偏差定位: review
-  4-3-自包含-html-replay-生成器: review
-  4-4-最小复现包与回归任务: review
+  epic-4: done
+  4-1-因果时间线投影: done
+  4-2-首个偏差定位: done
+  4-3-自包含-html-replay-生成器: done
+  4-4-最小复现包与回归任务: done
   epic-4-retrospective: done
 
-  epic-5: in-progress
-  5-1-四类记忆与-claim-全生命周期: review
-  5-2-显式冲突: review
-  5-3-失效传播: review
-  5-4-context-builder-预算内装配: review
+  epic-5: done
+  5-1-四类记忆与-claim-全生命周期: done
+  5-2-显式冲突: done
+  5-3-失效传播: done
+  5-4-context-builder-预算内装配: done
   epic-5-retrospective: done
 
-  epic-6: in-progress
-  6-1-模型接口-清单与双形态加载: review
-  6-2-沙箱执行器-受限子进程: review
-  6-3-验证流水线-静态-回放-性质: review
-  6-4-meta-controller-规则版: review
-  6-5-受约束规划与逐步现实核验: review
-  6-6-worldmodel-失效桥接-ad-13: review
+  epic-6: done
+  6-1-模型接口-清单与双形态加载: done
+  6-2-沙箱执行器-受限子进程: done
+  6-3-验证流水线-静态-回放-性质: done
+  6-4-meta-controller-规则版: done
+  6-5-受约束规划与逐步现实核验: done
+  6-6-worldmodel-失效桥接-ad-13: done
   epic-6-retrospective: done
 
-  epic-7: in-progress
-  7-1-评测框架与配置固化: review
-  7-2-vastalab-任务集初版: review
-  7-3-六组消融-runner: review
+  epic-7: done
+  7-1-评测框架与配置固化: done
+  7-2-vastalab-任务集初版: done
+  7-3-六组消融-runner: done
   epic-7-retrospective: done
 
   epic-8: done
-  8-1-sdk-onboarding: review
-  8-2-trajectory-import: review
-  8-3-http-service: review
-  8-4-tool-scaffold: review
-  8-5-capability-probe: review
-  8-6-model-routing: review
-  8-7-lineage-recall: review
-  8-8-model-policy-versioning: review
-  8-9-eval-as-run: review
-  8-10-offline-trajectory-eval: review
-  8-11-tool-proxy: review
-  8-12-multimodal-on-demand: review
-  8-13-lab-split: review
+  8-1-sdk-onboarding: done
+  8-2-trajectory-import: done
+  8-3-http-service: done
+  8-4-tool-scaffold: done
+  8-5-capability-probe: done
+  8-6-model-routing: done
+  8-7-lineage-recall: done
+  8-8-model-policy-versioning: done
+  8-9-eval-as-run: done
+  8-10-offline-trajectory-eval: done
+  8-11-tool-proxy: done
+  8-12-multimodal-on-demand: done
+  8-13-lab-split: done
   epic-8-retrospective: done
 
   epic-9: done
@@ -171,21 +171,21 @@ action_items:
     epic: 7
     action: "工作产物显式路径 git add（禁 -A 兜底）；新临时目录先入 .gitignore"
     owner: "全体会话"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-1-7-retro-item-2-unify-sequencer"
     epic: 7
     action: "统一事件信封构造/seq 分配器（单一 Sequencer），消除 runner/cognition/_bookkeeping_stub
       三处重复"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-1-7-retro-item-3-bridge-wiring"
     epic: 7
     action: "cognition→model-lab 桥接自动化：引擎在 refute 后调 WorldModelBridge（AD-13 owner
       语义落地）"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-1-7-retro-item-4-split-lab"
     epic: 7
@@ -203,74 +203,74 @@ action_items:
     epic: 7
     action: "Epic 6/7 九份 Story 文档补验收映射"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-1-7-retro-2026-09-09.md"
   - id: "epic-8-retro-item-1-unify-sequencer"
     epic: 8
     action: "统一 Sequencer/EnvelopeBuilder（现 5 处构造点，Epic 8 又增 2）；Stage 3 存储改造首项，此前新写路径不得新增第
       6 处（评审检查项）"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-8-retro-item-2-ac-wording"
     epic: 8
     action: "epics.md AC 措辞对齐：8.6 留痕=Artifact 形态、NFR-015 标注 MVP 档与 Stage 3 接线项"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-8-retro-item-3-review-cadence"
     epic: 8
     action: "评审节奏惯例：每 ~6 Story 或风险组边界跑四层评审，不等 Epic 末（本轮 4 高危平均存活 8+ 提交）"
     owner: "全体"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-8-retro-item-4-git-add-explicit"
     epic: 8
     action: "git add 显式路径（忽略规则是兜底不是许可；评审提交仍出现过一次 -A）"
     owner: "全体会话"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-8-retro-item-5-waiver-and-bridge"
     epic: 8
     action: "WAIVER 决议（承 Epic1-7 A6）+ cognition→lab 桥接接线（承 A3）——Stage 3 启动前"
     owner: "用户/架构"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-8-retro-item-6-sdk-subpackage"
     epic: 8
     action: "sdk 子包化评估（现 16 文件六正交领域；Stage 3 继续加模块则先拆子包）"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-8-retro-2026-09-10.md"
   - id: "epic-9-retro-item-13-sprint-status-回写惯例-story-评审绿-提交后即置-done"
     epic: 9
     action: "sprint-status 回写惯例：Story 评审绿+提交后即置 done（或每轮评审边界批量同步）"
     owner: "全体会话"
-    status: open
+    status: done
     ref: "docs/epic-9-retro-2026-09-09.md"
   - id: "epic-9-retro-item-14-sdk-子包化-26-模块-5762-行临界-stage-4-开工前执行"
     epic: 9
     action: "sdk 子包化（26 模块 5762 行临界）——Stage 4 开工前执行"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-9-retro-2026-09-09.md"
   - id: "epic-9-retro-item-15-测试卫生三件套-子集-flaky-修复-fake-约束对齐惯例-常驻-seque"
     epic: 9
     action: "测试卫生三件套：子集 flaky 修复 / Fake 约束对齐惯例 / 常驻 Sequencer 评估"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-9-retro-2026-09-09.md"
   - id: "epic-9-retro-item-16-9-11-模型级重验证-9-12-pg-档备份排期-defer-项"
     epic: 9
     action: "9.11 模型级重验证 + 9.12 PG 档备份排期（defer 项）"
     owner: "开发"
-    status: open
+    status: done
     ref: "docs/epic-9-retro-2026-09-09.md"
   - id: "epic-9-retro-item-17-w-3-fr-022-三算子-解除或续豁-stage-4-规划裁决"
     epic: 9
     action: "W-3（FR-022 三算子）解除或续豁——Stage 4 规划裁决"
     owner: "用户"
-    status: open
+    status: done
     ref: "docs/epic-9-retro-2026-09-09.md"
   - id: "epic-10-retro-item-18-事件目录生成机制-schema_registry-目录从代码发射点生成-手工快照"
     epic: 10
@@ -282,7 +282,7 @@ action_items:
     epic: 10
     action: "跨 Story 组合测试惯例：同 Epic 内新模块间官方接法必须有组合测试（装配缝两连对策）"
     owner: "全体"
-    status: open
+    status: done
     ref: "docs/epic-10-retro-2026-09-11.md"
   - id: "epic-10-retro-item-20-提交脚本化-story-提交前一键-pytest-ruff-lint-impor"
     epic: 10
@@ -374,7 +374,7 @@ action_items:
     epic: 12
     action: "行动项簿记一次性清偿：epic 1-10 的 16 个 open 项逐一证据核销（已交付翻 done、真 open 保留并更新表述）"
     owner: "架构"
-    status: open
+    status: done
     ref: "docs/epic-12-retro-2026-09-14.md"
   - id: "epic-12-retro-item-35-session-级-enforcement-四面正反例-评分-public-pr"
     epic: 12
