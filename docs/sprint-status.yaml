@@ -161,7 +161,7 @@ development_status:
   12-6-registry-revocation: done
   12-7-verified-publisher: done
   12-8-public-discovery: done
-  12-9-evidence-signing: backlog
+  12-9-evidence-signing: done
   12-10-real-adapter-w1: backlog
   12-11-edge-orchestration: backlog
   epic-12: backlog
