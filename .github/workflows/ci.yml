@@ -23,4 +23,15 @@ jobs:
       - name: Architecture contracts (import-linter, AD-1)
         run: uv run lint-imports
       - name: Tests (pytest)
-        run: uv run pytest -q
+        run: uv run pytest -q 2>&1 | tee pytest.out; exit ${PIPESTATUS[0]}
+      - name: Publish failure log (self-reporting)
+        if: failure()
+        run: |
+          git config user.name "ci-log-bot"
+          git config user.email "ci-log-bot@users.noreply.github.com"
+          git checkout -B "ci-logs/${{ github.run_id }}-py${{ matrix.python-version }}"
+          mkdir -p .ci-logs
+          cp pytest.out ".ci-logs/py${{ matrix.python-version }}.out"
+          git add .ci-logs
+          git commit -m "CI 失败日志 run=${{ github.run_id }} py${{ matrix.python-version }}"
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "HEAD:ci-logs/${{ github.run_id }}-py${{ matrix.python-version }}"
