@@ -43,8 +43,9 @@ class CapableModel(BaseFake):
     async def generate(self, request: ModelRequest) -> ModelResponse:
         ctx = request.context
         if ctx.get("probe") == "vision":
-            # 真实视觉模型从图像里读出密标；替身从 context 回显
-            return ModelResponse(content=f"marker={ctx['image_b64'][-20:]}")
+            # 真实视觉模型从 PNG 像素里读出密标；替身从 context 模拟
+            # 回显（context 是适配器侧管线数据，不进 prompt）
+            return ModelResponse(content=f"marker={ctx['marker']}")
         if ctx.get("probe") == "structured":
             return ModelResponse(content=json.dumps({"ok": True, "n": 7}))
         if ctx.get("probe") == "tool_call":

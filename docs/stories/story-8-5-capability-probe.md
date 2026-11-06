@@ -65,6 +65,19 @@ So that 路由与提示策略按真实能力走，而不是我手工声明。
 - 伙伴信号可调整标注：探测方法集（needle-short / optional-generate_stream）
   待 Stage 2 真实适配器反馈后扩展。
 
+### 增补（2026-11-06，W-1 视觉面闭环）
+
+- vision 探测载荷从合成形态（伪 b64 尾缀——仅替身可答）升级为**真实渲染
+  PNG**（5×7 点阵密标画入像素，`evidence.engines` 同源字形子集就地内嵌
+  ——models/evidence 子包互独立不跨引）；替身改从 `context['marker']`
+  模拟回显（context 不进 prompt，真实模型拿不到提示）。
+- 真实验证：本地 `qwen3.8-27b-mlx`（LM Studio，OpenAI 兼容）经
+  `OpenAICompatAdapter` 多模态接线（image_b64 → image_url data-URL）
+  **从像素读出密标**——`test_real_vision_probe_detected` 门控测试
+  PASSED（VASTA_REAL_ADAPTER 面）；自家 TemplateOcrEngine 对同一 PNG
+  自证读出（render→OCR 闭环）。
+- probe_capabilities docstring 的「合成形态」诚实边界注记同步更新。
+
 ### File List
 
 - packages/vastacore-sdk/src/vastacore/probe.py（新增：probe_capabilities/

@@ -66,6 +66,46 @@ class TestAdapter:
                 ModelRequest(prompt="x"))
         assert e.value.code == "real_adapter.empty_response"
 
+    async def test_image_b64_wired_to_image_url(self) -> None:
+        """多模态接线：context.image_b64 → OpenAI image_url data-URL
+        消息（真 VLM 才收得到像素——probe.vision 约定）。"""
+        captured: dict = {}
+
+        async def http_post(url, headers, body, timeout_s):
+            captured["body"] = body
+            return {"choices": [{"message": {"content": "marker=X"}}]}
+
+        async def key_resolver(ref: SecretRef) -> str:
+            return "k"
+
+        a = OpenAICompatAdapter(config(), http_post=http_post,
+                                api_key_resolver=key_resolver)
+        await a.generate(ModelRequest(
+            prompt="读出图中标记",
+            context={"image_b64": "QUJD", "image_mime": "image/png"}))
+        content = captured["body"]["messages"][0]["content"]
+        assert isinstance(content, list)  # 多模态数组形态
+        assert content[0] == {"type": "text", "text": "读出图中标记"}
+        assert content[1]["type"] == "image_url"
+        assert content[1]["image_url"]["url"] == \
+            "data:image/png;base64,QUJD"
+
+    async def test_no_image_stays_plain_text(self) -> None:
+        """无图保持纯文本 content（后端兼容面最大）。"""
+        captured: dict = {}
+
+        async def http_post(url, headers, body, timeout_s):
+            captured["body"] = body
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+        async def key_resolver(ref: SecretRef) -> str:
+            return "k"
+
+        a = OpenAICompatAdapter(config(), http_post=http_post,
+                                api_key_resolver=key_resolver)
+        await a.generate(ModelRequest(prompt="hi"))
+        assert captured["body"]["messages"][0]["content"] == "hi"
+
     def test_airgap_dependency_flagged(self) -> None:
         """airgap 联动：base_url 外网依赖被识别。"""
         report = adapter_airgap_dependency(config())
@@ -136,6 +176,44 @@ class TestRealAdapterIntegration:
                                 api_key_resolver=key_env)
         resp = asyncio.run(a.generate(ModelRequest(prompt="ping")))
         assert resp.content
+
+    def test_real_vision_probe_detected(self) -> None:
+        """W-1 视觉面：真渲染 PNG 密标经 image_url 接线 → 真 VLM
+        从像素读出（探测 detected——VASTA_REAL_MODEL 须为 VLM）。"""
+        import asyncio
+        import os
+
+        from vastacore.governance.byok import SecretRef
+        from vastacore.models.probe import _MARKER, probe_capabilities
+
+        cfg = RealAdapterConfig(
+            name="real-vlm", base_url=os.environ["VASTA_REAL_ADAPTER"],
+            api_key_ref=SecretRef(
+                provider="env", key_id="VASTA_REAL_API_KEY"),
+            model_id=os.environ.get("VASTA_REAL_MODEL", "gpt-4o-mini"),
+            timeout_s=float(os.environ.get("VASTA_REAL_TIMEOUT_S", "120")))
+
+        async def http_post(url, headers, body, timeout_s):
+            import urllib.request
+
+            req = urllib.request.Request(  # noqa: S310
+                url, data=json.dumps(body).encode(),
+                headers={**headers,
+                         "Content-Type": "application/json"})
+            with urllib.request.urlopen(  # noqa: S310
+                    req, timeout=timeout_s) as resp:
+                return json.loads(resp.read())
+
+        async def key_env(ref: SecretRef) -> str:
+            return os.environ[ref.key_id]
+
+        a = OpenAICompatAdapter(cfg, http_post=http_post,
+                                api_key_resolver=key_env)
+        report = asyncio.run(probe_capabilities(a, probe_timeout_s=120))
+        vision = report.probes["vision"]
+        assert vision.status == "detected", (
+            f"真 VLM 应从像素读出密标 {_MARKER!r}：{vision.evidence}"
+        )
 
 
 

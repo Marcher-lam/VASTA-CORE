@@ -75,10 +75,21 @@ class OpenAICompatAdapter(ModelAdapter):
     async def generate(self, request: ModelRequest) -> ModelResponse:
         key = await self.config.api_key_ref.resolve(
             self._api_key_resolver)
+        # 多模态接线（probe.vision 约定）：context.image_b64 → OpenAI
+        # image_url data-URL 消息——真 VLM 才收得到像素；无图保持纯
+        # 文本形态（后端兼容面最大）
+        content: Any = request.prompt
+        image_b64 = request.context.get("image_b64")
+        if isinstance(image_b64, str) and image_b64:
+            mime = str(request.context.get("image_mime", "image/png"))
+            content = [
+                {"type": "text", "text": request.prompt},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:{mime};base64,{image_b64}"}},
+            ]
         body = {
             "model": self.config.model_id,
-            "messages": [{"role": "user",
-                          "content": request.prompt}],
+            "messages": [{"role": "user", "content": content}],
         }
         response = await self._http_post(
             f"{self.config.base_url}/chat/completions",

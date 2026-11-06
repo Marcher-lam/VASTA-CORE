@@ -25,8 +25,58 @@ from vasta_protocols.protocols import (
     ModelResponse,
 )
 
-#: 探测密标（vision 用；图像载荷尾部 20 字符为可回显标记）。
+#: 探测密标（vision 用；渲染进**真实 PNG 像素**——真 VLM 从图里读出；
+#: 替身从 context['marker'] 模拟回显——context 是适配器侧管线数据，
+#: 不进 prompt，真实模型拿不到提示）。
 _MARKER = "VASTA-VISION-7Q4"
+
+#: 密标字符集的 5×7 点阵字形（同源 evidence.engines._FONT5X7 的子集
+#: 就地内嵌——models 与 evidence 子包互独立，10.1 层契约不许跨引）。
+_GLYPHS: dict[str, tuple[str, ...]] = {
+    "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
+    "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "N": ("10001", "10001", "11001", "10101", "10011", "10001", "10001"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+}
+
+
+def _marker_png_b64() -> str:
+    """渲染含密标的真实 PNG（白底黑字、左下角、3× 点阵放大）。
+
+    真实可解码——区别于历史形态（伪 b64 尾缀回显，仅替身可答）；
+    确定性（无字体/时间依赖）。"""
+    import base64
+    import io
+
+    from PIL import Image
+
+    scale, gap = 3, 3
+    text_w = len(_MARKER) * (5 * scale + gap)
+    img = Image.new("RGB", (max(text_w + 8, 160), 48), "white")
+    x0, y0 = 4, 48 - 7 * scale - 4  # 左下角
+    for i, ch in enumerate(_MARKER):
+        glyph = _GLYPHS.get(ch)
+        if glyph is None:
+            continue
+        gx = x0 + i * (5 * scale + gap)
+        for r in range(7):
+            for c in range(5):
+                if glyph[r][c] == "1":
+                    for dy in range(scale):
+                        for dx in range(scale):
+                            img.putpixel(
+                                (gx + c * scale + dx, y0 + r * scale + dy),
+                                (0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 _PROBE_NAMES = ("vision", "structured_output", "tool_calling",
                 "streaming", "context")
@@ -99,11 +149,11 @@ async def _ask(adapter: Any, prompt: str, context: dict[str, Any],
 
 
 async def _probe_vision(adapter: Any, declared: bool) -> ProbeOutcome:
-    image_b64 = "AAAA" * 32 + _MARKER  # 载荷尾部为密标
     resp = await _ask(
         adapter,
         "读出图中左下角标记并以 marker=<标记> 形式回答",
-        {"probe": "vision", "image_b64": image_b64},
+        {"probe": "vision", "image_b64": _marker_png_b64(),
+         "image_mime": "image/png", "marker": _MARKER},
     )
     ok = _MARKER in resp.content
     return (
@@ -214,8 +264,8 @@ async def probe_capabilities(
 
     评审修复：每维探测经 wait_for 超时（原先挂起的 provider 会永久阻塞）；
     capabilities 属性缺失/形态异常 → 全维 fail-closed（原先裸 AttributeError）。
-    诚实边界：vision 探测载荷为合成形态（非真实图像）——真实视觉适配器
-    可能拒绝作答而判 probe_failed（偏保守的假阴性方向）；context 维无布尔
+    诚实边界：vision 探测载荷为**真实渲染 PNG**（密标在像素内——真 VLM
+    可解码读出；替身从 context['marker'] 模拟回显）；context 维无布尔
     声明可交叉，置信度固定 0.9 为单侧口径。"""
     try:
         declared: ModelCapabilities = adapter.capabilities
