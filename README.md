@@ -35,6 +35,25 @@ async with session:
 - 完整从零示例（自定义 env + 工具 + 模板 + 回放）：`examples/onboarding/from_zero.py`
 - 接入计时演练与已知摩擦点：[docs/onboarding-log.md](docs/onboarding-log.md)（SM-5 证据，端到端 1–3 小时）
 
+## 端到端原型（examples/）
+
+| 目录 | 一句话 | 详情 |
+|---|---|---|
+| `examples/cua/` | **macOS 桌面 CUA 原型**（P0–P5 全 PASS，零侵入只调公共 API）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级确定性回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 23 条 macOS 桌面实测坑位表 | [examples/cua/README.md](examples/cua/README.md) |
+| `examples/rag/` | 多模态 RAG 原型：L1 向量粗筛 + L2 原始兜底两层检索，引用回源核验（零侵入，产物不入库） | [examples/rag/README.md](examples/rag/README.md) |
+
+CUA 是平台论点的完整实证——「看图决策的 agent 被契约约束、被 AX 事实核验、幻觉被 Supervisor 熔断拦停、UI 改版被记忆失效机制捕获、R3 写盘必须人在环」：
+
+```bash
+uv run python -m examples.cua.probe_grounding        # P0 视觉 grounding 门禁（11/11）
+uv run python -m examples.cua.run_task               # P1 六段链旗舰（42×3=126）
+uv run python -m examples.cua.loop                   # P2-A VLM 自主闭环（vision/memory/auto）
+uv run python -m examples.cua.textedit               # P2-B R3 人在环审批（原生 approval 事件）
+uv run python -m examples.cua.replay --run-id <id>   # P3 确定性回放（归一化流逐字节一致）
+uv run python -m examples.cua.run_memory             # P4 cognition UI-记忆三相
+uv run python -m examples.cua.eval                   # P5 任务集批量评测（guardrails 值守）
+```
+
 ## 仓库布局
 
 ```text
@@ -49,7 +68,8 @@ packages/
   vasta-eval/        # 消融与评测（Epic 7）
   vastacore-sdk/     # 组装根（AD-1 唯一允许引用适配器的位置）
   vasta-adapters/    # 适配器实现（GridWorld 等）
-examples/  tests/  docs/
+examples/            # cua（桌面 CUA）/ rag（多模态检索）/ onboarding（从零接入）
+tests/  docs/
 ```
 
 **依赖规则（AD-1）**：一切指向 `vasta-protocols`；适配器不被 import（`uv run lint-imports` 强制）。
