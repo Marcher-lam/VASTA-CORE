@@ -9,6 +9,8 @@ dist/
 
 # 演示产物与外部归档
 .vasta/
+.vasta-cua/
+.vasta-rag/
 VASTA-BRAINSTORM-PLAN.zip
 *.zip
 
