@@ -1,0 +1,26 @@
+{
+  "note": "三层 QA：T=纯文本（答案仅在 md）；I=纯图像（答案仅在合成架构图）；X=跨模态（需图文对照）。gold_sources 为仓库相对路径；gold_keywords 用于客观判分（答案含关键词即计分）。",
+  "items": [
+    {"id": "T01", "tier": "T", "question": "VastaCore 的事件信封类型分为多少个封闭族？请列举其中三个族名。", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md"], "gold_keywords": ["13", "run", "claim"]},
+    {"id": "T02", "tier": "T", "question": "AD-14 规定 CAS 的租户语义是什么？字节如何存储、可达性如何控制？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md"], "gold_keywords": ["sha256", "全局", "租户"]},
+    {"id": "T03", "tier": "T", "question": "幂等键由哪个组件用哪些字段派生？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md"], "gold_keywords": ["Tool Gateway", "run_id", "tool"]},
+    {"id": "T04", "tier": "T", "question": "MVP 阶段世界模型沙箱用什么形态？Stage 3 起计划升级为什么？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md"], "gold_keywords": ["子进程", "容器"]},
+    {"id": "T05", "tier": "T", "question": "核验（verification）的四种结局是什么？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md"], "gold_keywords": ["pass", "deviation", "inconclusive"]},
+    {"id": "T06", "tier": "T", "question": "quickstart 里 .vasta/store/objects 下的 blob 目录按什么规则命名？", "gold_sources": ["docs/quickstart.md"], "gold_keywords": ["sha", "2"]},
+    {"id": "T07", "tier": "T", "question": "按 README，把一个 Agent 接入 VastaCore 需要几步？分别是什么？", "gold_sources": ["README.md"], "gold_keywords": ["三步", "环境", "工具", "契约"]},
+    {"id": "T08", "tier": "T", "question": "蓝图 §19.3 说在检索瓶颈被证明之前，明确不提前引入什么向量相关组件？", "gold_sources": ["plan.md"], "gold_keywords": ["向量数据库"]},
+    {"id": "T09", "tier": "T", "question": "确定性重放（NFR-002）在 quickstart 里建议怎么验证？", "gold_sources": ["docs/quickstart.md"], "gold_keywords": ["两个不同根目录", "seed"]},
+    {"id": "I01", "tier": "I", "question": "在三面拓扑图中，控制面指向证据认知面的虚线箭头上标注了什么内容？", "gold_sources": ["examples/rag/corpus/three_planes.png"], "gold_keywords": ["只读摘要", "无原始载荷"]},
+    {"id": "I02", "tier": "I", "question": "在依赖层次图中，最底层（被所有包依赖的依赖根）是哪个包？", "gold_sources": ["examples/rag/corpus/ad1_layers.png"], "gold_keywords": ["vasta-protocols"]},
+    {"id": "I03", "tier": "I", "question": "在写动作六段链图中，第一个环节是什么？", "gold_sources": ["examples/rag/corpus/six_segment.png"], "gold_keywords": ["观察"]},
+    {"id": "I04", "tier": "I", "question": "在依赖层次图中，vastacore-sdk 的角色标注是什么？它与其他核心包的区别是什么？", "gold_sources": ["examples/rag/corpus/ad1_layers.png"], "gold_keywords": ["组装根", "适配器"]},
+    {"id": "X01", "tier": "X", "question": "结合依赖层次图与架构正文：为什么任何包不得 import 具体适配器？组装发生在哪里？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md", "examples/rag/corpus/ad1_layers.png"], "gold_keywords": ["组装", "适配器", "vastacore-sdk"]},
+    {"id": "X02", "tier": "X", "question": "结合三面拓扑图与 AD-8：控制面为什么不能接收原始 Artifact 载荷？它只能接收什么？", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md", "examples/rag/corpus/three_planes.png"], "gold_keywords": ["元数据", "原始"]},
+    {"id": "X03", "tier": "X", "question": "六段链图中第三个环节的 policy_cleared 之前，发生了什么？结合正文说明无模板工具会发生什么。", "gold_sources": ["docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md", "examples/rag/corpus/six_segment.png", "README.md"], "gold_keywords": ["契约", "fail-closed"]},
+    {"id": "P01", "tier": "P", "question": "Attention 论文（demo.pdf）中 Transformer 的 encoder 和 decoder 分别由多少个相同的层堆叠组成？", "gold_sources": ["examples/rag/corpus/demo.pdf"], "gold_keywords": ["6", "encoder", "decoder"]},
+    {"id": "P02", "tier": "P", "question": "Attention 论文中图 1（Figure 1）的标题是什么？", "gold_sources": ["examples/rag/corpus/demo.pdf"], "gold_keywords": ["Transformer", "model architecture"]},
+    {"id": "P03", "tier": "P", "question": "图文版 PDF 第一页嵌入的依赖层次图中，最底层（依赖根）是哪个包？", "gold_sources": ["examples/rag/corpus/vastacore_arch.pdf"], "gold_keywords": ["vasta-protocols"]},
+    {"id": "P04", "tier": "P", "question": "图文版 PDF 中三面拓扑图里，控制面指向证据认知面的虚线箭头标注了什么？", "gold_sources": ["examples/rag/corpus/vastacore_arch.pdf"], "gold_keywords": ["只读摘要", "无原始载荷"]},
+    {"id": "P05", "tier": "P", "question": "Attention 论文中注意力机制里的 Q、K、V 分别代表什么？", "gold_sources": ["examples/rag/corpus/demo.pdf"], "gold_keywords": ["query", "key", "value"]}
+  ]
+}
