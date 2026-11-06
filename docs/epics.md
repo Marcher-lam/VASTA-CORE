@@ -765,6 +765,8 @@ So that 真实模型多种子置信区间成为评测报告的一等公民（W-1
 **Then** 执行路径端到端（adapter 驱动评测——非调用方自备结果）；≥10 种子门槛接线层强制（<10 拒）；CI **并入评测报告结构**（OfflineEvalReport 字段——非独立事件）
 **And** W-1 复评解除（豁免在册清零）；门控集成测试（VASTA_REAL_ADAPTER）覆盖新路径
 
+> **复评执行（2026-11-06）：W-1 正式解除**——本地 `qwen3.8-27b-mlx`（LM Studio/OpenAI 兼容）真跑 10 种子 × 5 任务全对，CI [1.0,1.0]@95% 入报告结构并留痕 `evaluation.real_seed_ci`；同日 vision 探测真 PNG 化后真 VLM 从像素读出密标（d711080）。记录：[docs/reviews/w1-recheck-2026-11-06.md](reviews/w1-recheck-2026-11-06.md)。
+
 ### Story 12.11: 跨区域数据面与边缘编排（G5）
 
 As a 边缘场景负责人,
