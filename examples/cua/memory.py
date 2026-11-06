@@ -46,7 +46,7 @@ async def record_layout(
         run_id=evidence_run,
     ))
     child_ids: list[str] = []
-    base = f"calc:btn:"
+    base = "calc:btn:"
     for label, path in sorted(labels.items()):
         cid = f"{base}{label}:{sig}:v{_next_version(cognition, f'{base}{label}:{sig}:')}"
         await cognition.propose(Claim(

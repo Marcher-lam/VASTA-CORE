@@ -21,9 +21,10 @@ import asyncio
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from vasta_contracts import ActionContract, Prediction, audit_six_segment
 from vasta_protocols.ids import new_run_id

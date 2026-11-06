@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
+
 from vasta_contracts import ActionContract, Prediction, audit_six_segment
 from vasta_protocols.ids import new_run_id
 from vasta_runtime import Budget, RunContext, RunEngine
@@ -33,7 +34,7 @@ from .ax import enumerate_elements, frontmost_app, screenshot_png
 from .calib import _display_element, get_keypad, hard_reset  # noqa: PLC2701
 from .config import CuaConfig
 from .env import DesktopEnv
-from .marks import build_marks, crop_window, render_marked
+from .marks import build_marks, crop_window
 from .tools import ClickMarkTool
 from .verifiers import AxDisplayVerifier
 
@@ -156,7 +157,8 @@ async def run() -> int:
         print(f"[task] 核验事实：passed={passed}/{len(TASK_PLAN)}"
               f"{'（存在偏差：' + str(len(deviated)) + ' 次）' if deviated else ''}")
         for e in deviated:
-            print(f"  ⚠ seq={e.seq} {json.dumps(e.payload.get('verifiers', {}), ensure_ascii=False)[:200]}")
+            ver = json.dumps(e.payload.get("verifiers", {}), ensure_ascii=False)[:200]
+            print(f"  ⚠ seq={e.seq} {ver}")
         arts = set()
         for e in events:
             refs = e.payload.get("artifact_refs")

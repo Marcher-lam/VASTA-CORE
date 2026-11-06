@@ -178,7 +178,7 @@ async def replay(run_id: str) -> int:
 
         # 首个差异定位（诚实诊断）
         ra, rb = json.loads(a), json.loads(b)
-        for i, (x, y) in enumerate(zip(ra, rb)):
+        for x, y in zip(ra, rb, strict=False):
             if x != y:
                 print(f"[replay] ✗ 首差异 @ seq={x.get('seq')}：")
                 print(f"  录制: {json.dumps(x, ensure_ascii=False)[:200]}")

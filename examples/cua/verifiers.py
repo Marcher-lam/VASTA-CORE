@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from vasta_protocols.protocols import Verification, Verifier, VerifierManifest
+from vasta_protocols.protocols import Verification, VerifierManifest
 
 _CN_DIGIT = {"〇": 0, "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}

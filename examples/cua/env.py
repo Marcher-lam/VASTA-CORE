@@ -51,8 +51,9 @@ class DesktopEnv:
         if self.hard_on_reset:
             hard_reset(self.app)  # 冷启动：显示屏归零、回基本布局
         else:
-            from .ax import ensure_frontmost, key_code  # noqa: PLC0415
             import time
+
+            from .ax import ensure_frontmost, key_code  # noqa: PLC0415
 
             ensure_frontmost(self.app)
             key_code(53)

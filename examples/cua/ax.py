@@ -325,7 +325,6 @@ def frontmost_app() -> str:
 
 def ensure_frontmost(app: str, *, tries: int = 4) -> bool:
     """焦点守卫（活桌面工程学）：失焦即重激活，最多 tries 次。"""
-    import time
 
     for _ in range(tries):
         if frontmost_app() == app:

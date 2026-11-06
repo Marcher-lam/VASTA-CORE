@@ -25,8 +25,8 @@ from collections import Counter
 from pathlib import Path
 
 from .ax import (  # noqa: PLC2701
-    AxError,
     AxElement,
+    AxError,
     _run_osascript,
     activate_app,
     ensure_frontmost,

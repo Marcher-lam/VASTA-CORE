@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import sys
 import time
@@ -36,7 +37,6 @@ from vasta_protocols.protocols import (
     ToolManifest,
     ToolResult,
     Verification,
-    Verifier,
     VerifierManifest,
 )
 from vasta_runtime import Budget, RunContext, RunEngine
@@ -217,10 +217,8 @@ def _purge_saved_files() -> None:
         if not root.is_dir():
             continue
         for cand in root.glob(f"{DEMO_STEM}*"):
-            try:
+            with contextlib.suppress(OSError):
                 cand.unlink()
-            except OSError:
-                pass
 
 
 class TextContainsVerifier:
@@ -357,8 +355,9 @@ async def run(require_approval: bool) -> int:
               f"｜首偏差 {first_deviation(events).type if first_deviation(events) else '无'}"
               f"｜run 状态 {engine.state.value}")
         file = _find_saved_file()
-        print(f"[textedit] 落盘核验：{file}"
-              f"（含 ASCII 标记：{file is not None and DEMO_MARKER in file.read_text('utf-8', errors='replace') if file else False}）")
+        marker_ok = bool(file) and DEMO_MARKER in file.read_text(
+            "utf-8", errors="replace")
+        print(f"[textedit] 落盘核验：{file}（含 ASCII 标记：{marker_ok}）")
         store.close()
     return 0
 

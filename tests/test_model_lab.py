@@ -118,6 +118,8 @@ class TestSandbox:
 
         if _sys.platform == "win32":
             pytest.skip("Windows 无 RLIMIT_AS——内存限额为 POSIX 边界（AD-6 记录）")
+        if _sys.platform == "darwin":
+            pytest.skip("macOS 内核不支持 RLIMIT_AS 执行（EINVAL）——同 Windows 边界（AD-6）")
         sb = SandboxExecutor(timeout_s=10, mem_mb=16)
         code = "result = {'blob': 'x' * 100_000_000}"
         with pytest.raises(VastaError) as excinfo:

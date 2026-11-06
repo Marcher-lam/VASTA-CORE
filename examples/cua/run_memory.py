@@ -21,17 +21,15 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 from vasta_cognition import CognitionService
 from vasta_contracts import audit_six_segment
 from vasta_protocols.ids import new_run_id
-from vasta_protocols.protocols import EnvironmentStatus, Observation
 from vasta_runtime import Budget, RunContext, RunEngine
 from vasta_runtime.gateway import ToolGateway
 from vasta_storage import SqliteStorage
 
-from .ax import click_element, enumerate_elements, read_display
+from .ax import click_element, enumerate_elements
 from .calib import (
     _CALIB_JS,
     _display_element,

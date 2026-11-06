@@ -23,8 +23,20 @@ _SANDBOX_WRAPPER = '''
 import json, sys, math, itertools, collections
 try:
     import resource
-    resource.setrlimit(resource.RLIMIT_CPU, (__CPU_S__, __CPU_S__))
-    resource.setrlimit(resource.RLIMIT_AS, (__MEM_BYTES__, __MEM_BYTES__))
+    def _lower(res, value):
+        # 降限尽力而为、按资源独立：Linux 全额生效；darwin 内核对
+        # RLIMIT_AS 的 setrlimit 直接 EINVAL（不支持地址空间限额）、且
+        # hard 不得一步降到 soft 之下（先降 soft 再降 hard）；Windows 走
+        # ImportError。失败面由真实墙钟超时兜底（AD-6 记录边界）。
+        _soft, _hard = resource.getrlimit(res)
+        try:
+            if _soft == resource.RLIM_INFINITY or _soft > value:
+                resource.setrlimit(res, (value, _hard))
+            resource.setrlimit(res, (value, value))
+        except (ValueError, OSError):
+            pass
+    _lower(resource.RLIMIT_CPU, __CPU_S__)
+    _lower(resource.RLIMIT_AS, __MEM_BYTES__)
 except ImportError:
     pass  # Windows 无 resource——CPU/内存限额由超时墙钟兜底（AD-6 记录边界）
 data = json.loads(sys.stdin.read())
