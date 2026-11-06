@@ -24,7 +24,7 @@
 | 目录 | 内容 |
 |---|---|
 | [../examples/cua/](../examples/cua/README.md) | macOS 桌面 CUA（P0–P5 全 PASS）：SoM 感知 + 六段链 + AX 核验 + R3 审批 + 字节级回放 + Claim 图 UI-记忆 + guardrails 闸 + eval；23 条实测坑位表 |
-| [../examples/rag/](../examples/rag/README.md) | 多模态 RAG：两层检索 + 引用回源核验 + 消融（产物不入库） |
+| [../examples/rag/](../examples/rag/README.md) | 多模态 RAG：两层检索 + 引用回源核验 + 消融（运行数据 `.vasta-rag/` 不入库） |
 | [../examples/onboarding/from_zero.py](../examples/onboarding/from_zero.py) | 从零接入完整演练（自定义 env + 工具 + 契约模板 + 回放） |
 
 ## 过程档案（带日期，只增不改——历史记录）
