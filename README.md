@@ -2,19 +2,19 @@
 
 面向长程、多模态、工具调用型 Agent 的**认知与执行可靠性平台**：保留原始证据、管理可修订认知、约束并核验行动、按需构建可执行世界模型。
 
-当前状态：**MVP（Epic 1–7）已交付并通过四轮 code-review**——34 条 ★FR 全量、387+ 测试；Stage 2（Epic 8 开发者接入体验）进行中。
+当前状态：**六阶段（Epic 1–12）全量交付**——82 条 FR 全 delivered（2026-11-06 终检增补清偿：FR-002 五接入形态、FR-015/016 真实字节与识别引擎面、FR-084 商业分发全闭环）；1315+ 测试；属地运营三项（SLO 生产统计/真分布式部署/多区域演练）登记在册（[docs/project-final-review-addendum-2026-11-06.md](docs/project-final-review-addendum-2026-11-06.md)）。
 
 ## 快速开始
 
 ```bash
 uv sync --all-packages              # 注意：必须带 --all-packages（根项目无依赖声明，默认 sync 不装工作区成员）
 uv run python examples/quickstart.py   # GridWorld → SQLite 证据库 → L0 全量记录
-uv run pytest -q                        # 490+ 测试
+uv run pytest -q                        # 1315+ 测试
 ```
 
 详见 [docs/quickstart.md](docs/quickstart.md)。
 
-## 把你的 Agent 接进来（三步，≤3 工程日）
+## 把你的 Agent 接进来（五形态，SDK 三步起，≤3 工程日）
 
 ```python
 from vastacore import AgentSession
@@ -34,6 +34,7 @@ async with session:
 - `act()` 对网关注册工具自动构造契约并走 `execute_contracted`（核验/恢复/幂等全自动）；无模板 **fail-closed 拒执行**
 - 完整从零示例（自定义 env + 工具 + 模板 + 回放）：`examples/onboarding/from_zero.py`
 - 接入计时演练与已知摩擦点：[docs/onboarding-log.md](docs/onboarding-log.md)（SM-5 证据，端到端 1–3 小时）
+- **五接入形态**（FR-002 全量）：SDK（上方三步）｜HTTP 服务（`ops.service.create_app`）｜轨迹导入｜ToolProxy（既有工具零重写）｜**middleware**（`VastaMiddleware`——既有编排器 dict 进出零改造）｜**sidecar**（`python -m vastacore.execution.sidecar`——任意语言 loopback 伴生，Agent 侧只说 HTTP）
 
 ## 端到端原型（examples/）
 
