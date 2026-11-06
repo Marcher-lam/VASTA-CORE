@@ -41,7 +41,7 @@ async with session:
 | 目录 | 一句话 | 详情 |
 |---|---|---|
 | `examples/cua/` | **macOS 桌面 CUA 原型**（P0–P5 全 PASS，零侵入只调公共 API）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级确定性回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 23 条 macOS 桌面实测坑位表 | [examples/cua/README.md](examples/cua/README.md) |
-| `examples/rag/` | 多模态 RAG 原型：L1 向量粗筛 + L2 原始兜底两层检索，引用回源核验（零侵入，产物不入库） | [examples/rag/README.md](examples/rag/README.md) |
+| `examples/rag/` | **多模态 RAG 原型**（零侵入只调公共 API）：MinerU 图文 PDF 解析 + L1 向量粗筛 + L2 原始证据兜底（邻域扩展/原图直读/图文双向对齐）+ 引用回源核验 + 模型响应内容寻址缓存；21 题四层消融评测（X 跨模态层 L2 兜底 +0.67 裁判分，关键词覆盖 +13.1pp），设计决策见 DESIGN.md | [examples/rag/README.md](examples/rag/README.md) |
 
 CUA 是平台论点的完整实证——「看图决策的 agent 被契约约束、被 AX 事实核验、幻觉被 Supervisor 熔断拦停、UI 改版被记忆失效机制捕获、R3 写盘必须人在环」：
 
@@ -77,9 +77,11 @@ tests/  docs/
 
 ## 文档地图
 
-- 产品：[docs/briefs](docs/briefs/)（简报）→ [docs/prds](docs/prds/)（PRD）→ [docs/epics.md](docs/epics.md)（Epic/Story）
+- **[docs/README.md](docs/README.md)** —— 文档索引（指南 / 架构 / 原型 / 过程档案分层）
+- 上手：[docs/quickstart.md](docs/quickstart.md)（15 分钟首跑）→ [docs/onboarding-log.md](docs/onboarding-log.md)（接入演练）
 - 架构：[ARCHITECTURE-SPINE](docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md)（15 条 AD）
-- Story 记录：[docs/stories](docs/stories/)
+- 产品：[docs/briefs](docs/briefs/)（简报）→ [docs/prds](docs/prds/)（PRD）→ [docs/epics.md](docs/epics.md)（Epic/Story）→ [docs/stories](docs/stories/)（Story 记录）
+- 里程碑：[CHANGELOG.md](CHANGELOG.md)（阶段汇总；按 Story 提交，git log 即细目）
 
 ## 开发
 

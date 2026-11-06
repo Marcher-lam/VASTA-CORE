@@ -54,8 +54,13 @@ print(summary.final_state, summary.events, summary.artifacts)
 
 ## 下一步
 
-- `docs/epics.md` —— Epic 1–7 的完整故事与验收标准
+- [docs/README.md](README.md) —— 文档地图（指南 / 架构 / 原型 / 过程档案分层）
+- [examples/cua](../examples/cua/README.md) —— **端到端原型**：macOS 桌面
+  CUA（SoM 感知 + 六段链 + AX 核验 + R3 审批 + 字节级回放 + UI-记忆）
+- [examples/rag](../examples/rag/README.md) —— 多模态 RAG 原型（两层检索）
+- `docs/epics.md` —— Epic 1–12 的完整故事与验收标准
 - `docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md` —— 15 条架构决策（AD）
 - 确定性重放（NFR-002）：在**两个不同根目录**用相同 seed + run_id 各跑一次
   （如 `.vasta-a` / `.vasta-b`），事件流逐字节一致；同一根目录复用同一
-  run_id 会因 `(run_id, seq)` 唯一约束被拒绝（事件不可变，AD-2）
+  run_id 会因 `(run_id, seq)` 唯一约束被拒绝（事件不可变，AD-2）；
+  桌面版字节级复现见 `examples/cua` 的 P3 回放（确定性替身 + 归一化流对比）
