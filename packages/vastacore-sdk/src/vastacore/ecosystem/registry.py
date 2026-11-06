@@ -209,12 +209,18 @@ async def pull_plugin(
     key_resolver: KeyResolver,
     tenant_id: str = "t-default", project_id: str = "p-default",
 ) -> SignedPlugin:
-    """拉取插件：解析 → 取 CAS 字节 → 哈希对拍 → 重建验签对象。"""
+    """拉取插件：解析 → 商业闸（12.12）→ 取 CAS 字节 → 哈希对拍 → 重建验签对象。"""
     import hashlib
     import json
 
     entry = resolve_plugin(store, plugin_id, version=version,
-                           tenant_id=tenant_id, project_id=project_id)
+                            tenant_id=tenant_id, project_id=project_id)
+    # Story 12.12 商业闸：有付费 listing 才闸（自由分发不受影响）。
+    # 惰性导入——commerce 模块级引本模块的注册表投影（防环）。
+    from .commerce import assert_entitled
+
+    assert_entitled(store, plugin_id, version=entry.version,
+                    tenant_id=tenant_id, project_id=project_id)
     if entry.status == "revoked":
         raise VastaError(
             code="registry.not_active",

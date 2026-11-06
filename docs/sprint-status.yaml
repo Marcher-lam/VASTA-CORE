@@ -167,6 +167,7 @@ development_status:
   12-9-evidence-signing: done
   12-10-real-adapter-w1: done
   12-11-edge-orchestration: done
+  12-12-plugin-commerce: done
   epic-12: done
   epic-12-retrospective: done
 action_items:

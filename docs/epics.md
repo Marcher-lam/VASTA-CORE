@@ -764,6 +764,19 @@ So that 数据驻留边界内就近执行、证据跨区域回传（FR-079）。
 **Then** 区域数据面声明（数据不出区域——驻留策略延伸）；边缘编组下发（清单化编排）；跨区回传复用帧 CAS + 完整性校验（11.13 恢复语义）
 **And** 跨区事件族留痕；区域路由 fail-closed（区域不可达不静默降级）
 
+### Story 12.12: 插件商业分发子面（G3，FR-084 收口）
+
+As a 插件发行方,
+I want 定价单、购买凭据与拉取闸,
+So that 付费插件按凭据分发、自由分发不受影响（终检登记的 FR-084 商业分发留白闭环）。
+
+**Acceptance Criteria:**
+
+**Given** active 插件版本（12.5 注册表）与 ``publish_listing`` 定价单（free/paid，不可变——改价发新版本）
+**When** 租户 ``purchase``（支付网关可注入——默认发票网关不捕获，如实标注）产生凭据
+**Then** ``pull_plugin`` 商业闸：有付费 listing 才闸，凭据缺失 fail-closed（marketplace.entitlement_missing）；free/无 listing 拉取与 12.5 语义一致
+**And** listing/purchase 留痕（artifact.listed / artifact.purchased——生态域复用 artifact 族先例）；同版本重购拒（幂等）；公开市场的开放条件仍属 PRD 开放问题 8（FR-084）
+
 ## Epic 1: 可记录的 Agent Run（观察即证据）
 
 开发者把 Agent 跑在 VastaCore Local Runtime 上（L0 Observe-only），Run 全生命周期受预算管理，五类 Observation 与原始证据全量、经哈希校验地落盘，Supervisor 兜底。**FRs：FR-001★/004★/005★/010★/011★/053★；NFR-002 基础（AD-5 注入）；AD-1/2/3/5/7/10/11。**
