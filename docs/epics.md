@@ -418,6 +418,20 @@ So that 用量可计费、成本可归因可优化（FR-078）。
 **Then** 账单生成（按模型/项目分项，basis 口径延续）；预算使用率与优化建议（低效路由/高成本模型替代候选——router 成本面复用）
 **And** 账单留痕（billing 流周期闭合事件）；账单不可变（再生成=新周期版本）
 
+### Story 10.14: Console 最小可用面（G0，NFR-012/013 收口）
+
+As a 运维/治理人员,
+I want 一个键盘可操作、语义化标注、可本地化的 HTML 控制台,
+So that 终检登记的 NFR-012（无障碍——UI 面未建）与 NFR-013（国际化——
+UI/时间/数字/策略描述本地化零实现）两处 UI 面缺口闭环。
+
+**Acceptance Criteria:**
+
+**Given** ``mount_console(app, store=..., token=...)``（与业务面同 token——零匿名面）
+**When** 浏览 /console（检索）、/console/runs/{id}（时间线）、…/compare（可读对比）
+**Then** 首个可聚焦元素为跳转链接；全部交互原生元素（a/form/button，零 JS）；表单 label 显式关联；表格 caption + th scope；html lang 随 locale 切换；UI 串/时间格式/数字分组/事件与策略描述双语目录化
+**And** 对比视图按点分路径四组两栏（变更/仅前/仅后/相同）；渲染零写侧——事件语义不随语言切换变化（NFR-012 + NFR-013）
+
 ### Epic 11: 平台化与多 Agent（Stage 5，2026-09-11 增量拆解）
 组合/概率模型、动态自治、多 Agent 委派与共享边界、组织级风险预算、跨组织知识、排行榜、流式/边缘协同。**FRs covered:** FR-009, FR-027, FR-039, FR-042, FR-050, FR-051, FR-054, FR-056, FR-069, FR-077
 
