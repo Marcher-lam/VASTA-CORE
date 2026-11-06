@@ -68,7 +68,9 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 | 15 | 保存面板按富文本格式**追加 .rtf 后缀**且 RTF 转义中文（内容核验挂） | 词干 glob 找文件 + ASCII 标记段核验；run 前清旧文件防「替换确认」弹窗 |
 | 16 | ⌘W 清理残留脏文档触发「保留此新文稿？」三键对话框（⌘D 无效），吞掉后续全部键入 | 不做键盘式窗口清理；每 run ⌘N 自建新文档；残留窗口用 AX 点关闭钮/删除钮 |
 | 17 | R3 挂起后 Run 进 **paused** 态，直接重放被状态机拒 | 批准后先 `engine.resume()`（重观察 + `run.resumed` 事件）再 `execute_contracted(approved=True)`；平台校验「真实挂起请求」防伪造批准 |
-| 18 | 侧栏/模式等 UI 状态存于 **defaults**（非 SavedState）——只删 SavedState 冷启动后侧栏仍开（键区 13 钮异签名） | hard_reset 加 `defaults delete com.apple.calculator`（沙盒应用偏好全清） |
+| 18 | 侧栏/模式等 UI 状态存于 **defaults**（非 SavedState）；但 `defaults delete` 会切到另一种首跑布局（键区几何/读屏格式全漂移、标定不稳）——**治侧栏的药比病更毒** | 不做 defaults 清空（已移除）；侧栏残留用几何点击关闭 |
+| 22 | 漂移布局下 phase1 标定产出**残缺标签集**（缺 `=` 也过验收 → 模型合法请求被闸门死循环拦截） | 标定验收强制十数字+四则+`=`+`AC` 全集，缺一即拒重试 |
+| 23 | memory 模式纯文本决策（无图）会让 qwen3.5 **thinking 失控**（空 content 烧 4800 token）；长时运行后间歇复发 | 附截图锚定推理（定位仍零标定）；VLM 错误计数重试 ×2 后止损 |
 | 19 | 4 秒内**双杀重开**（调用方 reset + engine.reset 各一次 hard_reset）→ AX 树重建流态，读屏撞「无效的索引」 | DesktopEnv 加 `hard_on_reset=False`（env 只 Esc 清零）；read_display 全函数化（流态返回 None 不抛） |
 | 20 | 任务镜像读屏（runner 自读 display 对分）在流态下不可靠 | 计分只认**事件流** verification.passed（核验器裁决）——P1 就该这么写 |
 | 21 | 上一次枚举的 AX 路径在树变化后过期（`=` 出结果行也会变树） | 交互前重枚举（侧栏钮定位、活检查均自取新鲜树） |
@@ -102,11 +104,34 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 
 ## Roadmap（未做，接口已留）
 
-- 任务集 eval（tasks/ JSONL + 批量成功率/步数/首偏差统计）；
-  guardrails action_guard（角色/委派白名单/风险预算）接入。
+- P5 之后的自然延伸：任务集扩充（多 app）、批跑消融（vasta-eval
+  深度接驳）、记忆晋升策略（working→guide 全生命周期）。
 - P2-A 的安全侧战果（值得复用）：模型错点 → 连续核验偏差 →
   **Supervisor 熔断**自动暂停 Run——「幻觉的 agent 被平台拦停」
   已有事件流实证（run 01a1ae63）。
+
+## P5：guardrails 闸 + 任务集 eval + 记忆×VLM（代码全交付，实测口径见下）
+
+- **guard.py**：`make_action_guard` 五积木组装（角色/委派白名单/
+  动态自治/审批矩阵/风险预算），loop/eval 每动作前置调用。四层
+  拒绝负例**全实证**：`bad_tool_category` / `tool_not_permitted` /
+  `operation_forbidden`（L2×高危） / `risk_budget_breached`
+  （L3 中危连点触顶）；含动态自治降档真实触发。
+- **loop.py 三模式重构**：vision（意图-定位闸）/ memory（Claim
+  命中→零标定，路径直取主张；抽查 1 击守门）/ auto（回退链）；
+  `AgentRunResult` 结构化结局；VLM 错误容错重试。
+- **eval.py + tasks/**：任务集批量（成功率/步数/VLM 决策/核验/闸拦/
+  熔断/耗时 + vision 对照），报告工件入库（`cua.eval.report`）。
+- **诚实口径（2026-11-06 深夜实测）**：eval 全链路可跑、报告可出，
+  但当日**成功率数字不可用**——两个环境级干扰：① 计算器偏好曾被
+  `defaults delete` 清空（当时为治侧栏残留，该操作已从 hard_reset
+  移除并记坑位），布局进入漂移态，标定分类不稳定；② qwen3.5-9b
+  连续运行数小时后部分 prompt 触发 thinking 失控（空 content 烧
+  4800 token）。**安全面数字反而有效**：最差一轮 25 次错误定位被
+  闸门全部拦截（零误点击）、已执行的 7 步全部核验通过、零偏差、
+  熔断/预算负例全数生效——这正是本原型存在的意义。稳定环境
+  （重启计算器偏好归位 + `lms` 重载）后重跑
+  `uv run python -m examples.cua.eval` 即得干净基线。
 
 ## P4 UI-记忆语义（cognition Claim 图）
 

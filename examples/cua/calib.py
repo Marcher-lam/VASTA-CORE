@@ -176,10 +176,9 @@ def hard_reset(app: str = "Calculator", *, settle_s: float = 1.8) -> None:
             saved = Path.home() / "Library" / "Saved Application State" / \
                 "com.apple.calculator.savedState"
             shutil.rmtree(saved, ignore_errors=True)
-            # 侧栏/模式等 UI 状态存于 defaults（非 SavedState）——实测
-            # 仅删 SavedState 冷启动后侧栏仍开（键区 13 钮异签名）
-            subprocess.run(["defaults", "delete", "com.apple.calculator"],
-                           capture_output=True)
+            # 注意：不做 defaults delete——实测（2026-11）它会切到另一种
+            # 首跑布局（键区几何/分类假设全变），副作用远大于收益；
+            # 侧栏残留由 P4 的几何点击关闭，不靠偏好清空
         activate_app(app, settle_s=settle_s)
         if not ensure_frontmost(app):
             continue
@@ -265,6 +264,13 @@ def discover_keypad(app: str, elements: list[AxElement],
                      "-79": "+/−", "−79": "+/−"}.get(v)
             if label and label not in labels:
                 labels[label] = tuple(step["path"])
+    # 验收（实测坑：漂移布局下 phase1 会产出残缺集——缺 = 时闸门把
+    # 合法请求挡成死循环）：十数字 + 四则 + = + AC 缺一即拒
+    required = set("0123456789") | {"+", "−", "×", "÷", "=", "AC"}
+    missing = required - set(labels)
+    if missing:
+        raise AxError(f"标定不完整（缺 {sorted(missing)}，得 "
+                      f"{len(labels)} 钮）——布局漂移或读屏不可靠")
     return labels
 
 

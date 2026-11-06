@@ -1,0 +1,6 @@
+{"id": "mul-42x3", "task": "计算 42 乘 3", "answer": "126"}
+{"id": "mul-7x8", "task": "计算 7 乘 8", "answer": "56"}
+{"id": "add-12p34", "task": "计算 12 加 34", "answer": "46"}
+{"id": "sub-90m15", "task": "计算 90 减 15", "answer": "75"}
+{"id": "div-144d12", "task": "计算 144 除以 12", "answer": "12"}
+{"id": "mix-6x7m2", "task": "计算 6 乘 7 减 2", "answer": "40"}
