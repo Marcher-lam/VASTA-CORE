@@ -2,7 +2,7 @@
 
 基于 VastaCore「契约六段链 + 无损证据库」范式的 **macOS 桌面 Computer-Use
 Agent** 原型：纯视觉感知（SoM 编号辅助）+ AX 确定性核验。
-**零侵入**：只调用 packages/ 现有公共 API，不修改任何平台文件；本目录产物不提交 git。
+**零侵入**：只调用 packages/ 现有公共 API，不修改任何平台文件；运行数据（`.vasta-cua/`）不入库。
 
 ## 范式
 

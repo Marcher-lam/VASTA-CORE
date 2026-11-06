@@ -31,6 +31,8 @@
 
 ## 过程档案（带日期，只增不改——历史记录）
 
+- [decision-log.md](decision-log.md)：跨切裁决记录（主仓裁决 / W-1 解除 / Apache-2.0 / 缺口清偿提前实施）
+
 - [briefs/](briefs/)：产品简报（蓝图之源）
 - [prds/](prds/)：PRD 与对账（34 ★FR / 387+ 测试的验收基线）
 - [reviews/](reviews/)：逐 Epic code review 与修复记录（含 [W-1 复评解除记录](reviews/w1-recheck-2026-11-06.md)——真实模型 10 种子全对、CI 入评测报告）

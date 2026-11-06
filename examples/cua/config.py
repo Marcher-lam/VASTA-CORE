@@ -1,7 +1,7 @@
 """CUA 原型配置：全部经环境变量覆盖（BYOK，密钥不落库不进日志）。
 
 零侵入声明（同 examples/rag）：本目录是 examples 原型，只 import
-packages/ 现有公共 API，不修改 packages/ 任何文件；产出不提交 git。
+packages/ 现有公共 API，不修改 packages/ 任何文件；运行数据不入库（源码在库）。
 """
 
 from __future__ import annotations
