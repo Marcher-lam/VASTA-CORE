@@ -35,8 +35,26 @@ try:
             resource.setrlimit(res, (value, value))
         except (ValueError, OSError):
             pass
+    def _as_growth_cap(mem_bytes):
+        # RLIMIT_AS 限的是**虚拟地址空间总量**，而 CPython 启动足迹
+        # （x86_64 Linux VmSize 约 200-320MB，RSS 仅 ~20MB）远超业务
+        # 内存预算——按预算直接设总上限会在真 x86_64 上杀死解释器
+        # 启动（GitHub Actions 实测六连红）。改为**增长量上限**：
+        # 上限 = 当前 VmSize 基线 + 预算——超预算的分配增长仍被杀
+        # （mem_mb 语义不变），解释器在任何 Linux 架构可启动。
+        # 无 /proc/self/status（非 Linux）→ None → 不设 AS 卡（墙钟兜底）。
+        try:
+            with open("/proc/self/status") as f:
+                for line in f:
+                    if line.startswith("VmSize:"):
+                        return int(line.split()[1]) * 1024 + mem_bytes
+        except (OSError, ValueError, IndexError):
+            pass
+        return None
     _lower(resource.RLIMIT_CPU, __CPU_S__)
-    _lower(resource.RLIMIT_AS, __MEM_BYTES__)
+    _as_cap = _as_growth_cap(__MEM_BYTES__)
+    if _as_cap is not None:
+        _lower(resource.RLIMIT_AS, _as_cap)
 except ImportError:
     pass  # Windows 无 resource——CPU/内存限额由超时墙钟兜底（AD-6 记录边界）
 data = json.loads(sys.stdin.read())
