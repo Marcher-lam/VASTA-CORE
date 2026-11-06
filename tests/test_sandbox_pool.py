@@ -98,6 +98,13 @@ class TestPodmanCommand:
         out = model.transition({"x": 41}, {"tool": "step"})
         assert out["x"] == 42
 
+    def test_runtime_without_image_is_unavailable(self) -> None:
+        """可用性=二进制且镜像在本地：GitHub runner 预装 podman 但无
+        vasta 镜像——不得选中容器后端（否则把 localhost 镜像名当
+        registry 拉取而 connection refused——2026-11-06 CI 实测）。"""
+        backend = PodmanBackend(image="localhost/vasta-surely-missing:9")
+        assert backend.available is False  # 镜像缺失 → 池回退子进程
+
 
 class TestBackendSelection:
     async def test_prefers_container_over_subprocess(self) -> None:

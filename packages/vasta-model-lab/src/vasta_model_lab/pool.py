@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import shutil
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -97,11 +96,12 @@ class PodmanBackend:
         syscall_allowlist: tuple[str, ...] = DEFAULT_SYSCALL_ALLOWLIST,
         runtime: str = "podman",
     ) -> None:
-        if shutil.which(runtime) is None and sys.platform == "win32":
-            # Windows 开发档：显式不可用（池会回退子进程并留痕降级）
-            self._available = False
-        else:
-            self._available = shutil.which(runtime) is not None
+        # 可用性=运行时二进制 **且** 镜像在本地（GitHub runner 预装
+        # podman 但无 vasta 镜像——只探二进制会选中容器后端后把
+        # localhost 镜像名当远端 registry 拉取而 connection refused，
+        # 2026-11-06 CI 实测）。探测失败面统一 unavailable（池回退
+        # 子进程并留痕降级——设计语义不变）。
+        self._available = self._probe(runtime, image)
         self.name = "podman"
         self.degraded = False
         self.image = image
@@ -111,6 +111,25 @@ class PodmanBackend:
         self.timeout_s = timeout_s
         self.syscall_allowlist = tuple(syscall_allowlist)
         self.runtime = runtime
+
+    @staticmethod
+    def _probe(runtime: str, image: str) -> bool:
+        """运行时 + 镜像双探测（探测即执行一次快速子命令，失败/超时
+        /无二进制一律 unavailable——fail-safe 不阻塞池装配）。"""
+        import subprocess
+
+        if shutil.which(runtime) is None:
+            return False
+        probe_cmd = (
+            [runtime, "image", "exists", image] if runtime == "podman"
+            else [runtime, "image", "inspect", image]
+        )
+        try:
+            proc = subprocess.run(  # noqa: S603
+                probe_cmd, capture_output=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return proc.returncode == 0
 
     @property
     def available(self) -> bool:
