@@ -11,7 +11,12 @@ from __future__ import annotations
 import json
 import os
 import platform
+import sys
 import time
+
+# 同目录测试夹具模块可导入（如 tests/_sidecar_usermod.py——Story 8.15
+# 子进程形态以 ``--module tests._sidecar_usermod:build`` 复用它）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def pytest_runtest_logreport(report) -> None:  # noqa: ANN001

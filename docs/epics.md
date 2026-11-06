@@ -1424,9 +1424,38 @@ So that Epic 8 各接入扩展不再挤单文件。
 **Then** 公共 API 不变（`__all__` 兼容再导出）；388 测试全绿；import-linter 契约 KEPT
 **And** 与 G1–G5 并行、不阻塞任何接入 Story（复盘 A5 行动项）
 
+### Story 8.14: Middleware 接入形态（G1，FR-002 第四形态补齐）
+
+As a 已有自研 Agent 编排器的团队,
+I want 一个 middleware 包装层把我的 decide 函数挂进六段链,
+So that 编排器零改造（纯 dict 进出）、动作自动契约化核验。
+
+**Acceptance Criteria:**
+
+**Given** 既有 ``async decide(observation: dict) -> action: dict``（零 VastaCore 类型）
+**When** 经 VastaMiddleware.wrap / run 执行
+**Then** 动作自动走 AgentSession.act 同一六段链（contracted/executed/verification 落事件）；
+核验偏差记录于 verdicts 不抛（FR-037 有界恢复引擎内管）
+**And** fail-closed 异常原样穿透（无模板拒执行）；缺 tool 键在 middleware 层即拒（不进链不耗预算）（FR-002，蓝图 §18.5-2）
+
+### Story 8.15: Sidecar 接入形态（G1，FR-002 第五形态补齐）
+
+As a 非 Python 技术栈的 Agent 团队,
+I want 一个与我的 Agent 进程同部署的本地伴生进程,
+So that Agent 侧任意语言只说 HTTP、证据与六段链在 sidecar 侧。
+
+**Acceptance Criteria:**
+
+**Given** ``python -m vastacore.execution.sidecar --module myagent:build``（build() → SidecarSpec）
+**When** SidecarProcess.spawn 起 sidecar（ready-file 握手）
+**Then** Agent 经纯 HTTP（observe/act/complete/timeline/summary）操作；
+写动作走同一六段链（verification.passed 事件入证据库，库落 root/store）；
+数据面全端点 token 强制（healthz 豁免）、loopback-only 绑定
+**And** /shutdown 优雅关停（会话关闭、进程退 0）（FR-002，蓝图 §18.5-4）
+
 ---
 
-*Epic 8 备注：middleware/proxy/sidecar 三种接入形态（FR-002 余下）待 SM-5 伙伴信号确认需求后回到本工作流补拆 Story；真实模型适配器为 FR-003/006 实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）。*
+*Epic 8 备注：middleware/sidecar 两接入形态已由 Story 8.14/8.15 补齐（2026-11-06，原「待 SM-5 伙伴信号」由用户指令提前实施——与 8.11 ToolProxy 同裁决模式）；FR-002 五形态（SDK/HTTP/轨迹导入/ToolProxy/middleware+sidecar）全量交付。真实模型适配器为 FR-003/006 实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）。*
 
 ---
 

@@ -103,6 +103,8 @@ development_status:
   8-11-tool-proxy: done
   8-12-multimodal-on-demand: done
   8-13-lab-split: done
+  8-14-middleware: done
+  8-15-sidecar: done
   epic-8-retrospective: done
 
   epic-9: done
