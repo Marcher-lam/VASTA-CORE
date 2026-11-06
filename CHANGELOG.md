@@ -11,6 +11,7 @@
   - 容器后端可用性改**运行时 + 镜像双探测**——GitHub runner 预装 podman 但无 vasta 镜像，只探二进制会选中容器后端后把 localhost 镜像名当 registry 拉取
   - CI 自报告：pytest 失败日志经 `GITHUB_TOKEN` 自动提交到 `ci-logs/*` 分支（私有仓无凭据读 Actions 日志的闭环）
 - **W-1 视觉面闭环**：vision 探测载荷升级真实渲染 PNG（密标入像素）+ 适配器 `image_b64 → image_url` 多模态接线——真 VLM（本地 qwen3.8-27b-mlx）经平台管线从像素读出密标（门控测试实测 PASSED）
+- **许可证裁决（PRD 开放问题 2 关闭）**：全仓 **Apache-2.0**（显式专利授权；11 个包元数据同步声明）——企业法务友好、SM-5 伙伴路径无 AGPL 阻碍；商业化走托管服务与企业支持，不靠闭源切分
 - **文档成套**：CONTRIBUTING / SECURITY / PR 模板 / 包内 README×10 / onboarding README；根 README 与文档索引对齐（测试计数 1319+、五接入形态、CI 徽章）
 
 ## v0.1.0（2026-11-06）——六阶段全量 + 登记缺口清偿 + W-1 解除

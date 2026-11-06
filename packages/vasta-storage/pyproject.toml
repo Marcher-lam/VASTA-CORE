@@ -3,6 +3,7 @@ name = "vasta-storage"
 version = "0.1.0"
 description = "Evidence Store: CAS, event store, derived index, lifecycle (Epic 1/2)"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = ["vasta-protocols", "pillow>=12.3,<13"]
 
 [project.optional-dependencies]

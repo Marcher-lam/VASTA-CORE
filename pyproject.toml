@@ -3,6 +3,7 @@ name = "vastacore-workspace"
 version = "0.1.0"
 description = "VastaCore monorepo workspace root"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = []
 
 [tool.uv]

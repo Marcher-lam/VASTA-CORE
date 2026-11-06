@@ -3,6 +3,7 @@ name = "vasta-eval"
 version = "0.1.0"
 description = "Ablations, gates, repro bundles (Epic 7)"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = ["vasta-protocols", "pydantic>=2.13,<3"]
 
 [build-system]

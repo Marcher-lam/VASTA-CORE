@@ -3,6 +3,7 @@ name = "vasta-model-lab"
 version = "0.1.0"
 description = "Sandbox, replay, property tests, planning (Epic 6)"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = ["vasta-protocols", "pydantic>=2.13,<3"]
 
 [build-system]

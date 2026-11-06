@@ -48,6 +48,10 @@ CI（GitHub Actions，Python 3.12/3.13 矩阵）跑同一套门禁；失败时�
 
 见 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)——三道门禁绿、测试补齐、Story 簿记、架构红线自查。
 
+## 贡献授权
+
+提交即表示你同意按 [Apache-2.0](LICENSE)（inbound = outbound）授权你的贡献。
+
 ## 安全问题
 
 请勿开公开 issue 报安全漏洞——见 [SECURITY.md](SECURITY.md)。

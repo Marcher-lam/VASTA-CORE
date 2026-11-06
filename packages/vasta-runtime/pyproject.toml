@@ -3,6 +3,7 @@ name = "vasta-runtime"
 version = "0.1.0"
 description = "Run loop, Supervisor, Tool Gateway, RunContext (Epic 1/3)"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = ["vasta-protocols", "vasta-contracts", "vasta-policy", "pydantic>=2.13,<3"]
 
 [build-system]
