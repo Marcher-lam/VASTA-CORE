@@ -36,7 +36,7 @@ SYSTEM_STREAMS: tuple[str, ...] = (
     "bridge", "cognition", "delegations", "edge-orchestration",
     "edge-stream", "environment",
     "evaluation", "import", "incidents", "lifecycle", "memory",
-    "quotas", "registry", "risk-budgets", "schedules", "sharing",
+    "ops", "quotas", "registry", "risk-budgets", "schedules", "sharing",
 )
 
 # ---- 事件类型目录（按实现源码收集；动态注册供扩展） ----
@@ -70,7 +70,7 @@ _EVENT_CATALOG: dict[str, set[str]] = {
         "model_drift_measured",
         "real_seed_ci", "model_revalidated",
         "tournament_settled", "tournament_started",
-        "audit_exported",
+        "audit_exported", "drill_completed", "slo_reported",
     },
     "incident": {"declared", "opened", "resolved"},
     "memory": {"note"},

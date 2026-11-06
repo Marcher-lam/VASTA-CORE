@@ -1724,6 +1724,19 @@ So that 生产边界与架构语义（AD-6/AD-13）都真到位。
 **Then** 沙箱池（rootless 容器 Podman 类；Windows 开发档回退子进程并标注）；模型执行全经池（模块/系统调用 allowlist）
 **And** refute 后自动 world_model.suspended + 受影响 Plan 标记（plan.invalidated 链路）——**W-4 解除**（AD-6/AD-13；复盘 B5/A3）
 
+### Story 9.15: 运营达标工程面（G4，NFR-004/006/014 收口）
+
+As a 平台运营负责人,
+I want SLO 达成度测量、计时恢复演练与多进程部署形态的工程面,
+So that 终检三处「属地运营」缺口的工程可验部分闭环。
+
+**Acceptance Criteria:**
+
+**Given** 事件流（run 终局）与 ops 系统流
+**When** ``slo_report`` 按窗口统计（可用率/错误预算/达标判定——无数据不伪造 100%）并 ``record_slo_report`` 留痕；``timed_recovery_drill`` 实测 RTO（墙钟）与 RPO（备份滞后期）并按 SLO 门判定；``drill_due``/``drill_executor`` 与 9.9 Scheduler 组合实现 cron 定期演练
+**Then** 3 OS 进程并发写同一 SQLite 库（每流单写者分区契约）各流序号连续、event_id 全局唯一、全库完整性绿（NFR-006 分布式形态工程锚点）
+**And** 留痕 evaluation.slo_reported / evaluation.drill_completed（ops 流）；生产多区域演练与月度统计的运营执行仍属地化（NFR-004/006/014）
+
 ---
 
 *Epic 9 备注：进程侧身份（服务账号/用户身份传播）随 9.8 服务化与 9.13 Studio 落地；FR-038 幂等/补偿为契约预留段激活（Epic 3 已留位）。W-1/W-2/W-4 解除条件分别挂 9.11/9.2/9.14——解除时触发验收矩阵复评。*
