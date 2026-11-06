@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 失败日志自报告分支（ci-logs/*）所需
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
