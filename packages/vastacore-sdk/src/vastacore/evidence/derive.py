@@ -24,6 +24,9 @@ from pydantic import BaseModel, ConfigDict
 
 from vasta_protocols.errors import VastaError
 
+from . import engines as _engines
+from . import media as _media
+
 #: deriver：源字节 + 参数 → 派生字节（确定性要求——同输入同输出）。
 Deriver = Callable[[bytes, dict[str, Any]], Awaitable[bytes]]
 
@@ -198,6 +201,13 @@ for _kind, _deriver in (
     ("text_embedding", _text_embedding),
     ("text_extract", _text_extract),
     ("media_window", _media_window),
+    # Story 8.16（FR-015/016 收口）——真实字节与引擎面（media/engines 同包）
+    ("audio_slice", _media.audio_slice),
+    ("video_window", _media.video_window),
+    ("media_align", _media.media_align),
+    ("image_ocr", _engines.image_ocr),
+    ("audio_asr", _engines.audio_asr),
+    ("text_embedding_lexical", _engines.text_embedding_lexical),
 ):
     _DEFAULT_REGISTRY.register(_kind, _deriver)
 

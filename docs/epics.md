@@ -1453,9 +1453,22 @@ So that Agent 侧任意语言只说 HTTP、证据与六段链在 sidecar 侧。
 数据面全端点 token 强制（healthz 豁免）、loopback-only 绑定
 **And** /shutdown 优雅关停（会话关闭、进程退 0）（FR-002，蓝图 §18.5-4）
 
+### Story 8.16: 多模态真实字节与识别引擎面（G5，FR-015/016 收口）
+
+As a 多模态 Agent 开发者,
+I want 音视频按真实字节处理、OCR/ASR 有识别路径与模型注入面,
+So that 终检登记的 FR-015 清单形态与 FR-016 零实现两处留白闭环。
+
+**Acceptance Criteria:**
+
+**Given** 证据库中的音视频/图像原始字节
+**When** 显式请求派生（audio_slice/video_window/media_align/image_ocr/audio_asr/text_embedding_lexical）
+**Then** WAV 帧级切片可独立播放且与源逐帧一致；MP4 采样表解析产出真实字节坐标（可对源复核）；DTMF/5×7 字形封闭域真实识别（method/词表溯源）
+**And** 真实模型经 EngineRegistry 注入即接、未注册 fail-closed；不请求不派生；确定性（FR-015 + FR-016）
+
 ---
 
-*Epic 8 备注：middleware/sidecar 两接入形态已由 Story 8.14/8.15 补齐（2026-11-06，原「待 SM-5 伙伴信号」由用户指令提前实施——与 8.11 ToolProxy 同裁决模式）；FR-002 五形态（SDK/HTTP/轨迹导入/ToolProxy/middleware+sidecar）全量交付。真实模型适配器为 FR-003/006 实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）。*
+*Epic 8 备注：middleware/sidecar 两接入形态已由 Story 8.14/8.15 补齐（2026-11-06，原「待 SM-5 伙伴信号」由用户指令提前实施——与 8.11 ToolProxy 同裁决模式）；FR-002 五形态（SDK/HTTP/轨迹导入/ToolProxy/middleware+sidecar）全量交付。FR-015/016 由 Story 8.16 从清单形态升级到真实字节 + 引擎注入面。真实模型适配器为 FR-003/006 实现载体（PRD 无独立 FR 编号，[ASSUMPTION] 披露）。*
 
 ---
 

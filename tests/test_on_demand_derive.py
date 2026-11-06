@@ -155,10 +155,14 @@ class TestDerivers:
 
 
 class TestRegistry:
-    def test_default_registry_has_four_derivers(self) -> None:
+    def test_default_registry_covers_812_and_816(self) -> None:
         names = sorted(default_registry().kinds())
-        assert names == ["media_window", "text_embedding", "text_extract",
-                         "text_summary"]
+        # 8.12 四件（零依赖清单形态）+ 8.16 六件（真实字节与引擎面）
+        assert names == [
+            "audio_asr", "audio_slice", "image_ocr", "media_align",
+            "media_window", "text_embedding", "text_embedding_lexical",
+            "text_extract", "text_summary", "video_window",
+        ]
 
     def test_custom_deriver_registerable(self) -> None:
         async def upper(payload: bytes, params: dict) -> bytes:
