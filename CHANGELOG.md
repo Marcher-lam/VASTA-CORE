@@ -4,6 +4,15 @@
 版本约定：协议/schema 兼容窗内小步前进，破坏性变更进新主版本
 （PRD §10 弃用四阶段 + N-1 窗口）。
 
+## Unreleased（v0.1.0 后）
+
+- **CI 首次转绿并修两个真 bug**：
+  - 沙箱 `RLIMIT_AS` 改**增长量上限**（基线 VmSize + mem_mb 预算）——按预算设总量上限会在真 x86_64 Linux 上杀死 CPython 解释器启动（VmSize ≈ 200-320MB ≫ 128MB；Windows ImportError / macOS EINVAL 双跳过致此前从未暴露）
+  - 容器后端可用性改**运行时 + 镜像双探测**——GitHub runner 预装 podman 但无 vasta 镜像，只探二进制会选中容器后端后把 localhost 镜像名当 registry 拉取
+  - CI 自报告：pytest 失败日志经 `GITHUB_TOKEN` 自动提交到 `ci-logs/*` 分支（私有仓无凭据读 Actions 日志的闭环）
+- **W-1 视觉面闭环**：vision 探测载荷升级真实渲染 PNG（密标入像素）+ 适配器 `image_b64 → image_url` 多模态接线——真 VLM（本地 qwen3.8-27b-mlx）经平台管线从像素读出密标（门控测试实测 PASSED）
+- **文档成套**：CONTRIBUTING / SECURITY / PR 模板 / 包内 README×10 / onboarding README；根 README 与文档索引对齐（测试计数 1319+、五接入形态、CI 徽章）
+
 ## v0.1.0（2026-11-06）——六阶段全量 + 登记缺口清偿 + W-1 解除
 
 首个完整版本：82 条 FR 全 delivered、NFR 工程可验面 15/15、

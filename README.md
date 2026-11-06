@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/Marcher-lam/VASTA-CORE/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcher-lam/VASTA-CORE/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
-![Tests](https://img.shields.io/badge/tests-1315%2B-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1319%2B-brightgreen)
 ![Status](https://img.shields.io/badge/status-v0.1.0%20%E5%85%AD%E9%98%B6%E6%AE%B5%E5%85%A8%E9%87%8F-green)
 
 ## 为什么需要它
@@ -70,7 +70,7 @@ graph TD
 ```bash
 uv sync --all-packages                 # 必须带 --all-packages（工作区成员）
 uv run python examples/quickstart.py   # GridWorld → SQLite 证据库 → L0 全量记录
-uv run pytest -q                       # 1315+ 测试
+uv run pytest -q                       # 1319+ 测试
 ```
 
 详见 [docs/quickstart.md](docs/quickstart.md)（15 分钟首跑，含确定性重放的双根目录实验）。
@@ -102,6 +102,7 @@ async with session:
 |---|---|
 | [examples/cua](examples/cua/README.md) | **macOS 桌面 CUA**（P0–P5 全 PASS）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 23 条 macOS 桌面实测坑位表 |
 | [examples/rag](examples/rag/README.md) | **多模态 RAG**：L1 向量粗筛 + L2 原始证据兜底两层检索、引用回源核验、消融量化（+13.1pp 关键词覆盖） |
+| [examples/onboarding](examples/onboarding/README.md) | **从零接入演练**：自定义 env/工具/契约模板/回放五段单文件（≤3 工程日的最小路径） |
 
 CUA 一行命令体验平台论点（「幻觉的 agent 被契约拦停」有事件流实证）：
 
@@ -130,7 +131,7 @@ packages/
   vasta-adapters/    # 适配器实现（GridWorld 等；不被任何包 import）
 examples/            # cua（桌面 CUA）· rag（多模态检索）· onboarding（从零接入）
 docs/                # 索引见 docs/README.md（指南/架构/原型/过程档案）
-tests/               # 1315+ 测试（含 Hypothesis 性质测试与端口契约套件）
+tests/               # 1319+ 测试（含 Hypothesis 性质测试与端口契约套件）
 ```
 
 **依赖规则（AD-1）**：一切指向 `vasta-protocols`；核心包不反向依赖适配器（`uv run lint-imports` 强制）。
@@ -146,12 +147,13 @@ tests/               # 1315+ 测试（含 Hypothesis 性质测试与端口契约
 ## 开发
 
 ```bash
-uv run pytest -q                        # 测试（1315+）
+uv run pytest -q                        # 测试（1319+）
 uv run ruff check packages tests examples   # lint
 uv run lint-imports                     # 架构依赖契约（AD-1 强制）
 ```
 
 CI（GitHub Actions）：lint → import-linter → pytest（Python 3.12/3.13 矩阵）。
+贡献流程与架构红线见 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题报告见 [SECURITY.md](SECURITY.md)。
 过程档案（评审/复盘/对账）带日期存于 `docs/`，只增不改。
 
 ## 状态与路线图

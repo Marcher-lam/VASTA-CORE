@@ -12,6 +12,8 @@
 | [onboarding-log.md](onboarding-log.md) | 外部团队接入计时演练与已知摩擦点（SM-5 证据） |
 | [epics.md](epics.md) | Epic 1–12 全部故事与验收标准（FR/NFR 对照） |
 | ../README.md | 三步接入（AgentSession）、仓库布局、开发命令 |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | 贡献流程：环境/三道门禁/架构红线/提交与簿记约定 |
+| [../SECURITY.md](../SECURITY.md) | 安全策略：报告渠道与平台安全姿态 |
 
 ## 架构
 
@@ -31,7 +33,7 @@
 
 - [briefs/](briefs/)：产品简报（蓝图之源）
 - [prds/](prds/)：PRD 与对账（34 ★FR / 387+ 测试的验收基线）
-- [reviews/](reviews/)：逐 Epic code review 与修复记录
+- [reviews/](reviews/)：逐 Epic code review 与修复记录（含 [W-1 复评解除记录](reviews/w1-recheck-2026-11-06.md)——真实模型 10 种子全对、CI 入评测报告）
 - [reviews-epics-validation.md](reviews-epics-validation.md)、
   [project-final-review-2026-09-14.md](project-final-review-2026-09-14.md)、
   [project-final-review-addendum-2026-11-06.md](project-final-review-addendum-2026-11-06.md)：
