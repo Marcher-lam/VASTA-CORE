@@ -27,6 +27,7 @@ Agent** 原型：纯视觉感知（SoM 编号辅助）+ AX 确定性核验。
 | P1 旗舰任务（计划驱动） | `uv run python -m examples.cua.run_task` | **5/5 六段链 complete + 5/5 核验 passed**：42×3=126 干净跑，30 事件/17 工件，首偏差=无 |
 | P2-A VLM 自主闭环 | `uv run python -m examples.cua.loop` | **PASS**：模型看标记图自主选钮 5 步全对、自答 42×3=126 填入契约预测，AX 独立核验 5/5，首偏差=无；响应缓存跨 run 复用（前 3 步 0.0s 命中） |
 | P2-B R3 人在环 | `uv run python -m examples.cua.textedit` | **PASS**：type_text（R2）AX 正文核验 passed；save_doc（R3）→ `approval_requested` 挂起 → 批准 → `approved` → executed → v:passed，文件落盘含标记 |
+| P3 确定性回放 | `uv run python -m examples.cua.replay --run-id <id>` | **PASS ×2**：P1 计划 run 与 P2-A VLM 自主 run 均归一化事件流**逐字节一致**（30 vs 30 事件）——AD-5 桌面版复现成立 |
 
 ## 快速开始
 
@@ -37,6 +38,7 @@ uv run python -m examples.cua.probe_grounding   # P0：约 1.5 分钟
 uv run python -m examples.cua.run_task          # P1：约 30 秒
 uv run python -m examples.cua.loop              # P2-A：VLM 自主（约 1 分钟）
 uv run python -m examples.cua.textedit          # P2-B：R3 审批（约 30 秒）
+uv run python -m examples.cua.replay --run-id <run_id>   # P3：秒级，零 API
 ```
 
 配置经环境变量覆盖（`CUA_BASE_URL / CUA_VLM_MODEL / CUA_STORE_ROOT /
@@ -94,14 +96,24 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 
 ## Roadmap（未做，接口已留）
 
-- **P3**：确定性回放（ReplayDesktopEnv 替身 + 归一化事件流字节对比，
-  AD-5 的桌面版落地）；
 - **P4**：任务集 eval（tasks/ JSONL + 成功判定器）；cognition 的
   UI-布局记忆（Claim 图：UI 改版 = 反例 → 失效传播）；guardrails
   action_guard（角色/委派白名单/风险预算）接入。
 - P2-A 的安全侧战果（值得复用）：模型错点 → 连续核验偏差 →
   **Supervisor 熔断**自动暂停 Run——「幻觉的 agent 被平台拦停」
   已有事件流实证（run 01a1ae63）。
+
+## P3 回放语义（AD-5 桌面版）
+
+- 替身守卫：`RunContext(replay_mode=True)` + 适配器 `deterministic=True`
+  过 `require_replay_adapter`——真实桌面适配器在回放模式被一律拒绝；
+- ReplayEnv 按录制序供给观察帧（reset 帧的 detail 从**采集工件**还原，
+  事件 payload 本身不带）；ReplayClickTool 返回原 ToolResult——
+  `model_dump_json()` 字节相同 ⇒ CAS sha 相同 ⇒ result_ref 相同；
+- 契约从录制的 contract 工件原样重建（不重新构造）；核验器照常
+  跑在回放证据上（确定性函数 ⇒ 同结论）；
+- 终判口径与 quickstart 一致：归一化（抹 run_id/ts/event_id/parent）
+  后逐字节对比；两个来源 run（计划驱动 + VLM 自主）均一次通过。
 
 ## 模块地图
 
@@ -119,4 +131,5 @@ verifiers.py # AxDisplayVerifier（中文数字解析）/ TextContainsVerifier
 run_task.py  # P1 旗舰：42×3 六段链 + 审计 + 时间线
 loop.py      # P2-A：VLM 自主闭环（意图-定位分离 + 一致性闸 + 自纠错反馈）
 textedit.py  # P2-B：type_text(R2) + save_doc(R3 审批) + 剪贴板输入
+replay.py    # P3：确定性回放（替身环境/工具 + 归一化流逐字节对比）
 ```
