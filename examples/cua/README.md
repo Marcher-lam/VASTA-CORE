@@ -28,6 +28,7 @@ Agent** 原型：纯视觉感知（SoM 编号辅助）+ AX 确定性核验。
 | P2-A VLM 自主闭环 | `uv run python -m examples.cua.loop` | **PASS**：模型看标记图自主选钮 5 步全对、自答 42×3=126 填入契约预测，AX 独立核验 5/5，首偏差=无；响应缓存跨 run 复用（前 3 步 0.0s 命中） |
 | P2-B R3 人在环 | `uv run python -m examples.cua.textedit` | **PASS**：type_text（R2）AX 正文核验 passed；save_doc（R3）→ `approval_requested` 挂起 → 批准 → `approved` → executed → v:passed，文件落盘含标记 |
 | P3 确定性回放 | `uv run python -m examples.cua.replay --run-id <id>` | **PASS ×2**：P1 计划 run 与 P2-A VLM 自主 run 均归一化事件流**逐字节一致**（30 vs 30 事件）——AD-5 桌面版复现成立 |
+| P4 cognition UI-记忆 | `uv run python -m examples.cua.run_memory` | **PASS 三相**：①标定成功→Claim 图（父布局+17 子按钮，propose→support→accept）；②命中：1 次抽查点击替代 ~40 次标定，任务 5/5；③侧栏改版（树 38→70、几何签名不变=记忆盲区）→ 活检查**子直接推翻 10 + 父级联推翻 7**（平台依赖闭包）→ 冷启动还原 → 重标 → v2 记忆（旧 refuted 留痕，36 主张共存 18 活跃） |
 
 ## 快速开始
 
@@ -39,6 +40,7 @@ uv run python -m examples.cua.run_task          # P1：约 30 秒
 uv run python -m examples.cua.loop              # P2-A：VLM 自主（约 1 分钟）
 uv run python -m examples.cua.textedit          # P2-B：R3 审批（约 30 秒）
 uv run python -m examples.cua.replay --run-id <run_id>   # P3：秒级，零 API
+uv run python -m examples.cua.run_memory        # P4：三相约 2 分钟
 ```
 
 配置经环境变量覆盖（`CUA_BASE_URL / CUA_VLM_MODEL / CUA_STORE_ROOT /
@@ -66,6 +68,10 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 | 15 | 保存面板按富文本格式**追加 .rtf 后缀**且 RTF 转义中文（内容核验挂） | 词干 glob 找文件 + ASCII 标记段核验；run 前清旧文件防「替换确认」弹窗 |
 | 16 | ⌘W 清理残留脏文档触发「保留此新文稿？」三键对话框（⌘D 无效），吞掉后续全部键入 | 不做键盘式窗口清理；每 run ⌘N 自建新文档；残留窗口用 AX 点关闭钮/删除钮 |
 | 17 | R3 挂起后 Run 进 **paused** 态，直接重放被状态机拒 | 批准后先 `engine.resume()`（重观察 + `run.resumed` 事件）再 `execute_contracted(approved=True)`；平台校验「真实挂起请求」防伪造批准 |
+| 18 | 侧栏/模式等 UI 状态存于 **defaults**（非 SavedState）——只删 SavedState 冷启动后侧栏仍开（键区 13 钮异签名） | hard_reset 加 `defaults delete com.apple.calculator`（沙盒应用偏好全清） |
+| 19 | 4 秒内**双杀重开**（调用方 reset + engine.reset 各一次 hard_reset）→ AX 树重建流态，读屏撞「无效的索引」 | DesktopEnv 加 `hard_on_reset=False`（env 只 Esc 清零）；read_display 全函数化（流态返回 None 不抛） |
+| 20 | 任务镜像读屏（runner 自读 display 对分）在流态下不可靠 | 计分只认**事件流** verification.passed（核验器裁决）——P1 就该这么写 |
+| 21 | 上一次枚举的 AX 路径在树变化后过期（`=` 出结果行也会变树） | 交互前重枚举（侧栏钮定位、活检查均自取新鲜树） |
 
 ## 平台 API 接线要点
 
@@ -96,12 +102,26 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 
 ## Roadmap（未做，接口已留）
 
-- **P4**：任务集 eval（tasks/ JSONL + 成功判定器）；cognition 的
-  UI-布局记忆（Claim 图：UI 改版 = 反例 → 失效传播）；guardrails
-  action_guard（角色/委派白名单/风险预算）接入。
+- 任务集 eval（tasks/ JSONL + 批量成功率/步数/首偏差统计）；
+  guardrails action_guard（角色/委派白名单/风险预算）接入。
 - P2-A 的安全侧战果（值得复用）：模型错点 → 连续核验偏差 →
   **Supervisor 熔断**自动暂停 Run——「幻觉的 agent 被平台拦停」
   已有事件流实证（run 01a1ae63）。
+
+## P4 UI-记忆语义（cognition Claim 图）
+
+- **布局即主张**：父（布局整体：display path + 元素数）+ 子（每按钮
+  AX 路径，`depends_on=[父]`，scope={app, layout sig}）；标定成功 →
+  propose，任务全核验 → support → accept（evidence=学习 run id）；
+- **命中即提速**：recall 只认 accepted/supported + 键盘 ≥12 钮完整；
+  1 次抽查点击替代 ~40 次标定协议——记忆收益可度量；
+- **改版即反例**：侧栏改变树而几何签名不变（记忆盲区的精确刻画）→
+  `record_env_upgrade` 锚点 → 逐主张活检查（`revalidated` 留痕 +
+  `decay_confidence` 0.1×）→ 低于线 `refute`——**父先翻，子由平台
+  依赖闭包级联失效**（子直接推翻 10 + 级联 7）；
+- **重学即 v2**：同签名新主张版本 +1（事件溯源不覆盖），新旧并存
+  可审计；
+- 认知事件入 "cognition" 系统流（AD-2 投影），全部公共 API。
 
 ## P3 回放语义（AD-5 桌面版）
 
@@ -132,4 +152,6 @@ run_task.py  # P1 旗舰：42×3 六段链 + 审计 + 时间线
 loop.py      # P2-A：VLM 自主闭环（意图-定位分离 + 一致性闸 + 自纠错反馈）
 textedit.py  # P2-B：type_text(R2) + save_doc(R3 审批) + 剪贴板输入
 replay.py    # P3：确定性回放（替身环境/工具 + 归一化流逐字节对比）
+memory.py    # P4：布局/按钮 Claim 图（record/recall/refute 级联）
+run_memory.py # P4：三相演示（学习→命中→改版反例→v2 重学）
 ```

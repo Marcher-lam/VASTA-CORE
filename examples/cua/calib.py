@@ -176,6 +176,10 @@ def hard_reset(app: str = "Calculator", *, settle_s: float = 1.8) -> None:
             saved = Path.home() / "Library" / "Saved Application State" / \
                 "com.apple.calculator.savedState"
             shutil.rmtree(saved, ignore_errors=True)
+            # 侧栏/模式等 UI 状态存于 defaults（非 SavedState）——实测
+            # 仅删 SavedState 冷启动后侧栏仍开（键区 13 钮异签名）
+            subprocess.run(["defaults", "delete", "com.apple.calculator"],
+                           capture_output=True)
         activate_app(app, settle_s=settle_s)
         if not ensure_frontmost(app):
             continue

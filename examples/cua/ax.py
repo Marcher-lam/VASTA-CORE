@@ -220,16 +220,21 @@ def read_display(app: str, display_path: tuple[int, ...]) -> str | None:
     实测（2026-11）：表达式行与结果行**各包一层容器**（非同父直接
     子级）；求值前只有一行，按 = 后新增结果行（y 更大）。取 max-y
     即「当前有效显示」。
+    全函数：树在渲染流态（瞬时缺节点）时返回 None，不抛——
+    调用方按「读不到=未知」处理。
     """
     root = display_path[:-2] if len(display_path) >= 3 else (0,)
     try:
         statics = read_statics_subtree(app, root)
         if statics:
             return max(statics, key=lambda s: (s.get("y") or 0))["v"]
-    except AxError:
+    except Exception:
         pass
-    raw = read_element(app, display_path).get("value")
-    return None if raw is None else str(raw)
+    try:
+        raw = read_element(app, display_path).get("value")
+        return None if raw is None else str(raw)
+    except Exception:
+        return None
 
 
 # ── 输入注入（写面：仅 tools.py 契约链可达）────────────────────────────
