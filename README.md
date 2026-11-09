@@ -160,7 +160,7 @@ CI（GitHub Actions）：lint → import-linter → pytest（Python 3.12/3.13 �
 
 **v0.1.0**：六阶段（Epic 1–12）全量交付——82 条 FR 全 delivered、NFR 工程可验面 15/15、属地运营三项登记在册（[终检增补](docs/project-final-review-addendum-2026-11-06.md)）。
 
-已知边界（如实登记）：生产 SLO 月度统计 / 真跨机分布式部署 / 多区域演练待真实运营数据；OCR/ASR/支付为封闭域参考实现（注入面就绪）；PRD §12 开放问题中许可证一项已裁决（见下），其余（GUI 场景、SaaS 优先级等）仍处决策门。
+已知边界（如实登记）：生产 SLO 月度统计 / 真跨机分布式部署 / 多区域演练待真实运营数据；OCR/ASR/支付为封闭域参考实现（注入面就绪）；PRD §12 开放问题已裁决四条（Apache-2.0 / 企业付费意愿所有者关闭 / 首批模型 DeepSeek / 公共插件市场暂缓——见 [决策日志](docs/decision-log.md)），余五条（GUI 场景、品牌核查、团队规模、SaaS 优先级、受众口径）仍处决策门。
 
 ## 许可证
 

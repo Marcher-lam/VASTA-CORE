@@ -4,6 +4,8 @@
 
 - **OpenAICompatAdapter**：OpenAI 兼容 HTTP 形态参考实现
   （/v1/chat/completions）——ModelAdapter 协议完整实现；
+  首批正式选定模型 **DeepSeek**（api.deepseek.com/v1，决策日志
+  2026-11-07-2），本地 LM Studio 为离线档参考；
 - **BYOK 凭证**：SecretRef 注入（10.12——api_key 运行期解析，
   **不落库不进日志**；redact_secrets 脱敏面覆盖 adapter 配置）；
 - **airgap 感知**：base_url 自动纳入 airgap_check 依赖清单；

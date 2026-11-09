@@ -50,3 +50,37 @@ middleware/sidecar（8.14/8.15）、音视频真实字节与 OCR/ASR 引擎面
 （8.16）、商业分发子面（12.12）、Console 无障碍与 i18n（10.14）、
 运营达标工程面（9.15）六 Story 清偿全部登记缺口。对拍见
 [project-final-review-addendum-2026-11-06.md](project-final-review-addendum-2026-11-06.md)。
+
+## 2026-11-07-1：企业付费意愿——所有者裁决关闭
+
+**背景**：PRD 开放问题 1（蓝图 A5），原为 Stage 0 硬前提——20–30 个
+企业访谈验证付费假设，直接影响 Stage 2+ 排期。
+
+**裁决**（所有者）：关闭。诚实登记：付费假设**未经访谈验证**（零
+访谈），风险自担——Stage 2+ 排期以自有节奏推进，不挂访谈门；后续
+若引入投资/合伙人需重开此条。
+
+## 2026-11-07-2：首批模型支持 = DeepSeek（OpenAI 兼容）
+
+**背景**：PRD 开放问题 4，默认建议「一个 OpenAI 兼容接口 + 一个
+独立适配器」。
+
+**裁决**：首批正式选定 **DeepSeek**（`https://api.deepseek.com/v1`，
+OpenAI 兼容方言）——现有 `OpenAICompatAdapter` + BYOK SecretRef
+零改动即接（W-1 门控面同路径）；本地 LM Studio（qwen VLM）保留为
+离线/airgap 档参考实现。门控实测形态：
+
+```bash
+VASTA_REAL_ADAPTER=https://api.deepseek.com/v1 \
+VASTA_REAL_API_KEY=<BYOK 环境变量> \
+VASTA_REAL_MODEL=deepseek-chat \
+uv run pytest tests/test_real_adapter.py -q
+```
+
+## 2026-11-07-3：公共插件市场开放条件——暂缓
+
+**背景**：PRD 开放问题 8（Stage 5 评估）。
+
+**裁决**：暂不开放公共市场——保持私有注册表形态（12.12 已交付
+定价/凭据/拉取闸全套机制，开放只差运营决定）；无时间表，触发条件
+为生态信号（出现第三方发行方申请上架）。
