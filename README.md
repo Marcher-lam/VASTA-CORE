@@ -4,9 +4,12 @@
 > 保留原始证据、管理可修订认知、约束并核验行动、按需构建可执行世界模型。
 
 [![CI](https://github.com/Marcher-lam/VASTA-CORE/actions/workflows/ci.yml/badge.svg)](https://github.com/Marcher-lam/VASTA-CORE/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-1319%2B-brightgreen)
 ![Status](https://img.shields.io/badge/status-v0.1.0%20%E5%85%AD%E9%98%B6%E6%AE%B5%E5%85%A8%E9%87%8F-green)
+
+[快速开始](#快速开始) · [端到端原型](#端到端原型) · [文档目录](#文档目录) · [开发](#开发)
 
 ## 为什么需要它
 
@@ -93,7 +96,7 @@ async with session:
     # 六段链自动走：契约 → 策略 → 执行 → 核验 → 审计；无模板 fail-closed 拒执行
 ```
 
-完整从零演练（自定义 env + 工具 + 模板 + 回放）：`examples/onboarding/from_zero.py`；
+完整从零演练（自定义 env + 工具 + 模板 + 回放）：[examples/onboarding](examples/onboarding/README.md)；
 接入摩擦点实测：[docs/onboarding-log.md](docs/onboarding-log.md)（端到端 1–3 小时）。
 
 ## 端到端原型（examples/，零侵入）
@@ -101,7 +104,7 @@ async with session:
 | 目录 | 一句话 |
 |---|---|
 | [examples/cua](examples/cua/README.md) | **macOS 桌面 CUA**（P0–P5 全 PASS）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 23 条 macOS 桌面实测坑位表 |
-| [examples/rag](examples/rag/README.md) | **多模态 RAG**：L1 向量粗筛 + L2 原始证据兜底两层检索、引用回源核验、消融量化（+13.1pp 关键词覆盖） |
+| [examples/rag](examples/rag/README.md) | **多模态 RAG**：L1 向量粗筛 + L2 原始证据兜底两层检索、引用回源核验、消融量化（+13.1pp 关键词覆盖）；设计决策见 [DESIGN.md](examples/rag/DESIGN.md) |
 | [examples/onboarding](examples/onboarding/README.md) | **从零接入演练**：自定义 env/工具/契约模板/回放五段单文件（≤3 工程日的最小路径） |
 
 CUA 一行命令体验平台论点（「幻觉的 agent 被契约拦停」有事件流实证）：
@@ -118,7 +121,7 @@ uv run python -m examples.cua.eval                   # 任务集批量评测（g
 ## 仓库结构
 
 ```text
-packages/
+packages/            # 十个 vasta-* 包（每包有 README：职责/API/依赖位置/测试锚点）
   vasta-protocols/   # 依赖根（AD-1）：事件信封 + 五协议端口 + 契约测试套件
   vasta-storage/     # Evidence Store：SQLite 事件库 + sha256 分桶 CAS + 血缘
   vasta-cognition/   # Claim 图与记忆（全生命周期 + 级联失效）
@@ -130,19 +133,56 @@ packages/
   vastacore-sdk/     # 组装根（AD-1 唯一允许引用适配器的位置）
   vasta-adapters/    # 适配器实现（GridWorld 等；不被任何包 import）
 examples/            # cua（桌面 CUA）· rag（多模态检索）· onboarding（从零接入）
-docs/                # 索引见 docs/README.md（指南/架构/原型/过程档案）
+docs/                # 文档地图见 docs/README.md
 tests/               # 1319+ 测试（含 Hypothesis 性质测试与端口契约套件）
 ```
 
 **依赖规则（AD-1）**：一切指向 `vasta-protocols`；核心包不反向依赖适配器（`uv run lint-imports` 强制）。
 
-## 文档
+## 文档目录
 
-- **[docs/README.md](docs/README.md)**——文档索引（指南 / 架构 / 原型 / 过程档案分层）
-- 上手：[quickstart](docs/quickstart.md) → [接入演练](docs/onboarding-log.md) → [CUA 原型](examples/cua/README.md)
-- 架构：[ARCHITECTURE-SPINE](docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md)（15 条 AD）
-- 产品：[简报](docs/briefs/) → [PRD](docs/prds/) → [Epic 全录](docs/epics.md) → [Story 记录](docs/stories/)
-- 里程碑：[CHANGELOG.md](CHANGELOG.md)（按 Story 提交，git log 即细目）
+按读者分层收录；**全量地图（含过程档案逐组索引）见 [docs/README.md](docs/README.md)**。
+
+### 指南层（日常查阅）
+
+| 文档 | 内容 |
+|---|---|
+| [docs/quickstart.md](docs/quickstart.md) | 15 分钟首跑：GridWorld → SQLite 证据库 → L0 全量记录 |
+| [docs/onboarding-log.md](docs/onboarding-log.md) | 外部团队接入计时演练与已知摩擦点（SM-5 证据） |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献流程：环境 / 三道门禁 / 架构红线 / Story 簿记约定 |
+| [SECURITY.md](SECURITY.md) | 安全策略：报告渠道与平台安全姿态 |
+
+### 架构与产品层（系统定义）
+
+| 文档 | 内容 |
+|---|---|
+| [ARCHITECTURE-SPINE](docs/architecture/architecture-VastaCore-2026-09-08/ARCHITECTURE-SPINE.md) | 15 条架构决策、三面运行拓扑、栈与结构种子 |
+| [PRD](docs/prds/prd-VastaCore-2026-09-08/prd.md)（+[附录](docs/prds/prd-VastaCore-2026-09-08/addendum.md)） | 需求基线：82 FR / 15 NFR / 7 里程碑信号与验收标准 |
+| [docs/epics.md](docs/epics.md) | Epic 1–12 全部故事与验收标准（FR/NFR 对照） |
+| [plan.md](plan.md) | 完整产品蓝图（0–36 个月，PRD 上游） |
+| [VASTA-BRAINSTORM.md](VASTA-BRAINSTORM.md) | 外部同类项目调研（蓝图输入） |
+| [产品简报](docs/briefs/brief-VastaCore-2026-09-08/brief.md) | 产品定位一句话之源（+[附录](docs/briefs/brief-VastaCore-2026-09-08/addendum.md)） |
+
+### 原型层（examples/，零侵入）
+
+| 目录 | 内容 |
+|---|---|
+| [examples/cua/](examples/cua/README.md) | macOS 桌面 CUA（P0–P5 全 PASS，23 条实测坑位表） |
+| [examples/rag/](examples/rag/README.md) | 多模态 RAG：两层检索 + 引用回源核验 + 消融（[设计决策](examples/rag/DESIGN.md)） |
+| [examples/onboarding/](examples/onboarding/README.md) | 从零接入五段演练（自定义 env + 工具 + 契约模板 + 回放） |
+
+### 治理与里程碑
+
+| 文档 | 内容 |
+|---|---|
+| [docs/decision-log.md](docs/decision-log.md) | 跨切裁决记录（主仓 / W-1 / Apache-2.0 / 缺口清偿，只增不改） |
+| [CHANGELOG.md](CHANGELOG.md) | 里程碑汇总（按 Story 提交，git log 即细目） |
+| [LICENSE](LICENSE) | Apache-2.0（含显式专利授权） |
+
+### 过程档案（只增不改，不逐条入目录）
+
+Code review ×12、Story 记录 ×59、Epic 复盘 ×6、终检与对账 ×3、AC↔测试追溯矩阵——
+统一在 [docs/README.md](docs/README.md) 的「过程档案」分组索引，此处不展开。
 
 ## 开发
 
@@ -164,5 +204,4 @@ CI（GitHub Actions）：lint → import-linter → pytest（Python 3.12/3.13 �
 
 ## 许可证
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 **Apache-2.0**（含显式专利授权）——核心平台永久开源自托管；商业化走托管服务与企业支持（land-and-expand），不靠闭源切分（PRD §10 默认方案落地，开放问题 2 关闭）。
