@@ -152,7 +152,7 @@ async def run_tournament(
                                      metrics=dict(metrics))
             _validate_metrics(result, spec)
             return result
-        except Exception as exc:  # noqa: BLE001——单候选失败不毁整赛
+        except Exception as exc:  # noqa: BLE001 ——单候选失败不毁整赛
             return CandidateResult(
                 candidate=candidate.name, failed=True,
                 error=f"{type(exc).__name__}: {exc}"[:200])

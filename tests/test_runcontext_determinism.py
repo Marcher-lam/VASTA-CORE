@@ -140,7 +140,7 @@ class TestModelExchangeArtifact:
         sha = await engine.record_model_exchange(
             ModelRequest(prompt="ping"), ModelResponse(content="pong")
         )
-        assert sha in store._blobs  # noqa: SLF001（测试直接检视假存储）
+        assert sha in store._blobs  # noqa: SLF001 （测试直接检视假存储）
         payload = json.loads(await store.get_artifact(sha))
         assert payload["request"]["prompt"] == "ping"
         assert payload["response"]["content"] == "pong"

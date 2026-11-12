@@ -75,7 +75,7 @@ def mount_studio(
     async def claims() -> list[dict[str, Any]]:
         cognition.refresh()  # 评审修复 F8：跨实例写入后的投影刷新
         items = []
-        for c in cognition._claims.values():  # noqa: SLF001——SDK 域只读
+        for c in cognition._claims.values():  # noqa: SLF001 ——SDK 域只读
             downstream = sum(
                 1 for o in cognition._claims.values()  # noqa: SLF001
                 if c.claim_id in o.depends_on)
@@ -140,7 +140,7 @@ def mount_studio(
             bundle, bundle_bytes = await export_repro_bundle(
                 store, run_id, tenant_id=tenant_id,
                 project_id=project_id)
-        except Exception as exc:  # noqa: BLE001——统一 404 语义
+        except Exception as exc:  # noqa: BLE001 ——统一 404 语义
             raise HTTPException(
                 status_code=404, detail=str(exc)) from exc
         return Response(

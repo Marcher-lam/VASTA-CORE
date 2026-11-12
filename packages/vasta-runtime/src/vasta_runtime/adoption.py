@@ -169,7 +169,7 @@ async def adopt_run(
         tool_gateway=tool_gateway, policy_engine=policy_engine,
         recovery_policy=recovery_policy, safety_clock=safety_clock,
     )
-    engine._sequencer = EventSequencer.resuming(  # noqa: SLF001——同包接管对齐
+    engine._sequencer = EventSequencer.resuming(  # noqa: SLF001 ——同包接管对齐
         store, run_id,
         last_seq=last.seq, last_event_id=last.event_id,
         tenant_id=tenant, project_id=project,
@@ -186,7 +186,7 @@ async def adopt_run(
         if state is RunState.PAUSED:
             engine.tracker.pause()  # paused 接管：等待 resume 才计费
 
-    await engine._emit("run.adopted", {  # noqa: SLF001——接管留痕
+    await engine._emit("run.adopted", {  # noqa: SLF001 ——接管留痕
         "adopted_from_seq": last.seq,
         "state": state.value,
         "executed_actions": len(executed),

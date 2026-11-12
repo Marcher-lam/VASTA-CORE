@@ -20,7 +20,7 @@ def artifact_ages(
     if now is None:  # 评审修复 L-3：retention_due 的 as-of 时点透传
         now = now_utc()
     rows: list[tuple[str, str | None, float]] = []
-    with store._lock:  # noqa: SLF001——同 SDK 域只读直查
+    with store._lock:  # noqa: SLF001 ——同 SDK 域只读直查
         for sha, classification, created_at in store._conn.execute(  # noqa: SLF001
             "SELECT a.sha256, a.classification, a.created_at"
             " FROM artifacts a JOIN artifact_refs r"

@@ -162,7 +162,7 @@ class TestOpsBackupFixes:
         try:
             got = await restored.get_artifact(
                 (await store.save_artifact.__wrapped__ if False else
-                 None) or (  # noqa: SLF001——直接用原 sha
+                 None) or (  # noqa: SLF001 ——直接用原 sha
                     await _first_artifact_sha(store)))
             assert got == b"evidence-bytes"
         finally:
@@ -189,7 +189,7 @@ class TestOpsBackupFixes:
         await EventSequencer(store, "r1").emit("run.started", {})
         import json as _json
 
-        with store._lock, store._conn:  # noqa: SLF001——注入父链断裂
+        with store._lock, store._conn:  # noqa: SLF001 ——注入父链断裂
             # 读取面走 data JSON（信封重建）——注入须改 JSON 而非列
             row = store._conn.execute(  # noqa: SLF001
                 "SELECT data FROM events WHERE run_id='r1' AND seq=1"
@@ -205,7 +205,7 @@ class TestOpsBackupFixes:
 
 
 async def _first_artifact_sha(store) -> str:
-    with store._lock:  # noqa: SLF001——测试辅助
+    with store._lock:  # noqa: SLF001 ——测试辅助
         row = store._conn.execute(  # noqa: SLF001
             "SELECT sha256 FROM artifacts LIMIT 1").fetchone()
     return row[0]

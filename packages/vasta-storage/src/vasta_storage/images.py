@@ -267,7 +267,7 @@ class EvidenceImages:
             params += [tenant_id, project_id]
         query += " ORDER BY e.ts, e.run_id, e.seq LIMIT ?"
         params.append(limit)
-        with self.store._lock:  # noqa: SLF001（组合内访问）
+        with self.store._lock:  # noqa: SLF001 （组合内访问）
             return self.store._conn.execute(query, params).fetchall()  # noqa: SLF001
 
     async def _first_reference(

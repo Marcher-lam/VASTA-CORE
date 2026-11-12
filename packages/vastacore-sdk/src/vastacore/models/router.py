@@ -204,7 +204,7 @@ class ModelRouter:
                         self.models[name][0].generate(request),
                         timeout=self.timeout_ms / 1000,
                     )
-                except Exception as exc:  # noqa: BLE001——统一记失败
+                except Exception as exc:  # noqa: BLE001 ——统一记失败
                     was_open = breaker.state == "open"
                     breaker.record_failure()
                     await self._maybe_emit_open(name, already_open=was_open)

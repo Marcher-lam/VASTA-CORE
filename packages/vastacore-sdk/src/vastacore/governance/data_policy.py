@@ -132,7 +132,7 @@ def retention_due(
     for sha, classification, age_days in artifact_ages(
             store, tenant_id=tenant_id, project_id=project_id, now=now):
         # 评审修复 L-4/F22：_active_holds 契约要求调用方持锁
-        with store._lock:  # noqa: SLF001——同 SDK 域对齐 callee 契约
+        with store._lock:  # noqa: SLF001 ——同 SDK 域对齐 callee 契约
             holds = _active_holds(store, sha, tenant_id, project_id)
         jurisdictions = [h for h in holds] if holds else []
         effective_retain = max(

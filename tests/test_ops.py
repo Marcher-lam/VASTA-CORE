@@ -101,7 +101,7 @@ class TestBackupRecovery:
 
     async def test_integrity_detects_injected_gap(self, store) -> None:
         await seed_runs(store, "r")  # seq 0,1
-        with store._lock, store._conn:  # noqa: SLF001——人为挖洞
+        with store._lock, store._conn:  # noqa: SLF001 ——人为挖洞
             store._conn.execute(  # noqa: SLF001
                 "DELETE FROM events WHERE run_id='r' AND seq=0")
         report = verify_stream_integrity(store)

@@ -104,14 +104,14 @@ def verify_stream_integrity(store: Any) -> IntegrityReport:
     for sha in sorted(refs):
         try:
             store.get_artifact(sha)
-        except Exception:  # noqa: BLE001——悬空/损坏统一记 missing
+        except Exception:  # noqa: BLE001 ——悬空/损坏统一记 missing
             report.missing_artifacts.append(sha)
     return report
 
 
 def _distinct_runs(store: Any) -> list[str]:
     """全库 run 清单（元数据面直查——不重放全事件）。"""
-    with store._lock:  # noqa: SLF001——同 SDK 域运维直查
+    with store._lock:  # noqa: SLF001 ——同 SDK 域运维直查
         rows = store._conn.execute(  # noqa: SLF001
             "SELECT DISTINCT run_id FROM events ORDER BY run_id"
         ).fetchall()
@@ -136,7 +136,7 @@ def backup_snapshot(store: Any, dest: str | Path) -> Path:
     dest.mkdir(parents=True)
     dest_conn = sqlite3.connect(dest / "store.db")
     try:
-        with store._lock:  # noqa: SLF001——快照一致性
+        with store._lock:  # noqa: SLF001 ——快照一致性
             store._conn.backup(dest_conn)  # noqa: SLF001
     finally:
         dest_conn.close()

@@ -227,7 +227,7 @@ async def run() -> int:
 
         # 子主张逐个活检查（数字钮；运算符由父级联裁决）
         refuted_children = 0
-        for c in list(cog._claims.values()):  # noqa: SLF001——读面（demo）
+        for c in list(cog._claims.values()):  # noqa: SLF001 ——读面（demo）
             if pid3 not in c.depends_on or c.status in ("refuted", "retired"):
                 continue
             m = json.loads(c.statement)
@@ -279,7 +279,7 @@ async def run() -> int:
                   "（旧 refuted 留痕，新旧并存可审计）")
 
         cog.refresh()
-        total = len(cog._claims)  # noqa: SLF001——读面统计
+        total = len(cog._claims)  # noqa: SLF001 ——读面统计
         active = sum(1 for c in cog._claims.values()  # noqa: SLF001
                      if c.status not in ("refuted", "retired"))
         print(f"\n[memory] Claim 图：共存 {total} 主张"

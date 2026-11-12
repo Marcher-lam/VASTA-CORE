@@ -46,7 +46,7 @@ async def put(store, payload: bytes, *, classification=None, age_days=0):
         payload, classification=classification,
         tenant_id="t-default", project_id="p-default")
     if age_days:
-        with store._lock, store._conn:  # noqa: SLF001——测试调龄
+        with store._lock, store._conn:  # noqa: SLF001 ——测试调龄
             store._conn.execute(  # noqa: SLF001
                 "UPDATE artifacts SET created_at = datetime('now', ?)"
                 " WHERE sha256 = ?", (f'-{int(age_days)} days', sha))

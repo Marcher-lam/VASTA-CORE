@@ -11,7 +11,7 @@ import socket
 
 import pytest
 
-from _sidecar_usermod import (  # noqa: F401（自包含惯例：夹具同款复用）
+from _sidecar_usermod import (  # noqa: F401 （自包含惯例：夹具同款复用）
     STATUS_CONTRACT,
     SetStatusTool,
     TodoEnv,
@@ -123,7 +123,7 @@ class TestSubprocessSidecar:
             assert "verification.passed" in types
         finally:
             proc.close(timeout_s=15)
-        assert proc._process.returncode == 0  # noqa: SLF001（优雅退出码）
+        assert proc._process.returncode == 0  # noqa: SLF001 （优雅退出码）
 
     def test_store_persists_under_root(self, tmp_path) -> None:
         """证据落 root/store（与 Agent 进程同部署的本地库）。"""

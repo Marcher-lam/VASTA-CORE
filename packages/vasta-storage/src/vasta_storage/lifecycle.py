@@ -68,7 +68,7 @@ def classify_artifacts(
     from vasta_protocols.ids import now_utc
     now = now_utc()
     report: list[dict[str, Any]] = []
-    with store._lock:  # noqa: SLF001——同包 mixin 访问
+    with store._lock:  # noqa: SLF001 ——同包 mixin 访问
         for sha, created_at in store._conn.execute(  # noqa: SLF001
             "SELECT a.sha256, a.created_at FROM artifacts a"
             " JOIN artifact_refs r ON a.sha256 = r.sha256"
@@ -182,7 +182,7 @@ async def request_deletion(
     artifacts 行 + blob 字节（跨租户共享字节不被单租户删除破坏）。
     检查与删除在同一锁/事务内（TOCTOU——法律保留不再有并发窗口）。"""
     # 幂等：本作用域已无该 sha 的映射 = 已删（不重复发事件）
-    with store._lock:  # noqa: SLF001——同包 mixin 访问
+    with store._lock:  # noqa: SLF001 ——同包 mixin 访问
         scoped = store._conn.execute(  # noqa: SLF001
             "SELECT 1 FROM artifact_refs WHERE sha256 = ?"
             " AND tenant_id = ? AND project_id = ?",
@@ -216,7 +216,7 @@ async def request_deletion(
                                   blockers=blockers)
 
         # 执行删除（事务内）：先清本租户映射（含 restricted 孤儿行）
-        store._conn.execute(  # noqa: SLF001——同包（evidence_access 同一定义）
+        store._conn.execute(  # noqa: SLF001 ——同包（evidence_access 同一定义）
             "CREATE TABLE IF NOT EXISTS restricted_artifacts ("
             "  sha256 TEXT NOT NULL, tenant_id TEXT NOT NULL,"
             "  project_id TEXT NOT NULL, reason TEXT NOT NULL,"

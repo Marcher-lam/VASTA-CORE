@@ -151,7 +151,7 @@ def create_app(
     async def readyz() -> dict[str, Any]:
         try:  # 就绪：存储心跳（元数据面点查）
             service.store.last_event_info("__readyz_probe__")
-        except Exception as exc:  # noqa: BLE001——依赖故障即未就绪
+        except Exception as exc:  # noqa: BLE001 ——依赖故障即未就绪
             raise HTTPException(
                 status_code=503, detail=f"store not ready: {exc}") from exc
         return {"status": "ready", "sessions": len(service.sessions)}
@@ -179,7 +179,7 @@ def create_app(
             return sum(
                 1 for e in store.iter_run_events("quotas")
                 if e.type == "run.throttled")
-        except Exception:  # noqa: BLE001——指标面不因单源缺失失败
+        except Exception:  # noqa: BLE001 ——指标面不因单源缺失失败
             return 0
 
     from fastapi import Depends as _Depends

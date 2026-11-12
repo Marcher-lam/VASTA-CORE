@@ -110,7 +110,7 @@ async def default_dsl_evaluator(
         from vasta_model_lab import RuleSet
 
         RuleSet.model_validate(ruleset)  # 结构合法性（DSL 可重建）
-    except Exception as exc:  # noqa: BLE001——校验失败即重验证失败
+    except Exception as exc:  # noqa: BLE001 ——校验失败即重验证失败
         return {"passed": False, "score": 0.0,
                 "details": f"规则集损坏: {exc}"}
     return {"passed": True, "score": 1.0,
@@ -225,7 +225,7 @@ async def run_drift_check(
             revalidation = await revalidate_model(
                 store, kind, name, version, evaluator=evaluator,
                 tenant_id=tenant_id, project_id=project_id)
-        except Exception as exc:  # noqa: BLE001——异常=不可信（fail 处置）
+        except Exception as exc:  # noqa: BLE001 ——异常=不可信（fail 处置）
             revalidation = {"passed": False, "score": 0.0,
                             "error": f"{type(exc).__name__}: {exc}"[:200]}
         report.revalidation_passed = revalidation["passed"]

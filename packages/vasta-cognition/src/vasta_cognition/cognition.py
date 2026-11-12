@@ -134,7 +134,7 @@ class CognitionService:
         """与存储对齐——桥接（AD-13）可能已在本 run 追加事件。
 
         统一序列器（Story 9.1）：同步策略收敛进 EventSequencer（系统流模式）。"""
-        self._sequencer._sync_from_store()  # noqa: SLF001——同对象内部状态对齐
+        self._sequencer._sync_from_store()  # noqa: SLF001 ——同对象内部状态对齐
 
     def _apply_claim_event(self, type_: str, payload: dict[str, Any]) -> None:
         claim_id = str(payload.get("claim_id", ""))

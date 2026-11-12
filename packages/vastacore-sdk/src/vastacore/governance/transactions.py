@@ -84,7 +84,7 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
             try:
                 dry = await adapter.dry_run(
                     Action(tool=step.tool, args=step.args))
-            except Exception:  # noqa: BLE001——dry_run 异常 = 拒（不裸逃）
+            except Exception:  # noqa: BLE001 ——dry_run 异常 = 拒（不裸逃）
                 return BatchResult(
                     batch_id=batch.batch_id, status="dry_run_rejected",
                     failed_step=step.tool,
@@ -108,7 +108,7 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
         try:
             # 经 session.act（网关路径六段链 + 契约模板）
             await session.act(action)
-        except Exception:  # noqa: BLE001——act 本身异常也触发补偿
+        except Exception:  # noqa: BLE001 ——act 本身异常也触发补偿
             failed_step = step.tool
             await sequencer.emit("action.batch_step_failed", {
                 "batch_id": batch.batch_id, "step_index": i,
@@ -158,7 +158,7 @@ async def execute_batch(session: Any, batch: TransactionBatch) -> BatchResult:
                         "batch_id": batch.batch_id, "step_index": j,
                         "tool": step.tool, "step_id": step_id,
                     })
-                except Exception as exc:  # noqa: BLE001——补偿失败不中断其余补偿
+                except Exception as exc:  # noqa: BLE001 ——补偿失败不中断其余补偿
                     # 留痕（评审修复：补偿失败不再静默吞——事件面可审计
                     # 哪步悬空未回滚）
                     compensation_failed.append(step_id)

@@ -36,7 +36,7 @@ async def record(store, model: str, cost: float, calls: int = 1,
         # 不可行——信封不可变。改为直接 UPDATE 流内 ts 列（测试调期）
         import json as _json
 
-        with store._lock, store._conn:  # noqa: SLF001——测试调期
+        with store._lock, store._conn:  # noqa: SLF001 ——测试调期
             row = store._conn.execute(  # noqa: SLF001
                 "SELECT seq, data FROM events WHERE run_id='billing'"
                 " ORDER BY seq DESC LIMIT 1").fetchone()

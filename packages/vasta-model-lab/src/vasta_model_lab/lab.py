@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .bridge import WorldModelBridge
 from .dsl import DSLWorldModel, RuleSet
-from .manifest import (  # noqa: F401（属性面保持）
+from .manifest import (  # noqa: F401 （属性面保持）
     Observation_,
     WorldModelManifest,
 )

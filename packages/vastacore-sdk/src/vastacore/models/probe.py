@@ -220,7 +220,7 @@ async def _probe_streaming(adapter: Any, declared: bool) -> ProbeOutcome:
             chunks += 1
             if chunks >= 2:
                 break
-    except Exception as exc:  # noqa: BLE001——中途损坏不是"支持流式"
+    except Exception as exc:  # noqa: BLE001 ——中途损坏不是"支持流式"
         return _failed("streaming", "optional-generate_stream", exc)
     return (
         _detected("streaming", "optional-generate_stream",
@@ -269,7 +269,7 @@ async def probe_capabilities(
     声明可交叉，置信度固定 0.9 为单侧口径。"""
     try:
         declared: ModelCapabilities = adapter.capabilities
-    except Exception as exc:  # noqa: BLE001——适配器自声明面异常也 fail-closed
+    except Exception as exc:  # noqa: BLE001 ——适配器自声明面异常也 fail-closed
         all_failed = {
             name: _failed(name, "adapter-declared", exc) for name in _PROBE_NAMES
         }
@@ -293,7 +293,7 @@ async def probe_capabilities(
                    declared_map[declared_key] if declared_key else True),
                 timeout=probe_timeout_s,
             )
-        except Exception as exc:  # noqa: BLE001——fail-closed：异常/超时=无能力
+        except Exception as exc:  # noqa: BLE001 ——fail-closed：异常/超时=无能力
             probes[name] = _failed(name, _method_of(fn), exc)
 
     discrepancies: list[str] = []

@@ -95,7 +95,7 @@ def impact_analysis(
     活跃主张 + depends_on 下游闭包（依赖图传播；环安全）。"""
     items = set(affected_scope.items())
     direct = [
-        c for c in cognition._claims.values()  # noqa: SLF001——同 SDK 域查询
+        c for c in cognition._claims.values()  # noqa: SLF001 ——同 SDK 域查询
         if c.status not in ("refuted", "retired")
         and items & set(c.scope.items())
     ]

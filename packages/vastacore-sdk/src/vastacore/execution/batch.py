@@ -55,7 +55,7 @@ class VastaLabEnv(EnvironmentAdapter):
 
     async def execute(self, action):
         self._step_index += 1
-        self.pos = self.task._step(  # noqa: SLF001——任务真实转移（含隐藏规则）
+        self.pos = self.task._step(  # noqa: SLF001 ——任务真实转移（含隐藏规则）
             self.pos, action.tool, self._step_index
         )
         obs = [Observation(kind="transition",

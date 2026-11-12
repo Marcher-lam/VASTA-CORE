@@ -292,7 +292,7 @@ class ContractedMixin:
                 )
         return observations
 
-    async def _on_deviation(  # noqa: SLF001（同包 mixin 访问引擎设施）
+    async def _on_deviation(  # noqa: SLF001 （同包 mixin 访问引擎设施）
         self,
         contract: ActionContract,
         *,
@@ -363,7 +363,7 @@ class ContractedMixin:
         return None
 
 
-    async def _apply_policy_decision(  # noqa: SLF001（同包 mixin 访问引擎设施）
+    async def _apply_policy_decision(  # noqa: SLF001 （同包 mixin 访问引擎设施）
         self,
         contract: ActionContract,
         effective_risk: str,
@@ -464,7 +464,7 @@ class ContractedMixin:
              "risk_effective": effective_risk, "degraded": decision.degraded},
         )
 
-    async def _execute_via_gateway(  # noqa: SLF001（同包 mixin 访问引擎设施）
+    async def _execute_via_gateway(  # noqa: SLF001 （同包 mixin 访问引擎设施）
         self,
         contract: ActionContract,
         action: Action,

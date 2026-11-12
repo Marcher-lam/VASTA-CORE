@@ -170,7 +170,7 @@ class TestAuditChain:
         asyncio.run(seed())
         s1 = audit_log_integrity_statement(store)
         # 篡改 payload（role viewer → admin）
-        with store._lock, store._conn:  # noqa: SLF001——测试注入篡改
+        with store._lock, store._conn:  # noqa: SLF001 ——测试注入篡改
             row = store._conn.execute(  # noqa: SLF001
                 "SELECT seq, data FROM events WHERE run_id='access'"
                 " LIMIT 1").fetchone()

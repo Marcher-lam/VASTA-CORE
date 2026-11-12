@@ -37,7 +37,7 @@ async def restrict_evidence(
     """标记原始证据为受限（幂等——重复 restrict 更新 reason 不炸）。"""
     from ._bookkeeping import utcnow_iso
 
-    with store._lock, store._conn:  # noqa: SLF001——同包访问
+    with store._lock, store._conn:  # noqa: SLF001 ——同包访问
         store._conn.execute(_CREATE_RESTRICTED)  # noqa: SLF001
         store._conn.execute(  # noqa: SLF001
             "INSERT OR REPLACE INTO restricted_artifacts"

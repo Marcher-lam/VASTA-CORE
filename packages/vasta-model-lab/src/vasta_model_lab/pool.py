@@ -173,7 +173,7 @@ class PodmanBackend:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-        except Exception as exc:  # noqa: BLE001——容器启动故障统一包装
+        except Exception as exc:  # noqa: BLE001 ——容器启动故障统一包装
             raise VastaError(
                 code="sandbox.spawn_failed",
                 message=f"容器启动失败：{exc}",

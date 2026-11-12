@@ -49,7 +49,7 @@ async def run_tool_protocol_checks(tool: ToolAdapter) -> list[str]:
         assert manifest.risk in {"R0", "R1", "R2", "R3", "R4"}
         assert isinstance(manifest.read_only, bool)
         assert isinstance(manifest.idempotent, bool)
-    except Exception as exc:  # noqa: BLE001——构造期拒绝也算失败项
+    except Exception as exc:  # noqa: BLE001 ——构造期拒绝也算失败项
         return [f"清单完整性失败（FR-032 构造期拒绝）: {exc}"]
 
     action = Action(tool=manifest.name, args={})

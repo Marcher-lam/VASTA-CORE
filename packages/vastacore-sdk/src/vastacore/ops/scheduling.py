@@ -304,7 +304,7 @@ class Scheduler:
                     "success_rate": summary.success_rate,
                 })
                 return record
-            except Exception as exc:  # noqa: BLE001——触发失败统一重试
+            except Exception as exc:  # noqa: BLE001 ——触发失败统一重试
                 # VastaError 优先记 code（quota.* 等分类可审计）
                 code = getattr(exc, "code", None)
                 last_error = f"{code or type(exc).__name__}: {exc}"[:200]

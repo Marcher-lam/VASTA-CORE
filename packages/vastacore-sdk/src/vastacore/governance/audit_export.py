@@ -124,7 +124,7 @@ def export_audit_json(
     if query.include_runs:
         # 评审修复 M4/F6：原字段为死旗——实现真实收集（业务 run =
         # 非系统流名的事件流；sqlite 直查 distinct——同 SDK 域模式）
-        with store._lock:  # noqa: SLF001——同 SDK 域只读直查
+        with store._lock:  # noqa: SLF001 ——同 SDK 域只读直查
             all_runs = [r[0] for r in store._conn.execute(  # noqa: SLF001
                 "SELECT DISTINCT run_id FROM events").fetchall()]
         for run in all_runs:

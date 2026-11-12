@@ -275,7 +275,7 @@ async def _evaluate_events(
                 verification = await verifier.verify(str(result_ref or tool),
                                                      evidence)
                 new_outcomes[name] = str(verification.outcome)
-            except Exception as exc:  # noqa: BLE001——单核验器异常隔离
+            except Exception as exc:  # noqa: BLE001 ——单核验器异常隔离
                 # 评审修复：不毁整份报告，记 errored（与引擎词表一致）
                 new_outcomes[name] = "system_error"
                 deviation_notes.append(f"{name}: verifier crashed: {exc}")
