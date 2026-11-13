@@ -74,6 +74,8 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 | 19 | 4 秒内**双杀重开**（调用方 reset + engine.reset 各一次 hard_reset）→ AX 树重建流态，读屏撞「无效的索引」 | DesktopEnv 加 `hard_on_reset=False`（env 只 Esc 清零）；read_display 全函数化（流态返回 None 不抛） |
 | 20 | 任务镜像读屏（runner 自读 display 对分）在流态下不可靠 | 计分只认**事件流** verification.passed（核验器裁决）——P1 就该这么写 |
 | 21 | 上一次枚举的 AX 路径在树变化后过期（`=` 出结果行也会变树） | 交互前重枚举（侧栏钮定位、活检查均自取新鲜树） |
+| 24 | **macOS 26（25G83，VM）屏值带 U+200E 方向标记**：显示 0 时 AX 值是 `'\u200e0'`——`str.strip()` 不吃 Cf 类格式符，标定判「显示屏非零」、核验等值比较全线挂（macOS 27 主机无此前缀；2026-11-12 VM 首跑实测） | `ax.strip_format_chars()`（unicodedata Cf 剥离）：`read_display` 读出统一过筛 + calib 四处比较点（phase1 分类/清零自证/_check_zero/phase2 序列）同步 |
+| 25 | **macOS 26 减号渲染为 ASCII 连字符 `-`（U+002D）**，27 是数学减号 `−`（U+2212）——运算符字形表与验收集全按 U+2212 写，26 上 `−` 钮标定必缺；正负号结果渲染为带括号 `(-79)` 亦不在 phase2 映射 | 读值统一 `.replace("-", "−")` 归一（phase1 分类 + phase2 映射两处）；映射补 `(−79)`→`+/−`；标定失败报错附 raw 步值（后续坑直接看数据） |
 
 ## 平台 API 接线要点
 

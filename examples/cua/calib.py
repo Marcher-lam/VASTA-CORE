@@ -30,6 +30,7 @@ from .ax import (  # noqa: PLC2701
     _run_osascript,
     activate_app,
     ensure_frontmost,
+    strip_format_chars,
 )
 
 _CALIB_JS = r"""
@@ -143,7 +144,8 @@ _CN_DIGITS = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5",
 
 def _classify_phase1(v: str) -> str | None:
     """显示屏值 → 按钮 label；None = unknown（AC/=/正负号类）。"""
-    v = v.strip()
+    v = strip_format_chars(v).strip()  # 坑位 #24：macOS 26 屏值带 U+200E
+    v = v.replace("-", "−")  # 坑位 #25：26 渲染 ASCII 连字符，统一归一为 U+2212
     if v in {"0", "", "ERR", "NOESC"}:
         return None
     if v in {"0.", "."}:
@@ -189,8 +191,8 @@ def hard_reset(app: str = "Calculator", *, settle_s: float = 1.8) -> None:
             time.sleep(0.25)
             try:  # 清零自证（static 子树扫描；本机布局群组路径稳定）
                 statics = read_statics_subtree(app, (0, 0, 0, 1, 0))
-                clean = all(str(s.get("v", "")).strip() in {"0", ""}
-                            for s in statics)
+                clean = all(strip_format_chars(str(s.get("v", ""))).strip()
+                            in {"0", ""} for s in statics)
             except Exception:
                 clean = True  # 读不到不阻塞（后续 _check_zero 再把关）
             if clean:
@@ -204,7 +206,7 @@ def _check_zero(app: str, display_path: list[int],
             "settle_s": settle_s}
     out = json.loads(_run_osascript(_CALIB_JS, json.dumps(spec),
                                     timeout_s=30.0))
-    return str(out.get("initial")).strip() == "0"
+    return strip_format_chars(str(out.get("initial"))).strip() == "0"
 
 
 def discover_keypad(app: str, elements: list[AxElement],
@@ -258,10 +260,11 @@ def discover_keypad(app: str, elements: list[AxElement],
         for step in result["steps"]:
             if "phase2" not in step:
                 continue
-            v = str(step["phase2"]).strip()
+            v = strip_format_chars(str(step["phase2"])).strip()
+            v = v.replace("-", "−")  # 坑位 #25：归一减号字形
             label = {"0": "AC", "79": "=", "790": "0",
                      "79.": ".", "79,": ".",
-                     "-79": "+/−", "−79": "+/−"}.get(v)
+                     "−79": "+/−", "(−79)": "+/−"}.get(v)  # 26 的正负号带括号
             if label and label not in labels:
                 labels[label] = tuple(step["path"])
     # 验收（实测坑：漂移布局下 phase1 会产出残缺集——缺 = 时闸门把
@@ -269,8 +272,11 @@ def discover_keypad(app: str, elements: list[AxElement],
     required = set("0123456789") | {"+", "−", "×", "÷", "=", "AC"}
     missing = required - set(labels)
     if missing:
+        raw = {str(s.get("path")): str(s.get("phase2", s.get("phase1")))
+               for s in result.get("steps", []) if "path" in s}
         raise AxError(f"标定不完整（缺 {sorted(missing)}，得 "
-                      f"{len(labels)} 钮）——布局漂移或读屏不可靠")
+                      f"{len(labels)} 钮）——labels={labels}；"
+                      f"raw={raw}")
     return labels
 
 

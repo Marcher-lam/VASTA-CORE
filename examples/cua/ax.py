@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import unicodedata
 from dataclasses import asdict, dataclass, field
 
 from .config import CuaConfig
@@ -214,6 +215,18 @@ def read_statics_subtree(app: str, root_path: tuple[int, ...],
     return json.loads(raw or "[]")
 
 
+def strip_format_chars(s: str | None) -> str:
+    """剥掉 Unicode Cf 类不可见格式符（坑位 #24，2026-11-12 VM 实测）。
+
+    macOS 26（25G83）计算器显示屏的 AX 值带 U+200E 方向标记：显示 0
+    时值是 ``'\\u200e0'``——``str.strip()`` 只吃空白不吃 Cf，等值比较
+    /数字解析全线挂（标定判「显示屏非零」即此因）。macOS 27（主机）
+    无此前缀。显示值读出统一过此函数。"""
+    if not s:
+        return ""
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Cf")
+
+
 def read_display(app: str, display_path: tuple[int, ...]) -> str | None:
     """显示屏语义值：display 祖父子树内 static text 取**最大 y**。
 
@@ -227,12 +240,13 @@ def read_display(app: str, display_path: tuple[int, ...]) -> str | None:
     try:
         statics = read_statics_subtree(app, root)
         if statics:
-            return max(statics, key=lambda s: (s.get("y") or 0))["v"]
+            v = max(statics, key=lambda s: (s.get("y") or 0))["v"]
+            return strip_format_chars(str(v))
     except Exception:
         pass
     try:
         raw = read_element(app, display_path).get("value")
-        return None if raw is None else str(raw)
+        return None if raw is None else strip_format_chars(str(raw))
     except Exception:
         return None
 
@@ -393,6 +407,6 @@ __all__ = [
     "AxElement", "AxError", "INTERACTIVE_ROLES", "TEXT_ROLES",
     "activate_app", "click_at", "click_element", "ensure_frontmost",
     "enumerate_elements", "frontmost_app", "key_code", "keystroke",
-    "read_display", "read_element", "read_statics_subtree", "screen_info",
-    "screenshot_png",
+    "read_display", "read_element", "read_statics_subtree",
+    "screen_info", "screenshot_png", "strip_format_chars",
 ]
