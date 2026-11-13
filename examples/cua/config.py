@@ -26,6 +26,12 @@ class CuaConfig:
     timeout_s: int = int(_env("CUA_TIMEOUT_S", "300"))
     # 思考型模型：reasoning 吃预算，回答保持短 JSON 但预算给足
     max_tokens: int = int(_env("CUA_MAX_TOKENS", "2000"))
+    # 采样（多种子评测用）：默认 0=贪心，保持 probe/loop 既有确定性；
+    # CUA_TEMPERATURE>0 + CUA_SEED 注入请求体——否则 10 个种子只是同
+    # 一次贪心解码的重放，CI 无意义（vm-gui 计划 §八 Phase 4 前置）
+    temperature: float = float(_env("CUA_TEMPERATURE", "0"))
+    seed: int | None = (int(os.environ["CUA_SEED"])
+                        if os.environ.get("CUA_SEED") else None)
     # qwen3.5 实测（2026-11）：chat_template_kwargs 压不住 thinking（空
     # content×finish=length，~2min/题）；prompt 尾缀 /no_think 立竿见影
     # （30s→11s）。默认开，CUA_NO_THINK=0 关闭。

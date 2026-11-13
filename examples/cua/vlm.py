@@ -146,10 +146,12 @@ class VlmClient:
             "model": self._cfg.vlm_model,
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": content}],
-            "temperature": 0,
+            "temperature": self._cfg.temperature,
             "chat_template_kwargs": {"enable_thinking": False},
             "max_tokens": max_tokens or self._cfg.max_tokens,
         }
+        if self._cfg.seed is not None:
+            body["seed"] = self._cfg.seed  # 多种子独立采样（缓存键含 body，天然隔离）
         key = self._cache_key(body)
         cached = await self._cache_get(key)
         if cached is not None:

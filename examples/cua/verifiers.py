@@ -72,6 +72,7 @@ class AxDisplayVerifier:
             return Verification(outcome="inconclusive",
                                 detail={"reason": "AX 显示屏读数缺失"})
         actual = _normalize(str(actual_raw))
+        actual = actual.replace("-", "−")  # 坑位 #26：26 屏值减号是 ASCII 连字符
         actual_num = parse_cn_number(actual)  # 中文语音渲染 → 数字
 
         expects = evidence.get("expected_changes") or []
@@ -81,6 +82,7 @@ class AxDisplayVerifier:
                 continue
             key, want = change.split("=", 1)
             key, want = key.strip(), want.strip()
+            want = want.replace("-", "−")  # 坑位 #26：期望侧同归一（两侧同规则才可比）
             if key == "display":
                 ok = actual == want or (actual_num is not None
                                         and str(actual_num) == want)
