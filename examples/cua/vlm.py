@@ -96,10 +96,6 @@ class VlmClient:
                 asyncio.to_thread(self._http_post, url, headers, body,
                                   budget),
                 timeout=hard_deadline)
-        except TimeoutError as exc:
-            raise RuntimeError(
-                f"VLM 硬总超时（>{hard_deadline:.0f}s，疑似滴流/推理挂死"
-                "——坑位 #29）") from exc
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
             if exc.code == 400 and "unloaded" in detail.lower():
@@ -114,13 +110,12 @@ class VlmClient:
                     f"端点拒绝图像输入（模型非视觉？）: {detail}") from exc
             raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
         except TimeoutError as exc:
-            await asyncio.to_thread(_lms, "reset", str(body.get("model", "")))
-            try:
-                return await asyncio.to_thread(
-                    self._http_post, url, headers, body, budget)
-            except TimeoutError:
-                raise RuntimeError(
-                    f"生成超时（>{budget:.0f}s）——重置模型后仍超时") from exc
+            # socket 超时与 wait_for 硬总限（3.11+ 同一类）统一处置：
+            # 直接报错走上层有界重试——对滴流对端 reset+重试只会双倍
+            # 烧时限（#29 取证结论）
+            raise RuntimeError(
+                f"VLM 超时（budget={budget:.0f}s 硬限"
+                f"{hard_deadline:.0f}s——滴流/挂死，坑位 #29）") from exc
 
     # ---- 缓存（请求哈希 → 实体索引 → CAS 工件）----
 

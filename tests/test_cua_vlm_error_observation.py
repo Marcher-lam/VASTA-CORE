@@ -110,7 +110,7 @@ async def test_trickling_http_killed_by_hard_deadline(
     cfg = dataclasses.replace(CuaConfig(), timeout_s=1)
     vlm = VlmClient(cfg, store=None, http_post=trickling_post)
     try:
-        with pytest.raises(RuntimeError, match="硬总超时"):
+        with pytest.raises(RuntimeError, match="VLM 超时"):
             await vlm.generate("s", "p", max_tokens=8)
     finally:
         release.set()
