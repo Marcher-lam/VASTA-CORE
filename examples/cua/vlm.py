@@ -23,6 +23,8 @@ from typing import Any
 from .config import CuaConfig
 
 ENTITY_KEY = "cua_model_call"
+_GEN_FLOOR_S = 60    # 单请求生成预算下限（秒）
+_HARD_MARGIN_S = 60  # 硬总限时 = budget + 此边际（坑位 #29 滴流免疫）
 
 
 class VlmFormatError(RuntimeError):
@@ -83,10 +85,21 @@ class VlmClient:
             headers["Authorization"] = f"Bearer {self._cfg.api_key}"
         url = f"{self._cfg.base_url}/chat/completions"
         budget = max(self._cfg.timeout_s,
-                     int(body.get("max_tokens", 0) * 0.25) + 60)
+                     int(body.get("max_tokens", 0) * 0.25) + _GEN_FLOOR_S)
+        # 坑位 #29：socket 超时对滴流免疫（LM Studio swap 龟速实测——
+        # 连接 ESTABLISHED、分钟/token 爬行，字节间隔 < timeout 永不
+        # 触发 → eval 进程冻结 40 分钟被杀）。硬总限时兜底；被弃线程
+        # 会泄漏挂死（to_thread 不可杀）——每决策上限几个，可接受。
+        hard_deadline = budget + _HARD_MARGIN_S
         try:
-            return await asyncio.to_thread(
-                self._http_post, url, headers, body, budget)
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._http_post, url, headers, body,
+                                  budget),
+                timeout=hard_deadline)
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"VLM 硬总超时（>{hard_deadline:.0f}s，疑似滴流/推理挂死"
+                "——坑位 #29）") from exc
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
             if exc.code == 400 and "unloaded" in detail.lower():

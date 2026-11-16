@@ -86,3 +86,42 @@ def test_memory_prompt_renders_observation() -> None:
 
 def test_memory_prompt_without_error_is_clean() -> None:
     assert OBS_MARKER not in _memory_prompt("任务", "12", [])
+
+
+# ---- va-10（坑位 #29）：硬总超时——socket 超时对滴流免疫的补丁 ----
+
+async def test_trickling_http_killed_by_hard_deadline(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """对端收下请求后滴流/挂死（LM Studio swap 龟速实测形态）——
+    socket 超时永不触发，硬总限时必须把 generate 拉回来。"""
+    import dataclasses
+    import threading
+
+    import examples.cua.vlm as vlm_mod
+    from examples.cua.config import CuaConfig
+
+    monkeypatch.setattr(vlm_mod, "_GEN_FLOOR_S", 1)
+    monkeypatch.setattr(vlm_mod, "_HARD_MARGIN_S", 1)
+    release = threading.Event()
+
+    def trickling_post(url, headers, body, timeout_s):  # noqa: ANN001
+        release.wait(30)  # 连接 ESTABLISHED、永不回——测试放行后线程退出
+
+    cfg = dataclasses.replace(CuaConfig(), timeout_s=1)
+    vlm = VlmClient(cfg, store=None, http_post=trickling_post)
+    try:
+        with pytest.raises(RuntimeError, match="硬总超时"):
+            await vlm.generate("s", "p", max_tokens=8)
+    finally:
+        release.set()
+
+
+async def test_hard_deadline_spares_normal_calls() -> None:
+    from examples.cua.config import CuaConfig
+
+    def fast_post(url, headers, body, timeout_s):  # noqa: ANN001
+        return {"choices": [{"message": {"content": '{"ok": 1}'},
+                             "finish_reason": "stop"}]}
+
+    vlm = VlmClient(CuaConfig(), store=None, http_post=fast_post)
+    assert "1" in await vlm.generate("s", "p", max_tokens=8)
