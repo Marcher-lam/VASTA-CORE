@@ -6,6 +6,7 @@
 
 ## Unreleased（v0.1.0 后）
 
+- **VISTA 机制吸收六序全批**（源码深读 11 文件 → [吸收方案](docs/vista-absorption-plan-2026-11-16.md) → story-va-1…6，TDD 红转绿 63 测试）：错误即观测（VLM 坏 JSON 回喂，修「盲重试×缓存=必然二连炸」）/ read_pixels 取证原语（P6 独立观测通道）/ inspect+history 模型侧投影（CAS ref 寻址，强于 VISTA turn 索引）/ 压缩检查点治理（修 `history[-4:]` 裸滑窗静默丢失；CAS 工件留痕 + 边界校验 fail-closed）/ 契约三件（ToolManifest risk↔read_only 构造期矩阵、VastaLabTask.public_view 评测器隔离、Observation derived 血缘）/ 微吸收（ex-ante 预期落史 + CAS 工件 0o400 只读位）。全量 1381 passed；lint-imports 5/0；集成数字待 VM 窗口与 P6 同批回填
 - **CI 首次转绿并修两个真 bug**：
   - 沙箱 `RLIMIT_AS` 改**增长量上限**（基线 VmSize + mem_mb 预算）——按预算设总量上限会在真 x86_64 Linux 上杀死 CPython 解释器启动（VmSize ≈ 200-320MB ≫ 128MB；Windows ImportError / macOS EINVAL 双跳过致此前从未暴露）
   - 容器后端可用性改**运行时 + 镜像双探测**——GitHub runner 预装 podman 但无 vasta 镜像，只探二进制会选中容器后端后把 localhost 镜像名当 registry 拉取

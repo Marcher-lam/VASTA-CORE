@@ -108,3 +108,36 @@ macOS VM（vasta-ci-macos，macOS 26.6.2）落地后三判据可同时满足
 计算器任务集**不承担**「真实场景」（纯玩具），定位保持为评测基线
 （Phase 4 ≥10 种子的载体）。口径同前四条关闭：账面记本日志，
 PRD §12 原文不动。
+
+## 2026-11-16-1：VISTA 机制吸收六序全批执行
+
+**背景**：VISTA 源码深读（11 文件）产出
+[vista-absorption-plan-2026-11-16.md](vista-absorption-plan-2026-11-16.md)
+（A–H 判定 + 六序落地，决策门「待所有者裁决」）。所有者下令开工
+（纪律栈：superpowers 外环 / matt TDD+类型检查+末尾 review / bmad
+story 簿记）。
+
+**裁决**（所有者）：六序全批。执行留痕（TDD 红转绿，每 story 独立
+提交 + code-review）：
+
+- ① 错误即观测（d37b4f2，9 测试）：VLM 坏 JSON 从盲重试改错误观测
+  回喂——根因深挖：盲重试 × 响应缓存 = 必然二连炸；
+- ② read_pixels 取证原语（0daa163，12 测试）：P6 独立观测通道
+  （不依赖 AX 的像素 diff）；
+- ③ inspect + history 投影（7a508ec，16 测试）：CAS ref 寻址回看 +
+  分页投影，含 code-review 补强 ×2（fail-closed）；
+- ④ 压缩检查点治理（cbba5e9，11 测试）：修 loop.py history[-4:]
+  裸滑窗静默丢失实测隐患；有据偏离：检查点落 CAS 工件+实体索引
+  而非手搓事件信封（seq 由 engine sequencer 独管）；
+- ⑤ 契约三件（6641540，10 测试）：矩阵构造期强制 / public_view
+  评测隔离 / Observation derived 血缘；测试演进 ×1（R0+写清单
+  构造期即非法——防线前移，纯函数层保纵深防御语义）；
+- ⑥ 微吸收（0528b82，5 测试）：ex-ante 预期落史 + CAS 只读位；
+  篡改模拟测试演进 ×5（解锁行）。
+
+**门禁**：全量 1381 passed / 7 skipped；ruff 全绿；lint-imports
+契约 5 kept / 0 broken（AD-1 保有）。集成数字（基线失败模式占比
+变化、检查点实拍）待 VM 评测窗口与 P6 同批回填（story 遗留已登记）。
+
+**不吸收清单维持**（方案 §六）：runtime / play / RHAE / 四 benchmark
+适配器；GUIDE.md 文件本体（Claim 图超集，仅吸收续接语义）。

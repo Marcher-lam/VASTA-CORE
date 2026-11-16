@@ -15,6 +15,12 @@
 所有者裁决。裁决通过后按 §七 顺序实施，并在 [decision-log.md](decision-log.md)
 增条目（只增不改）。标 ⚠️ 的是实施时要先补的验证。
 
+> **状态（2026-11-16）**：所有者已下令开工，六序全批执行完毕——
+> 执行留痕见 [decision-log 2026-11-16-1](decision-log.md) 与
+> [story-va-1](stories/story-va-1-error-as-observation.md) 至
+> [story-va-6](stories/story-va-6-micro-absorptions.md)；⚠️ 两条先决
+> 已收口（pt↔px 映射走 scene.scale 活体惯例；检查点落 CAS 工件）。
+
 ---
 
 ## 一、判定总表
