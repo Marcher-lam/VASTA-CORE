@@ -77,3 +77,10 @@ CheckpointBoundaryError → 任务 fail-closed 终止（notes 留痕）
   已就绪，接线待真实崩溃场景需求出现（避免无场景接线）；
 - 上下文预算阈值目前为步数代理（窗口 4 / 每 8 步）——VLM token 级
   预算待序⑥/后续按实测窗口定。
+
+## 集成回填（2026-11-16，va-8）
+
+run#2 实拍：`[ckpt] s8→67911fe7b96b`、`[ckpt] s16→68c8e8f1306a` 双
+检查点 CAS 落盘 + notes 留痕；离线取证（va_integration --run-id）
+按 t-cua 作用域往返成功（边界 8/16 各含全量历史 8/16 条——
+load_checkpoint 需显式传 cfg 作用域，默认作用域是存储默认值，已修）。

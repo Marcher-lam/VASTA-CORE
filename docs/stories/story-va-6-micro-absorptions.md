@@ -70,3 +70,10 @@ lineage_guards / sqlite_storage / time_travel）直接 ``write_bytes``
 
 - model_expect 与 verified 的系统性对照报表（「模型预期 vs 核验
   裁决」偏差率）→ 有 VM 评测数据后随 P6 同批出。
+
+## 集成回填（2026-11-16，va-8）
+
+偏差率报表机制验证可用：离线取证对 run#2 输出「预期落史样本 16 条｜
+核验通过 4 条」（该数字产生于幂等重放污染下——根因修复后待 VM 多
+种子重跑出干净数字）。pt↔px 映射实测：run#3 二十七标记五连全中
+（mark12 ×3 重复命中），scene.scale 活体惯例有效。

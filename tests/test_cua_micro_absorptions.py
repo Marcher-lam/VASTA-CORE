@@ -14,10 +14,35 @@ from __future__ import annotations
 
 import stat
 
-from examples.cua.loop import SYSTEM_PROMPT
+from examples.cua.loop import (
+    SYSTEM_PROMPT,
+    _mark_mismatch_feedback,
+    _unavailable_feedback,
+)
 from examples.cua.revisit import history_lines
 
 from vasta_storage import SqliteStorage
+
+# ---- va-8：闸拒活锁修复（集成 run #1 发现）——反馈带次数与候选，
+# 每次 prompt 变化避开响应缓存（与 va-1 同族根因：同 prompt=同缓存=同答案） ----
+
+def test_unavailable_feedback_carries_attempt_and_candidates() -> None:
+    fb = _unavailable_feedback("AC", {"1", "7", "=", "AC×"}, attempts=2)
+    assert "第 2 次" in fb
+    assert "可用按钮" in fb and "7" in fb
+    assert "AC" in fb.replace("AC×", "") or "AC×" in fb  # 候选清单在场
+
+
+def test_unavailable_feedback_changes_per_attempt() -> None:
+    a = _unavailable_feedback("AC", {"1"}, attempts=1)
+    b = _unavailable_feedback("AC", {"1"}, attempts=2)
+    assert a != b  # prompt 逐次变化 → 缓存键逐次变化 → 真重采样
+
+
+def test_mark_mismatch_feedback_carries_attempt() -> None:
+    fb = _mark_mismatch_feedback("7", 5, "4", attempts=3)
+    assert "第 3 次" in fb and "5" in fb and "4" in fb
+
 
 # ---- G：ex-ante 预期纪律 ----
 

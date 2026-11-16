@@ -46,6 +46,8 @@ from .checkpoint import (
 from .config import CuaConfig
 from .env import DesktopEnv
 from .memory import recall_layout
+from .pixels import Region
+from .revisit import crop_view
 from .scene import capture_scene
 from .tools import ClickMarkTool
 from .verifiers import AxDisplayVerifier
@@ -54,9 +56,61 @@ from .vlm import VlmClient, VlmFormatError
 SYSTEM_PROMPT = (
     "你是 macOS 桌面操作助手。屏幕截图上叠加了带编号的方框标记"
     "（左上角数字牌）。根据问题找到对应元素，只输出一个 JSON 对象，"
-    "不要输出任何其他文字。可附 \"note\" 字段：一句话说明你预期点击后"
-    "屏幕会发生什么变化（动作前预期——将与独立核验结果对照）。"
+    "不要输出任何其他文字。不确定某编号区域是什么时，可不给 button "
+    "而只输出 {\"inspect\": [{\"mark\": <编号>, \"why\": \"<原因>\"}]}——"
+    "系统将放大该区域供你下一轮查看（至多 2 个、连续至多 3 次）。"
+    "可附 \"note\" 字段：一句话说明你预期点击后屏幕会发生什么变化"
+    "（动作前预期——将与独立核验结果对照）。"
 )
+
+
+def _parse_inspect(req: list, marks_table: dict[int, dict], *,
+                   scale: float) -> tuple[list[tuple[str, Region]], str | None]:
+    """inspect 请求解析（va-7：mark 词汇 → Region 视图，至多 2 个）。
+
+    坏条目跳过（错误即观测原则——好条目不陪葬）；未知编号整体拒绝。
+    """
+    if not marks_table:
+        return [], "memory 模式无标记表——不支持 inspect，请直接给 button"
+    views: list[tuple[str, Region]] = []
+    for item in req[:2]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            m = int(item.get("mark"))
+        except (TypeError, ValueError):
+            continue
+        mt = marks_table.get(m)
+        if mt is None:
+            return [], f"inspect 编号 {m} 不在标记表——重看编号牌"
+        label = f"mark{m}:{str(item.get('why', ''))[:60]}"
+        region = Region.from_pt(mt["x_pt"], mt["y_pt"], mt["w_pt"],
+                                mt["h_pt"], scale=scale)
+        views.append((label, region))
+    return views, None
+
+
+def _inspect_prompt_note(views: list[tuple[str, Region]]) -> str | None:
+    """回喂注记：本轮附加图对应哪些放大区域。"""
+    if not views:
+        return None
+    labels = "、".join(lb.split(":")[0] for lb, _ in views)
+    return f"已放大回看 {labels}（附图在图像列表尾部）——请据此决定下一步。"
+
+
+def _unavailable_feedback(button: str, labels: dict, *,
+                          attempts: int) -> str:
+    """闸拒反馈（va-8）：带次数 + 候选清单——每次 prompt 变化避开
+    响应缓存（同 prompt=同缓存=同答案的活锁，集成 run #1 实证）。"""
+    return (f"按钮 {button!r} 不可用（第 {attempts} 次拒绝）。"
+            f"可用按钮：{'、'.join(sorted(labels)) or '（空）'}")
+
+
+def _mark_mismatch_feedback(button: str, mark: int, actual: str, *,
+                            attempts: int) -> str:
+    """意图-定位闸反馈（va-8）：带次数，同族活锁对策。"""
+    return (f"你声明按钮 {button!r} 但编号 {mark} 实际是 {actual!r}"
+            f"——重看编号牌（第 {attempts} 次拒绝）")
 
 
 @dataclass
@@ -83,17 +137,19 @@ class AgentRunResult:
 
 def _vision_prompt(task: str, display: str | None, history: list[dict],
                    feedback: str | None,
-                   vlm_error: str | None = None) -> str:
+                   vlm_error: str | None = None,
+                   inspect_note: str | None = None) -> str:
     hist = context_projection(history)  # 序④：超窗头部紧凑投影（无静默丢失）
     failed = any(not h.get("verified", True) for h in history)
     recovery = ("\n注意：历史中存在 verified=false——你点错了按钮。先按 AC"
                 "（清除/归零）清零，再从头正确输入。" if failed else "")
     fb = f"\n系统反馈（上一步未执行）：{feedback}" if feedback else ""
     obs = (f"\n系统观测（上一轮输出问题）：{vlm_error}" if vlm_error else "")
+    ins = f"\n{inspect_note}" if inspect_note else ""
     return (
         f"任务：在计算器应用里完成「{task}」。\n"
         f"当前 AX 显示屏读数：{display!r}\n"
-        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}{obs}{fb}\n\n"
+        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}{obs}{ins}{fb}\n\n"
         "决定下一步要点哪个按钮（候选：数字 0-9、运算符 + − × ÷、"
         "等号 =、清除 AC、百分号 %）。只输出 JSON：\n"
         '{"button": "<按钮字符>", "mark": <该按钮在截图中的编号>,'
@@ -254,6 +310,10 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
     history: list[dict] = []
     feedback: str | None = None
     vlm_feedback: str | None = None  # 错误即观测：格式错误回喂（VISTA 模式）
+    inspect_images: list[tuple[bytes, str]] | None = None  # va-7 回看附图
+    inspect_note: str | None = None
+    inspect_streak = 0               # 连续回看防死循环
+    gate_attempts = 0                # 闸拒计数（va-8：反馈带次数破缓存活锁）
     last_ckpt: LoopCheckpoint | None = None  # 序④：续接检查点（边界校验锚）
     done = False
     decisions = 0   # 决策计数（闸拦截不计步——单独封顶防死循环）
@@ -287,11 +347,15 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
                                    vlm_error=vlm_feedback),
                     images=[(scene.scene, "image/png")], max_tokens=1600)
             else:
+                imgs = [(scene.marked, "image/png")]
+                if inspect_images:  # va-7：上一轮 inspect 的放大附图
+                    imgs = imgs + inspect_images
                 decision = await vlm.ask_json(
                     SYSTEM_PROMPT,
                     _vision_prompt(task, display, history, feedback,
-                                   vlm_error=vlm_feedback),
-                    images=[(scene.marked, "image/png")], max_tokens=1600)
+                                   vlm_error=vlm_feedback,
+                                   inspect_note=inspect_note),
+                    images=imgs, max_tokens=1600)
         except VlmFormatError as exc:
             vlm_errors += 1
             vlm_feedback = _vlm_error_note(exc)  # 错误观测回喂（非盲重试）
@@ -312,6 +376,8 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
         dt = time.monotonic() - t0
         feedback = None
         vlm_feedback = None
+        inspect_images = None
+        inspect_note = None
 
         button = str(decision.get("button", "")).strip()
         answer_claim = str(decision.get("answer", "")).strip()
@@ -319,7 +385,31 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
         if button == "C":  # 模型常把 AC 写成 C——同义归一
             button = "AC"
         if button not in labels:
-            feedback = f"按钮 {button!r} 不可用"
+            inspect_req = decision.get("inspect") or []
+            if inspect_req and effective == "vision":  # va-7 回看请求
+                views, ierr = _parse_inspect(inspect_req, marks_table,
+                                             scale=scene.scale)
+                if views and inspect_streak < 3:
+                    inspect_streak += 1
+                    inspect_images = [(crop_view(scene.scene, r), "image/png")
+                                      for _, r in views]
+                    inspect_note = _inspect_prompt_note(views)
+                    p(f"  s{res.steps + 1}: 🔍回看 "
+                      f"{[lb for lb, _ in views]}（{dt:.1f}s）")
+                    continue
+                if views:
+                    feedback = "连续回看已达上限——请直接决定 button"
+                    res.gate_blocks += 1
+                    p(f"  s{res.steps + 1}: ✗闸 {feedback}（{dt:.1f}s）")
+                    continue
+                if ierr:
+                    feedback = ierr
+                    res.gate_blocks += 1
+                    p(f"  s{res.steps + 1}: ✗闸 {feedback}（{dt:.1f}s）")
+                    continue
+            gate_attempts += 1
+            feedback = _unavailable_feedback(button, labels,
+                                             attempts=gate_attempts)
             res.gate_blocks += 1
             p(f"  s{res.steps + 1}: ✗闸 {feedback}（{dt:.1f}s）")
             continue
@@ -333,8 +423,10 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
                 mark = None
             if mark is None or mark_semantic.get(mark) != button:
                 res.gate_blocks += 1
-                feedback = (f"你声明按钮 {button!r} 但编号 {mark} 实际是 "
-                            f"{mark_semantic.get(mark)!r}——重看编号牌")
+                gate_attempts += 1
+                feedback = _mark_mismatch_feedback(
+                    button, mark if mark is not None else -1,
+                    str(mark_semantic.get(mark)), attempts=gate_attempts)
                 p(f"  s{res.steps + 1}: ✗闸 {feedback}（{dt:.1f}s）")
                 continue
         else:
@@ -355,6 +447,8 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
 
         expect = derive_expect(button, display, answer_claim)
         res.steps += 1
+        inspect_streak = 0  # 有动作执行——回看连击清零
+        gate_attempts = 0   # 闸拒连击清零
         entry: dict = {"step": res.steps, "button": button, "mark": mark,
                        "expect": expect}
         note = str(decision.get("note", "")).strip()
@@ -364,7 +458,12 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
         try:
             await engine.execute_contracted(
                 build_contract(f"任务「{task}」：按 {button!r}", mark, expect),
-                verifiers={"ax_display": verifier})
+                verifiers={"ax_display": verifier},
+                # P6 根因修复（集成 run #2 实证）：plan_step_id 缺省
+                # "default" → 同 run 同 mark 共享幂等键 → 核验失败后的
+                # 重试被 AD-11 重放而非真执行（「executed 而屏值不变」）。
+                # 每次决策是新的意图操作——step 序号入键。
+                plan_step_id=f"decision-{res.steps}")
         except SupervisorEscalationError as exc:
             res.escalated = True
             res.notes.append(f"Supervisor 熔断：{str(exc)[:50]}")
