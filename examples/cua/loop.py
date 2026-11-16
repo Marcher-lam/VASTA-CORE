@@ -41,6 +41,7 @@ from .memory import recall_layout
 from .scene import capture_scene
 from .tools import ClickMarkTool
 from .verifiers import AxDisplayVerifier
+from .vlm import VlmClient, VlmFormatError
 
 SYSTEM_PROMPT = (
     "你是 macOS 桌面操作助手。屏幕截图上叠加了带编号的方框标记"
@@ -72,16 +73,18 @@ class AgentRunResult:
 
 
 def _vision_prompt(task: str, display: str | None, history: list[dict],
-                   feedback: str | None) -> str:
+                   feedback: str | None,
+                   vlm_error: str | None = None) -> str:
     hist = json.dumps(history[-4:], ensure_ascii=False)
     failed = any(not h.get("verified", True) for h in history)
     recovery = ("\n注意：历史中存在 verified=false——你点错了按钮。先按 AC"
                 "（清除/归零）清零，再从头正确输入。" if failed else "")
     fb = f"\n系统反馈（上一步未执行）：{feedback}" if feedback else ""
+    obs = (f"\n系统观测（上一轮输出问题）：{vlm_error}" if vlm_error else "")
     return (
         f"任务：在计算器应用里完成「{task}」。\n"
         f"当前 AX 显示屏读数：{display!r}\n"
-        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}{fb}\n\n"
+        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}{obs}{fb}\n\n"
         "决定下一步要点哪个按钮（候选：数字 0-9、运算符 + − × ÷、"
         "等号 =、清除 AC、百分号 %）。只输出 JSON：\n"
         '{"button": "<按钮字符>", "mark": <该按钮在截图中的编号>,'
@@ -89,21 +92,29 @@ def _vision_prompt(task: str, display: str | None, history: list[dict],
     )
 
 
-def _memory_prompt(task: str, display: str | None,
-                   history: list[dict]) -> str:
+def _memory_prompt(task: str, display: str | None, history: list[dict],
+                   vlm_error: str | None = None) -> str:
     hist = json.dumps(history[-4:], ensure_ascii=False)
     failed = any(not h.get("verified", True) for h in history)
     recovery = ("\n注意：历史中存在 verified=false——先按 AC 清零重来。"
                 if failed else "")
+    obs = (f"\n系统观测（上一轮输出问题）：{vlm_error}" if vlm_error else "")
     return (
         f"任务：在计算器应用里完成「{task}」。\n"
         f"当前 AX 显示屏读数：{display!r}\n"
-        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}\n"
+        f"已执行步骤（verified 为独立核验器判定）：{hist}{recovery}{obs}\n"
         "按钮位置已由布局记忆定位（截图仅供你了解界面，无需报编号）。"
         "只输出 JSON：\n"
         '{"button": "<下一步按钮字符>",'
         ' "answer": "<仅当 button 为 = 时：你计算的最终结果>"}'
     )
+
+
+def _vlm_error_note(exc: VlmFormatError) -> str:
+    """格式错误 → 回喂观测（VISTA 错误即观测；raw 截断防撑爆上下文）。"""
+    snippet = exc.raw[:160] + ("…" if len(exc.raw) > 160 else "")
+    return (f"{exc}；你的原始输出片段：{snippet}。"
+            "请严格只输出一个合法 JSON 对象，不要任何其他文字。")
 
 
 def derive_expect(button: str, display: str | None,
@@ -143,8 +154,6 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
                     verbose: bool = True,
                     ) -> AgentRunResult:
     """跑一个任务（VLM 决策 + 闸 + 六段链 + AX 终局断言）。"""
-    from .vlm import VlmClient  # noqa: PLC0415
-
     app = "Calculator"
     t_start = time.monotonic()
     res = AgentRunResult(task=task, answer=answer, ok=False, run_id="",
@@ -235,6 +244,7 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
     verifier = AxDisplayVerifier()
     history: list[dict] = []
     feedback: str | None = None
+    vlm_feedback: str | None = None  # 错误即观测：格式错误回喂（VISTA 模式）
     done = False
     decisions = 0   # 决策计数（闸拦截不计步——单独封顶防死循环）
     vlm_errors = 0  # VLM 空 content 容错（重试 2 次再放弃）
@@ -256,13 +266,24 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
                 # 会让 qwen3.5 thinking 失控，实测 2026-11）
                 decision = await vlm.ask_json(
                     SYSTEM_PROMPT,
-                    _memory_prompt(task, display, history),
+                    _memory_prompt(task, display, history,
+                                   vlm_error=vlm_feedback),
                     images=[(scene.scene, "image/png")], max_tokens=1600)
             else:
                 decision = await vlm.ask_json(
                     SYSTEM_PROMPT,
-                    _vision_prompt(task, display, history, feedback),
+                    _vision_prompt(task, display, history, feedback,
+                                   vlm_error=vlm_feedback),
                     images=[(scene.marked, "image/png")], max_tokens=1600)
+        except VlmFormatError as exc:
+            vlm_errors += 1
+            vlm_feedback = _vlm_error_note(exc)  # 错误观测回喂（非盲重试）
+            res.notes.append(f"VLM 格式错误：{str(exc)[:60]}")
+            p(f"  s{res.steps + 1}: ⚠VLM 格式错误 {str(exc)[:50]}"
+              f"（{vlm_errors}/2）——观测已回喂")
+            if vlm_errors >= 2:
+                break
+            continue
         except RuntimeError as exc:
             vlm_errors += 1
             res.notes.append(f"VLM 错误：{str(exc)[:60]}")
@@ -273,6 +294,7 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
             continue
         dt = time.monotonic() - t0
         feedback = None
+        vlm_feedback = None
 
         button = str(decision.get("button", "")).strip()
         answer_claim = str(decision.get("answer", "")).strip()

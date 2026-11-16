@@ -46,6 +46,8 @@
 ## 过程档案（带日期，只增不改——历史记录）
 
 - [decision-log.md](decision-log.md)：跨切裁决记录（主仓裁决 / W-1 解除 / Apache-2.0 / 缺口清偿提前实施）
+- [vista-absorption-plan-2026-11-16.md](vista-absorption-plan-2026-11-16.md)：VISTA 源码深读与机制吸收方案（A–H 判定 + 六序落地，**待所有者裁决**）
+- [vm-gui-scenario-plan-2026-11-12.md](vm-gui-scenario-plan-2026-11-12.md)：VM × 首个 GUI 场景开工文档（Phase 0–4 进展与 P6 遗留调查项）
 - [briefs/](briefs/)、[prds/](prds/)、[architecture/](architecture/) 目录内附带的
   reconcile-*、review-rubric、reviews/*：文档产出时的对账与评审痕迹
 - [reviews/](reviews/)：逐 Epic code review ×12 与修复记录（含 [W-1 复评解除记录](reviews/w1-recheck-2026-11-06.md)——真实模型 10 种子全对、CI 入评测报告）

@@ -25,6 +25,20 @@ from .config import CuaConfig
 ENTITY_KEY = "cua_model_call"
 
 
+class VlmFormatError(RuntimeError):
+    """生成文本无法解析为任务 JSON——raw 原文随行（错误即观测）。
+
+    VISTA ``core/session.py`` 模式：格式错误不作为终态抛完即弃，而是
+    携带原文回喂上层，由上层注入下一轮 prompt 让模型自我纠正；prompt
+    变化同时天然避开坏响应的缓存命中（同 body 同 key）。
+    """
+
+    def __init__(self, message: str, *, raw: str = "") -> None:
+        super().__init__(message)
+        self.raw = raw
+
+
+
 def _default_http_post(url: str, headers: dict[str, str], body: dict[str, Any],
                        timeout_s: int) -> dict[str, Any]:
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -180,16 +194,16 @@ class VlmClient:
     async def ask_json(self, system: str, prompt: str,
                        images: list[tuple[bytes, str]] | None = None,
                        max_tokens: int | None = None) -> dict[str, Any]:
-        """生成 + 鲁棒 JSON 提取（首个平衡花括号块；解析失败抛错）。"""
+        """生成 + 鲁棒 JSON 提取（首个平衡花括号块；格式错误带 raw 抛出）。"""
         raw = await self.generate(system, prompt, images, max_tokens)
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if not m:
-            raise RuntimeError(f"回答中无 JSON 对象: {raw[:200]!r}")
+            raise VlmFormatError("回答中无 JSON 对象", raw=raw)
         try:
             return json.loads(m.group(0))
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"JSON 解析失败（{exc}）: {m.group(0)[:200]!r}") from exc
+            raise VlmFormatError(
+                f"JSON 解析失败（{exc}）", raw=m.group(0)) from exc
 
 
-__all__ = ["VlmClient"]
+__all__ = ["VlmClient", "VlmFormatError"]
