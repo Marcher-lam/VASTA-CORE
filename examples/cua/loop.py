@@ -35,6 +35,14 @@ from vasta_storage import SqliteStorage, first_deviation
 
 from .ax import AxError, activate_app, frontmost_app, read_display
 from .calib import _display_element, get_keypad, hard_reset, keypad_signature
+from .checkpoint import (
+    CheckpointBoundaryError,
+    LoopCheckpoint,
+    context_projection,
+    save_checkpoint,
+    should_checkpoint,
+    validate_boundary,
+)
 from .config import CuaConfig
 from .env import DesktopEnv
 from .memory import recall_layout
@@ -75,7 +83,7 @@ class AgentRunResult:
 def _vision_prompt(task: str, display: str | None, history: list[dict],
                    feedback: str | None,
                    vlm_error: str | None = None) -> str:
-    hist = json.dumps(history[-4:], ensure_ascii=False)
+    hist = context_projection(history)  # 序④：超窗头部紧凑投影（无静默丢失）
     failed = any(not h.get("verified", True) for h in history)
     recovery = ("\n注意：历史中存在 verified=false——你点错了按钮。先按 AC"
                 "（清除/归零）清零，再从头正确输入。" if failed else "")
@@ -94,7 +102,7 @@ def _vision_prompt(task: str, display: str | None, history: list[dict],
 
 def _memory_prompt(task: str, display: str | None, history: list[dict],
                    vlm_error: str | None = None) -> str:
-    hist = json.dumps(history[-4:], ensure_ascii=False)
+    hist = context_projection(history)  # 序④：超窗头部紧凑投影（无静默丢失）
     failed = any(not h.get("verified", True) for h in history)
     recovery = ("\n注意：历史中存在 verified=false——先按 AC 清零重来。"
                 if failed else "")
@@ -245,6 +253,7 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
     history: list[dict] = []
     feedback: str | None = None
     vlm_feedback: str | None = None  # 错误即观测：格式错误回喂（VISTA 模式）
+    last_ckpt: LoopCheckpoint | None = None  # 序④：续接检查点（边界校验锚）
     done = False
     decisions = 0   # 决策计数（闸拦截不计步——单独封顶防死循环）
     vlm_errors = 0  # VLM 空 content 容错（重试 2 次再放弃）
@@ -253,6 +262,13 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
     await engine.reset()
     p(f"\n[agent] run={res.run_id}｜「{task}」期望 {answer!r}｜模式 {effective}")
     while res.steps < max_steps and not done and decisions <= max_steps + 6:
+        if last_ckpt is not None:  # 序④：归档不可变性——前缀漂移即熔断
+            try:
+                validate_boundary(last_ckpt, history)
+            except CheckpointBoundaryError as exc:
+                res.notes.append(f"检查点边界 fail-closed：{str(exc)[:80]}")
+                p(f"  ⚠检查点边界校验失败——任务终止：{str(exc)[:60]}")
+                break
         if frontmost_app() != app:
             activate_app(app)
         display = read_display(app, display_path)
@@ -361,6 +377,15 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
           f" {'✓' if history[-1]['verified'] else '✗'}（{dt:.1f}s）")
         if history[-1]["verified"] and button == "=":
             done = True
+        if should_checkpoint(res.steps):  # 序④：节奏落盘（CAS 工件+实体索引）
+            last_ckpt = LoopCheckpoint(
+                run_id=res.run_id, task=task, answer=answer, mode=effective,
+                boundary_step=res.steps, history=tuple(history))
+            ref = await save_checkpoint(
+                store, last_ckpt, tenant_id=cfg.tenant_id,
+                project_id=cfg.project_id)
+            res.notes.append(f"检查点@s{res.steps}→{ref[:12]}")
+            p(f"  [ckpt] s{res.steps} → {ref[:12]}")
 
     # ── 终局断言 + 计分（只认事件流）──
     final = read_display(app, display_path)
