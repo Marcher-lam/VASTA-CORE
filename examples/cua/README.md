@@ -77,6 +77,8 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 | 24 | **macOS 26（25G83，VM）屏值带 U+200E 方向标记**：显示 0 时 AX 值是 `'\u200e0'`——`str.strip()` 不吃 Cf 类格式符，标定判「显示屏非零」、核验等值比较全线挂（macOS 27 主机无此前缀；2026-11-12 VM 首跑实测） | `ax.strip_format_chars()`（unicodedata Cf 剥离）：`read_display` 读出统一过筛 + calib 四处比较点（phase1 分类/清零自证/_check_zero/phase2 序列）同步 |
 | 25 | **macOS 26 减号渲染为 ASCII 连字符 `-`（U+002D）**，27 是数学减号 `−`（U+2212）——运算符字形表与验收集全按 U+2212 写，26 上 `−` 钮标定必缺；正负号结果渲染为带括号 `(-79)` 亦不在 phase2 映射 | 读值统一 `.replace("-", "−")` 归一（phase1 分类 + phase2 映射两处）；映射补 `(−79)`→`+/−`；标定失败报错附 raw 步值（后续坑直接看数据） |
 | 26 | **核验层减号字形不匹配**（#25 只修了标定层）：期望串 `display/display_contains` 按 U+2212 写，26 屏值读回是 ASCII `-`——含减号任务（sub/mix）逐种子系统性 deviation；四跑 10 种子实测发现（含减号两任务近乎全灭，均值被压低约 0.2） | verifiers 两侧同归一（actual 与 want 各自 `.replace("-","−")`——同规则才可比）；与 #25 同一规范化原则延伸到核验比较面 |
+| 27 | **VM 计算器千分位**：输入第 4 位数字起屏显带分隔符（`'1,234'`），`derive_expect` 产 `'1234'` 不含 → 核验必 ✗ → 模型 AC 重来 → 死循环到预算封顶（VM 长任务实测 s4/s9/s14/s19 四连）；≥4 位连输任务在此坑下不可解 | 待修：核验比较前剥千分位（`replace(",","")` 两侧同归一，同 #26 原则）；基线 6 任务数值均 <1000 未触此坑（42×3=126 等），多种子重跑若加长数值须先修 |
+| 28 | **同 run 同 mark 幂等键碰撞（P6 根因，已修）**：loop 不传 `plan_step_id`（缺省 `default`）→ 同 mark 重试共享 AD-11 键 → 核验失败后被网关**重放原结果而非真执行**（主机 `replayed=True×13` 铁证）——「executed 而屏值不变」全部同源，Phase 4 主力失败模式即此 | loop 传 `plan_step_id=f"decision-{steps}"`（每次决策是新意图操作）；VM 复验：两 run 25 动作 replayed=0，重复 mark 循环全真执行（判别实验 `77+7` 五步全绿） |
 
 ## 平台 API 接线要点
 

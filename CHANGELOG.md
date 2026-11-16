@@ -6,6 +6,7 @@
 
 ## Unreleased（v0.1.0 后）
 
+- **P6 修复 VM 复验通过（基线原产地）**：判别实验 77+7 五步全核验 PASS；两 run 25 动作 `replayed=True` 0 次（重复 mark 循环全真执行）；检查点 s8/s16 VM 实拍落 CAS；relay 重建（/tmp 清盘）+ 签名 bug 顺修。新坑位 #27 VM 千分位入册（≥4 位连输核验必 ✗，基线任务 <1000 未触发）；#28 幂等碰撞（P6 根因）修复全过程入坑位表
 - **诚实边界清偿 + P6 根因锁定（真机两轮）**：inspect 进决策协议（va-7，8 测试）；集成取证驱动 `va_integration`（检查点实拍/偏差率/P6 表/`--run-id` 离线复检）；**P6 主因 = 幂等键跨重试碰撞**（`plan_step_id` 缺省共享 → 同 mark 重试被 AD-11 重放而非真执行——`replayed=True×13` 铁证），一行修复（decision 序号入键），判别实验 77+7 五步全绿（修复前必死循环）；闸拒活锁修复（反馈带次数+候选破缓存活锁）；全量 1392 passed
 - **VISTA 机制吸收六序全批**（源码深读 11 文件 → [吸收方案](docs/vista-absorption-plan-2026-11-16.md) → story-va-1…6，TDD 红转绿 63 测试）：错误即观测（VLM 坏 JSON 回喂，修「盲重试×缓存=必然二连炸」）/ read_pixels 取证原语（P6 独立观测通道）/ inspect+history 模型侧投影（CAS ref 寻址，强于 VISTA turn 索引）/ 压缩检查点治理（修 `history[-4:]` 裸滑窗静默丢失；CAS 工件留痕 + 边界校验 fail-closed）/ 契约三件（ToolManifest risk↔read_only 构造期矩阵、VastaLabTask.public_view 评测器隔离、Observation derived 血缘）/ 微吸收（ex-ante 预期落史 + CAS 工件 0o400 只读位）。全量 1381 passed；lint-imports 5/0；集成数字待 VM 窗口与 P6 同批回填
 - **CI 首次转绿并修两个真 bug**：
