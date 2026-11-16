@@ -105,6 +105,8 @@ def history_lines(history: list[dict], *, start: int | None = None,
     for h in window:
         parts = [f"s{h.get('step', '?')}", repr(h.get('button', '?')),
                  f"@{h.get('mark', '?')}", f"expect={h.get('expect', '?')}"]
+        if h.get("model_expect"):  # 吸收 G：ex-ante 预期（与核验对照）
+            parts.append(f"预期:{h['model_expect']}")
         if "display_after" in h:
             parts.append(f"→{h['display_after']}")
         if "verified" in h:

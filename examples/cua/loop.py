@@ -54,7 +54,8 @@ from .vlm import VlmClient, VlmFormatError
 SYSTEM_PROMPT = (
     "你是 macOS 桌面操作助手。屏幕截图上叠加了带编号的方框标记"
     "（左上角数字牌）。根据问题找到对应元素，只输出一个 JSON 对象，"
-    "不要输出任何其他文字。"
+    "不要输出任何其他文字。可附 \"note\" 字段：一句话说明你预期点击后"
+    "屏幕会发生什么变化（动作前预期——将与独立核验结果对照）。"
 )
 
 
@@ -354,8 +355,12 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
 
         expect = derive_expect(button, display, answer_claim)
         res.steps += 1
-        history.append({"step": res.steps, "button": button, "mark": mark,
-                        "expect": expect})
+        entry: dict = {"step": res.steps, "button": button, "mark": mark,
+                       "expect": expect}
+        note = str(decision.get("note", "")).strip()
+        if note:  # 吸收 G：模型 ex-ante 预期落史（与 verified 前后对照）
+            entry["model_expect"] = note
+        history.append(entry)
         try:
             await engine.execute_contracted(
                 build_contract(f"任务「{task}」：按 {button!r}", mark, expect),

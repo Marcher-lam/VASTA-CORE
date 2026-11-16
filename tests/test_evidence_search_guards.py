@@ -104,7 +104,9 @@ class TestSearchGuards:
         run_id = await seed_run(store)
         events = await store.search_events(T, P, run_id=run_id)
         ref = events[-1].payload["artifact_refs"][0]
-        (tmp_path / "s" / "objects" / ref[:2] / ref).write_bytes(b"tampered")
+        blob = tmp_path / "s" / "objects" / ref[:2] / ref
+        blob.chmod(0o644)  # 故意篡改先解锁（va-6 只读位）
+        blob.write_bytes(b"tampered")
 
         assert await store.search_events(T, P, run_id=run_id)  # 默认通过
         with pytest.raises(VastaError) as excinfo:

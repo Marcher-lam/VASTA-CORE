@@ -94,6 +94,7 @@ class TestScopeAndVerification:
         store = SqliteStorage(tmp_path / "s")
         sha = await store.save_artifact(b"trust-me")
         blob = tmp_path / "s" / "objects" / sha[:2] / sha
+        blob.chmod(0o644)  # 故意篡改先解锁（va-6 只读位）
         blob.write_bytes(b"tampered!!")  # 磁盘级篡改
         with pytest.raises(VastaError) as excinfo:
             await store.get_artifact(sha)

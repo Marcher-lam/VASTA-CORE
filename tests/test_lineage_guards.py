@@ -54,7 +54,9 @@ class TestDerivedSideStatus:
     async def test_derived_corrupted_marks_records(self, store, tmp_path) -> None:
         source_sha = await seed(store)
         derived_sha = await derive(store, source_sha)
-        (tmp_path / "s" / "objects" / derived_sha[:2] / derived_sha).write_bytes(b"x")
+        blob = tmp_path / "s" / "objects" / derived_sha[:2] / derived_sha
+        blob.chmod(0o644)  # 故意篡改先解锁（va-6 只读位）
+        blob.write_bytes(b"x")
         verification = await store.verify_lineage(derived_sha, tenant_id=T, project_id=P)
         assert verification.derived_status == "derived_corrupted"
         assert verification.records[0].status == "derived_corrupted"

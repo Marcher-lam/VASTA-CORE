@@ -12,8 +12,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
+import os
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -438,6 +440,10 @@ class SqliteStorage(EvidenceSearchMixin, LineageMixin):
                 tmp.unlink(missing_ok=True)
                 raise ArtifactCorruptedError(sha)
             tmp.replace(blob_path)
+            # CAS 工件只读位（VISTA 吸收 H：evidence chmod 0o400 防篡改；
+            # 平台不支持时字节校验仍是主防线，幂等重复存走读校验分支不受影响）
+            with contextlib.suppress(OSError):
+                os.chmod(blob_path, 0o400)
         elif hashlib.sha256(blob_path.read_bytes()).hexdigest() != sha:
             # 已存在的字节被篡改：不得静默复用（评审修复）
             raise ArtifactCorruptedError(sha)

@@ -136,6 +136,7 @@ class TestDerivedRecall:
         )
         # 篡改源 blob
         blob = store.objects_dir / src[:2] / src  # noqa: SLF001
+        blob.chmod(0o644)  # 故意篡改先解锁（va-6 只读位）
         blob.write_bytes(b"tampered!!")
         recall = await derived_recall(store, derived)
         assert recall.status in ("source_corrupted", "derived_corrupted")

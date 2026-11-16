@@ -104,6 +104,7 @@ class TestVerifyDegradation:
             params={}, transformer_version="1.0", tenant_id=T, project_id=P,
         )
         blob = tmp_path / "s" / "objects" / source_sha[:2] / source_sha
+        blob.chmod(0o644)  # 故意篡改先解锁（va-6 只读位）
         blob.write_bytes(b"tampered-content")
 
         verification = await store.verify_lineage(derived_sha, tenant_id=T, project_id=P)
