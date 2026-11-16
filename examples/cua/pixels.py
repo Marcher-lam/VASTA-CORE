@@ -37,6 +37,15 @@ class Region:
         if self.width < 1 or self.height < 1:
             raise ValueError(f"region 尺寸非法：{self.width}×{self.height}")
 
+    @classmethod
+    def from_pt(cls, x_pt: float, y_pt: float, w_pt: float, h_pt: float,
+                *, scale: float) -> Region:
+        """pt 坐标 → 像素 Region（scale 逐帧实测：截图 px 宽 / 屏幕 pt
+        宽，惯例同 scene.py 的 Scene.scale——SoM 标记坐标换算入口）。"""
+        return cls(x=int(round(x_pt * scale)), y=int(round(y_pt * scale)),
+                   width=int(round(w_pt * scale)),
+                   height=int(round(h_pt * scale)))
+
 
 @dataclass(frozen=True)
 class PixelReadout:
