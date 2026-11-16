@@ -76,3 +76,16 @@ async def test_duplicate_save_after_readonly_still_ok(tmp_path) -> None:
     first = await store.save_artifact(b"evidence-bytes", mime="image/png")
     second = await store.save_artifact(b"evidence-bytes", mime="image/png")
     assert first == second  # 幂等分支（读校验）不受只读位影响
+
+
+# ---- 坑位 #25 族第三层（va-10）：按钮决策层字形归一 ----
+
+def test_button_glyph_normalization_family() -> None:
+    from examples.cua.loop import _normalize_button
+
+    assert _normalize_button("-") == "−"    # ASCII → 数学减号
+    assert _normalize_button("*") == "×"
+    assert _normalize_button("/") == "÷"
+    assert _normalize_button("C") == "AC"   # 既有惯例保留
+    assert _normalize_button("7") == "7"    # 数字不动
+    assert _normalize_button("−") == "−"    # 已合法不动

@@ -90,6 +90,15 @@ def _parse_inspect(req: list, marks_table: dict[int, dict], *,
     return views, None
 
 
+def _normalize_button(button: str) -> str:
+    """按钮决策层字形归一（坑位 #25 族第三层——run3 实测：模型报
+    ASCII `-`，标签是数学减号 `−`，闸拒马拉松单场烧 23 分钟）。
+
+    标定层（#25）与核验层（#26）已归一；本层补决策输入侧。同义归一
+    惯例同 `'C'→'AC'`。"""
+    return {"-": "−", "*": "×", "/": "÷", "C": "AC"}.get(button, button)
+
+
 def _inspect_prompt_note(views: list[tuple[str, Region]]) -> str | None:
     """回喂注记：本轮附加图对应哪些放大区域。"""
     if not views:
@@ -382,8 +391,7 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
         button = str(decision.get("button", "")).strip()
         answer_claim = str(decision.get("answer", "")).strip()
         decisions += 1
-        if button == "C":  # 模型常把 AC 写成 C——同义归一
-            button = "AC"
+        button = _normalize_button(button)
         if button not in labels:
             inspect_req = decision.get("inspect") or []
             if inspect_req and effective == "vision":  # va-7 回看请求
