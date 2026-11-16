@@ -170,6 +170,16 @@ class VastaLabTask:
     deviation_injection: bool = False
     seed: int = 0
 
+    def public_view(self) -> dict[str, object]:
+        """模型可见投影（VISTA 吸收 E）：评测器状态结构性缺席。
+
+        hidden_rule / noise / deviation_injection / seed 是评测器私有
+        （"Evaluator state is deliberately absent"）——喂给模型的
+        任务描述只允许来自本投影。
+        """
+        return {"task_id": self.task_id, "grid_size": self.grid_size,
+                "start": list(self.start), "goal": list(self.goal)}
+
     def _step(self, pos: tuple[int, int], move: str, step_index: int) -> tuple[int, int]:
         """单步确定性转移（step_index 为 1 基步序，wind 依赖其奇偶）。"""
         r, c = pos

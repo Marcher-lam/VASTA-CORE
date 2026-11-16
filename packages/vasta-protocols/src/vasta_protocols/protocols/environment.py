@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: Environment 协议版本（FR-001：协议携带版本字段）。
 ENVIRONMENT_PROTOCOL_VERSION = "0.1.0"
@@ -25,6 +25,20 @@ class Observation(BaseModel):
     artifact_refs: list[str] = Field(default_factory=list, description="sha256 引用")
     available_actions: list[str] = Field(default_factory=list)
     detail: dict[str, Any] = Field(default_factory=dict)
+    derived: bool = Field(default=False,
+                          description="派生观察（吸收 F：须声明血缘）")
+    derived_from: list[str] = Field(
+        default_factory=list,
+        description="源工件引用——derived=True 时必填、非 derived 不得声明")
+
+    @model_validator(mode="after")
+    def _derived_lineage_rule(self) -> Observation:
+        """derived 证据强制 derived_from（VISTA contracts.py 原规则）。"""
+        if self.derived and not self.derived_from:
+            raise ValueError("derived 观察必须声明 derived_from（源工件引用）")
+        if not self.derived and self.derived_from:
+            raise ValueError("非 derived 观察不得声明 derived_from")
+        return self
 
     @property
     def actionable(self) -> bool:

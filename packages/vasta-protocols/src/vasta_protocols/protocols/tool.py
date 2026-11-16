@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .environment import Action, Observation
 
@@ -31,6 +31,20 @@ class ToolManifest(BaseModel):
     supports_read_back: bool = False
     permissions: list[str] = Field(default_factory=list)
     side_effects: list[str] = Field(default_factory=list, description="副作用边界描述")
+
+    @model_validator(mode="after")
+    def _risk_readonly_matrix(self) -> ToolManifest:
+        """能力-效果一致性（VISTA 吸收 D）：构造期对账，声明与效果
+        不符即炸（蓝图 §12.4 语义：read_only=True → R0/R1；
+        写操作 read_only=False → R2+）。"""
+        if self.read_only and self.risk not in {"R0", "R1"}:
+            raise ValueError(
+                f"清单不自洽：read_only=True 须为 R0/R1（得 {self.risk}）")
+        if not self.read_only and self.risk in {"R0", "R1"}:
+            raise ValueError(
+                f"清单不自洽：写操作（read_only=False）须为 R2+"
+                f"（得 {self.risk}）")
+        return self
 
 
 class ToolResult(BaseModel):

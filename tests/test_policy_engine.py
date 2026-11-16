@@ -178,7 +178,13 @@ class TestFailClosed:
         assert env.execute_count == 0
 
     async def test_broken_engine_low_risk_write_denied_read_only_allowed(self) -> None:
-        """AD-12 字面：策略不可用——低风险**写动作**拒，只读放行降级。"""
+        """AD-12 字面：策略不可用——写动作拒（哪怕最低合法写风险），只读放行降级。
+
+        va-5（吸收 D）后 R0+read_only=False 清单构造期即非法（防线前移
+        到声明层）——引擎级用合法最低写风险 R2 验证；「低风险写拒」的
+        组合语义由 test_fallback_pure_function（纯函数，不构造清单）
+        继续覆盖。
+        """
         from tests.test_tool_gateway import WriteTool
         from vasta_runtime import ToolGateway
 
@@ -187,21 +193,24 @@ class TestFailClosed:
                 raise RuntimeError("down")
 
         gw = ToolGateway()
-        gw.register(WriteTool(name="set_status", risk="R0"))  # read_only=False
+        gw.register(WriteTool(name="set_status", risk="R2"))  # read_only=False
         engine, store = await make_engine(
             policy_engine=Broken(), tool_gateway=gw  # type: ignore[arg-type]
         )
-        # R0 写工具（清单 read_only=False）→ 拒（AD-12：仅只读可放行）
-        with pytest.raises(Exception, match="不放行"):  # noqa: B017
+        # R2 写工具（清单 read_only=False）→ 拒（AD-12：仅只读可放行）
+        with pytest.raises(Exception, match="fail-closed"):  # noqa: B017
             await engine.execute_contracted(
-                make_complete_contract(tool="set_status", risk="R0")
+                make_complete_contract(tool="set_status", risk="R2")
             )
         denied = [e for e in events(store) if e.type == "action.policy_denied"][-1]
         assert denied.payload.get("fail_closed") is not False
 
     def test_fallback_pure_function(self) -> None:
         assert fail_closed_fallback("R3").decision == "deny"
-        assert fail_closed_fallback("R1").decision == "deny"  # 写不放行
+        # 低风险写不放行（va-5 矩阵后合法清单构造不出该组合——纯函数
+        # 层继续锁纵深防御分支的消息语义）
+        low_write = fail_closed_fallback("R1")
+        assert low_write.decision == "deny" and "不放行" in low_write.basis
         assert fail_closed_fallback("R1", read_only=True).decision == "allow"
         assert fail_closed_fallback("R1", read_only=True).degraded is True
 
