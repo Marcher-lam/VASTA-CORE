@@ -109,6 +109,6 @@ def test_history_quick_check_normalizes_minus() -> None:
     # VM 屏值 ASCII '-'（#25），期望 U+2212——引擎核验器 #26 已归一，
     # loop 自己的快检漏了（run5 sub/mix 崩塌根因：verifier 3✓ 全过
     # 而快检误判 → 假恢复指令带崩模型）
-    assert _step_verified("display_contains=−", "90-") is True
-    assert _step_verified("display=75", "75") is True
-    assert _step_verified("display=76", "75") is False
+    assert _step_verified("−", "90-") is True  # 调用方传切分后的 want
+    assert _step_verified("75", "75") is True
+    assert _step_verified("76", "75") is False
