@@ -109,7 +109,9 @@ async def main() -> int:
     ap.add_argument("--level", type=float, default=0.95,
                     choices=[0.90, 0.95, 0.99])
     args = ap.parse_args()
-    if args.seeds < W1_MIN_SEEDS:
+    if args.start == 0 and args.seeds < W1_MIN_SEEDS:
+        # 整批（start=0）强制 ≥10；--start 补齐片段豁免（与已落盘
+        # 种子合并后才构成完整批次——va-11 睡眠事故补齐通道）
         raise SystemExit(f"≥{W1_MIN_SEEDS} 种子强制（W-1 口径），"
                          f"得到 {args.seeds}")
     if args.temperature <= 0:
