@@ -45,7 +45,7 @@ _RATE_RE = re.compile(r"\[auto\]\s*成功率\s*(\d+)/(\d+)")
 #: 下 thinking 失控样态最贵）+ 标定 ~90s——6 任务正常需 20-35 分钟，
 #: 2400s 封顶既装得下健康种子又能抓真挂死；超时也必须留下部分输出
 #: （首跑教训：subprocess.run 超时异常会把 stdout 一起吞掉）
-_SEED_TIMEOUT_S = 2400
+_SEED_TIMEOUT_S = 3600  # 40→60min：infra 卡顿判慢不判死（run4 教训）
 
 
 def _run_seed(seed: int, temperature: float, base: Path) -> dict[str, Any]:

@@ -140,6 +140,12 @@ async def run_eval(limit: int, compare_vision: int,
 
 
 def main() -> None:
+    # 坑位 #29 追猎保险：周期性全线程栈转储到 stderr（停滞时留下
+    # Python 级现场——run1-4 的 C 栈看不到函数名，本地机制验证正常
+    # 但产线仍停滞，需要真实现场）
+    import faulthandler
+
+    faulthandler.dump_traceback_later(300, repeat=True)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=6)
     parser.add_argument("--compare-vision", type=int, default=0,
