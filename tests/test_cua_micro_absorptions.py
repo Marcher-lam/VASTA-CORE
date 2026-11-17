@@ -99,3 +99,16 @@ def test_seed_indices_offset() -> None:
     assert _seed_indices(0, 10) == list(range(10))
     assert _seed_indices(9, 1) == [9]     # 单补第 9 颗
     assert _seed_indices(5, 3) == [5, 6, 7]
+
+
+# ---- 坑位 #26 族第四层（va-12）：loop 历史快检的字形归一 ----
+
+def test_history_quick_check_normalizes_minus() -> None:
+    from examples.cua.loop import _step_verified
+
+    # VM 屏值 ASCII '-'（#25），期望 U+2212——引擎核验器 #26 已归一，
+    # loop 自己的快检漏了（run5 sub/mix 崩塌根因：verifier 3✓ 全过
+    # 而快检误判 → 假恢复指令带崩模型）
+    assert _step_verified("display_contains=−", "90-") is True
+    assert _step_verified("display=75", "75") is True
+    assert _step_verified("display=76", "75") is False

@@ -99,6 +99,18 @@ def _normalize_button(button: str) -> str:
     return {"-": "−", "*": "×", "/": "÷", "C": "AC"}.get(button, button)
 
 
+def _step_verified(want: str, after: str | None) -> bool:
+    """loop 历史快检（坑位 #26 族第四层——run5 实测：模型按 − 全对、
+    引擎核验器 3✓ 全过，本快检 ASCII '-' vs 期望 '−' 误判 → 假恢复
+    指令带崩模型 → sub/mix 双任务 1/10 崩塌）。两侧同归一（同
+    verifiers.py #26 规则）。"""
+    if not after or not want:
+        return False
+    want_n = want.replace("-", "−")
+    after_n = after.replace(" ", "").replace("-", "−")
+    return want_n in after_n
+
+
 def _inspect_prompt_note(views: list[tuple[str, Region]]) -> str | None:
     """回喂注记：本轮附加图对应哪些放大区域。"""
     if not views:
@@ -482,8 +494,7 @@ async def run_agent(cfg: CuaConfig, store: SqliteStorage, *, task: str,
         after = read_display(app, display_path)
         want = expect.split("=", 1)[1] if "=" in expect else expect
         history[-1]["display_after"] = after
-        history[-1]["verified"] = bool(after and want
-                                       and want in after.replace(" ", ""))
+        history[-1]["verified"] = _step_verified(want, after)
         p(f"  s{res.steps}: {button!r:>3}@{mark:<3} {expect!r:<16}"
           f" → {after!r:<10}"
           f" {'✓' if history[-1]['verified'] else '✗'}（{dt:.1f}s）")
