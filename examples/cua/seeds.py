@@ -48,6 +48,14 @@ _RATE_RE = re.compile(r"\[auto\]\s*成功率\s*(\d+)/(\d+)")
 _SEED_TIMEOUT_S = 3600  # 40→60min：infra 卡顿判慢不判死（run4 教训）
 
 
+def _seed_indices(start: int, count: int) -> list[int]:
+    """种子序号集（va-11：--start 偏移支持——事故后单颗补齐通道，
+    种子独立使 [9,1] 与整跑的 seed-9 统计等价）。"""
+    if start < 0 or count <= 0:
+        raise ValueError(f"非法种子区间：start={start} count={count}")
+    return list(range(start, start + count))  # 40→60min：infra 卡顿判慢不判死（run4 教训）
+
+
 def _run_seed(seed: int, temperature: float, base: Path) -> dict[str, Any]:
     """跑一个种子：子进程隔离（独立 env + 独立 store），任何失败=0 分记录。
 
@@ -90,6 +98,8 @@ def _run_seed(seed: int, temperature: float, base: Path) -> dict[str, Any]:
 
 async def main() -> int:
     ap = argparse.ArgumentParser(description="≥10 种子 GUI 评测（W-1 口径）")
+    ap.add_argument("--start", type=int, default=0,
+                    help="起始种子序号（事故后补齐用）")
     ap.add_argument("--seeds", type=int, default=W1_MIN_SEEDS,
                     help=f"种子数（≥{W1_MIN_SEEDS} 强制）")
     ap.add_argument("--temperature", type=float, default=0.3,
@@ -110,7 +120,7 @@ async def main() -> int:
     print(f"[seeds] {args.seeds} 种子 × temperature={args.temperature}"
           f"｜model={cfg.vlm_model}｜store={base}", flush=True)
     rows: list[dict[str, Any]] = []
-    for i in range(args.seeds):
+    for i in _seed_indices(args.start, args.seeds):
         row = _run_seed(i, args.temperature, base)
         rows.append(row)
         print(f"[seeds] seed={row['seed']} rate={row['rate']:.2f}"

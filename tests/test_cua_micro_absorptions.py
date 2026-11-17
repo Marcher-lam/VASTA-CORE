@@ -89,3 +89,13 @@ def test_button_glyph_normalization_family() -> None:
     assert _normalize_button("C") == "AC"   # 既有惯例保留
     assert _normalize_button("7") == "7"    # 数字不动
     assert _normalize_button("−") == "−"    # 已合法不动
+
+
+# ---- va-11：种子偏移（睡眠事故后 seed-9 补齐通道） ----
+
+def test_seed_indices_offset() -> None:
+    from examples.cua.seeds import _seed_indices
+
+    assert _seed_indices(0, 10) == list(range(10))
+    assert _seed_indices(9, 1) == [9]     # 单补第 9 颗
+    assert _seed_indices(5, 3) == [5, 6, 7]
