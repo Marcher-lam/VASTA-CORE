@@ -79,6 +79,8 @@ CUA_APP_WHITELIST / CUA_AUTO_APPROVE / CUA_NO_THINK`，见 config.py）。
 | 26 | **核验层减号字形不匹配**（#25 只修了标定层）：期望串 `display/display_contains` 按 U+2212 写，26 屏值读回是 ASCII `-`——含减号任务（sub/mix）逐种子系统性 deviation；四跑 10 种子实测发现（含减号两任务近乎全灭，均值被压低约 0.2） | verifiers 两侧同归一（actual 与 want 各自 `.replace("-","−")`——同规则才可比）；与 #25 同一规范化原则延伸到核验比较面 |
 | 27 | **VM 计算器千分位**：输入第 4 位数字起屏显带分隔符（`'1,234'`），`derive_expect` 产 `'1234'` 不含 → 核验必 ✗ → 模型 AC 重来 → 死循环到预算封顶（VM 长任务实测 s4/s9/s14/s19 四连）；≥4 位连输任务在此坑下不可解 | 待修：核验比较前剥千分位（`replace(",","")` 两侧同归一，同 #26 原则）；基线 6 任务数值均 <1000 未触此坑（42×3=126 等），多种子重跑若加长数值须先修 |
 | 28 | **同 run 同 mark 幂等键碰撞（P6 根因，已修）**：loop 不传 `plan_step_id`（缺省 `default`）→ 同 mark 重试共享 AD-11 键 → 核验失败后被网关**重放原结果而非真执行**（主机 `replayed=True×13` 铁证）——「executed 而屏值不变」全部同源，Phase 4 主力失败模式即此 | loop 传 `plan_step_id=f"decision-{steps}"`（每次决策是新意图操作）；VM 复验：两 run 25 动作 replayed=0，重复 mark 循环全真执行（判别实验 `77+7` 五步全绿） |
+| 29 | **VLM 滴流冻结（run1 七连崩根因）**：LM Studio 长负载下 swap 龟速——连接 ESTABLISHED、分钟/token 爬行，字节间隔 < socket timeout → urllib 超时永不触发 → worker 线程 `_buffered_readline` 永久阻塞（sample 栈现行：唯一 TCP=relay、无子进程、AX 无辜）→ 种子 40 分钟被杀 | vlm 硬总超时 `asyncio.wait_for(budget+60)`（`efe56ff`）——滴流免疫；被弃 to_thread 线程泄漏登记可接受；运维配套：LM 服务重启减压 |
+| 30 | **按钮决策层字形（#25 族第三层）**：模型报 ASCII `-`，标签是数学减号 `−`——闸拒每次真重采样 30-60s，拒绝马拉松单场烧 23 分钟（run3 sub 实测 1398s）磨穿种子预算 | `_normalize_button` 归一表（-/×/÷/C→AC，`d8bcff8`）；**第四层**（loop 历史快检，run5 sub/mix 1/10 崩塌根因——引擎核验器 3✓ 全过而快检 `−`≠`-` 误判 → 假恢复带崩）由 `_step_verified` 两侧归一收口（`b208097`）——字形族四层全闭合 |
 
 ## 平台 API 接线要点
 
