@@ -23,3 +23,6 @@ VASTA-BRAINSTORM-PLAN.zip
 # flake 遥测（item-33）
 .flake/
 .vasta-w1/
+
+# CI 本地调试日志
+.ci_*.log

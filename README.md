@@ -103,7 +103,7 @@ async with session:
 
 | 目录 | 一句话 |
 |---|---|
-| [examples/cua](examples/cua/README.md) | **macOS 桌面 CUA**（P0–P5 全 PASS）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 23 条 macOS 桌面实测坑位表 |
+| [examples/cua](examples/cua/README.md) | **macOS 桌面 CUA**（P0–P5 全 PASS）：SoM 视觉感知 + 点击反推标定 + AX 确定性核验 + 六段链执行 + R3 人在环 + 字节级回放 + Claim 图 UI-记忆（改版=反例级联失效）+ guardrails 四层闸 + 任务集 eval；附 30 条 macOS 桌面实测坑位表（隔离执行环境见 [VM 运维手册](docs/vm-ops-manual.md)） |
 | [examples/rag](examples/rag/README.md) | **多模态 RAG**：L1 向量粗筛 + L2 原始证据兜底两层检索、引用回源核验、消融量化（+13.1pp 关键词覆盖）；设计决策见 [DESIGN.md](examples/rag/DESIGN.md) |
 | [examples/onboarding](examples/onboarding/README.md) | **从零接入演练**：自定义 env/工具/契约模板/回放五段单文件（≤3 工程日的最小路径） |
 
@@ -148,6 +148,7 @@ tests/               # 1319+ 测试（含 Hypothesis 性质测试与端口契约
 | 文档 | 内容 |
 |---|---|
 | [docs/quickstart.md](docs/quickstart.md) | 15 分钟首跑：GridWorld → SQLite 证据库 → L0 全量记录 |
+| [docs/vm-ops-manual.md](docs/vm-ops-manual.md) | macOS 测试 VM 运维手册：项目中的角色（CUA 隔离执行环境）/ 创建经过 / 启停与排障 |
 | [docs/onboarding-log.md](docs/onboarding-log.md) | 外部团队接入计时演练与已知摩擦点（SM-5 证据） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献流程：环境 / 三道门禁 / 架构红线 / Story 簿记约定 |
 | [SECURITY.md](SECURITY.md) | 安全策略：报告渠道与平台安全姿态 |
@@ -167,7 +168,7 @@ tests/               # 1319+ 测试（含 Hypothesis 性质测试与端口契约
 
 | 目录 | 内容 |
 |---|---|
-| [examples/cua/](examples/cua/README.md) | macOS 桌面 CUA（P0–P5 全 PASS，23 条实测坑位表） |
+| [examples/cua/](examples/cua/README.md) | macOS 桌面 CUA（P0–P5 全 PASS，26 条实测坑位表） |
 | [examples/rag/](examples/rag/README.md) | 多模态 RAG：两层检索 + 引用回源核验 + 消融（[设计决策](examples/rag/DESIGN.md)） |
 | [examples/onboarding/](examples/onboarding/README.md) | 从零接入五段演练（自定义 env + 工具 + 契约模板 + 回放） |
 
@@ -193,6 +194,8 @@ uv run lint-imports                     # 架构依赖契约（AD-1 强制）
 ```
 
 CI（GitHub Actions）：lint → import-linter → pytest（Python 3.12/3.13 矩阵）。
+本地复现 CI（x86_64 Linux 口径）：`scripts/ci_local.sh`（容器跑三道门禁）；macOS 隔离
+测试环境（CUA 执行机）见 [docs/vm-ops-manual.md](docs/vm-ops-manual.md)。
 贡献流程与架构红线见 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题报告见 [SECURITY.md](SECURITY.md)。
 过程档案（评审/复盘/对账）带日期存于 `docs/`，只增不改。
 
