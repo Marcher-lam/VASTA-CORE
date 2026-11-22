@@ -24,6 +24,8 @@ from typing import Any
 from .config import RagConfig
 
 ENTITY_KEY = "rag_model_call"
+_GEN_FLOOR_S = 60    # 单请求生成预算下限（秒）
+_HARD_MARGIN_S = 60  # 硬总限时 = budget + 此边际（坑位 #29 滴流免疫）
 
 
 def _lms_load(model: str) -> None:
@@ -78,10 +80,18 @@ class CloudClient:
         # 超时随生成长度缩放（实测持续 ~8-20 tok/s，取保守 0.25s/token）
         budget = timeout_s or self._cfg.timeout_s
         if path.endswith("/chat/completions"):
-            budget = max(budget, int(body.get("max_tokens", 0) * 0.25) + 60)
+            budget = max(budget, int(body.get("max_tokens", 0) * 0.25)
+                         + _GEN_FLOOR_S)
+        # 坑位 #29 同源副本（CUA vlm.py 已修 efe56ff，本文件是其老师）：
+        # socket 超时对滴流免疫（LM Studio swap 龟速——字节间隔 <
+        # timeout 永不触发 → 永久挂死）。硬总限兜底；被弃 to_thread
+        # 线程泄漏可接受（每请求上限几个）。
+        hard_deadline = budget + _HARD_MARGIN_S
         try:
-            return await asyncio.to_thread(
-                self._http_post, url, headers, body, budget)
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._http_post, url, headers, body,
+                                  budget),
+                timeout=hard_deadline)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
             # LM Studio 内存压力会逐出模型：自动 lms load 后重试一次
@@ -97,17 +107,13 @@ class CloudClient:
         except urllib.error.URLError as exc:
             raise RuntimeError(f"无法连接 {self._cfg.base_url}（{exc.reason}）") from exc
         except TimeoutError as exc:
-            # 超时多为僵尸生成堵队（客户端断连后服务端仍会跑完）：
-            # 卸载清队列 + 重载 + 重试一次
-            await asyncio.to_thread(_lms_reset, str(body.get("model", "")))
-            try:
-                return await asyncio.to_thread(
-                    self._http_post, url, headers, body, budget)
-            except TimeoutError:
-                raise RuntimeError(
-                    f"生成超时（>{budget:.0f}s，max_tokens="
-                    f"{body.get('max_tokens')}）——重置模型后仍超时"
-                ) from exc
+            # socket 超时与 wait_for 硬总限（3.11+ 同一类）统一处置：
+            # 直接报错走上层重试——对滴流对端 reset+重试只会双倍烧时限
+            # （#29 取证结论，与 vlm.py 同裁决）
+            raise RuntimeError(
+                f"VLM 硬总超时（>{hard_deadline:.0f}s，budget="
+                f"{budget:.0f}s，max_tokens={body.get('max_tokens')}"
+                "）——疑似滴流/推理挂死，坑位 #29") from exc
 
     # ---- 响应缓存（实体索引：请求哈希 → 工件） ----
 
